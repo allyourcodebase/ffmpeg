@@ -1,3 +1,13 @@
+This is a fork of [ffmpeg](https://ffmpeg.org/), packaged for Zig. Unnecessary
+files have been deleted, and the build system has been replaced with
+`build.zig`. The `upstream` branch of this repository contains a mirror of the
+official ffmpeg source tree. When an upstream release is tagged, the changes are
+merged from `upstream` into this `main` branch.
+
+Original README follows:
+
+----------------
+
 FFmpeg README
 =============
 
