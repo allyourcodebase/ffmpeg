@@ -18,10 +18,18 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
+
     lib.linkLibrary(libz_dep.artifact("z"));
     lib.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
     lib.linkLibC();
     lib.addIncludePath(".");
+
+    const avconfig_h = b.addConfigHeader(.{ .path = "libavutil/avconfig.h" }, .generated, .{
+        .AV_HAVE_BIGENDIAN = 0, // TODO: detect based on target
+        .AV_HAVE_FAST_UNALIGNED = 1, // TODO: detect based on target
+    });
+    lib.addConfigHeader(avconfig_h);
+
     lib.addCSourceFiles(&avcodec_sources, ffmpeg_cflags ++ [_][]const u8{
         "-DBUILDING_avcodec",
     });
@@ -116,6 +124,7 @@ pub fn build(b: *std.build.Builder) void {
         else => {},
     }
     lib.install();
+    lib.installConfigHeader(avconfig_h);
     for (headers) |h| lib.installHeader(h, h);
 }
 
@@ -246,7 +255,6 @@ const headers = [_][]const u8{
     "libavutil/intmath.h",
     "libavutil/intreadwrite.h",
     "libavutil/timer.h",
-    "libavutil/avconfig.h",
     "libavutil/ffversion.h",
 
     "libswscale/swscale.h",
