@@ -2,14 +2,22 @@ const std = @import("std");
 
 pub fn build(b: *std.build.Builder) void {
     const target = b.standardTargetOptions(.{});
-    const mode = b.standardReleaseOptions();
+    const optimize = b.standardOptimizeOption(.{});
 
-    const libz_dep = b.dependency("libz", .{});
-    const libmp3lame_dep = b.dependency("libmp3lame", .{});
+    const libz_dep = b.dependency("libz", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const libmp3lame_dep = b.dependency("libmp3lame", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
-    const lib = b.addStaticLibrary("ffmpeg", null);
-    lib.setTarget(target);
-    lib.setBuildMode(mode);
+    const lib = b.addStaticLibrary(.{
+        .name = "ffmpeg",
+        .target = target,
+        .optimize = optimize,
+    });
     lib.linkLibrary(libz_dep.artifact("z"));
     lib.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
     lib.linkLibC();
