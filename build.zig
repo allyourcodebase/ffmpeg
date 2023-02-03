@@ -36,7 +36,8 @@ pub fn build(b: *std.build.Builder) void {
     });
     lib.addConfigHeader(avconfig_h);
 
-    const config_h = b.addConfigHeader(.{ .path = "config.h" }, .generated, .{
+    const config_h = b.addConfigHeader(.{ .path = "config.h" }, .generated, .{});
+    config_h.addValues(.{
         .FFMPEG_CONFIGURATION = "--disable-x86asm --enable-libmp3lame",
         .FFMPEG_LICENSE = "LGPL version 2.1 or later",
         .CONFIG_THIS_YEAR = 2022,
@@ -314,6 +315,8 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_SINF = 1,
         .HAVE_TRUNC = 1,
         .HAVE_TRUNCF = 1,
+    });
+    config_h.addValues(.{
         .HAVE_DOS_PATHS = 0,
         .HAVE_LIBC_MSVCRT = 0,
         .HAVE_MMAL_PARAMETER_VIDEO_MAX_NUM_CALLBACKS = 0,
@@ -1078,6 +1081,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_VP9_DECODER = 1,
         .CONFIG_VP9_RKMPP_DECODER = 0,
         .CONFIG_VP9_V4L2M2M_DECODER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_VQA_DECODER = 1,
         .CONFIG_WEBP_DECODER = 1,
         .CONFIG_WCMV_DECODER = 1,
@@ -1378,6 +1383,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_A64MULTI_ENCODER = 1,
         .CONFIG_A64MULTI5_ENCODER = 1,
         .CONFIG_ALIAS_PIX_ENCODER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_AMV_ENCODER = 1,
         .CONFIG_APNG_ENCODER = 1,
         .CONFIG_ASV1_ENCODER = 1,
@@ -1678,6 +1685,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_WMV3_VDPAU_HWACCEL = 0,
         .CONFIG_AAC_PARSER = 1,
         .CONFIG_AAC_LATM_PARSER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_AC3_PARSER = 1,
         .CONFIG_ADX_PARSER = 1,
         .CONFIG_AMR_PARSER = 1,
@@ -1978,6 +1987,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_DELOGO_FILTER = 0,
         .CONFIG_DENOISE_VAAPI_FILTER = 0,
         .CONFIG_DERAIN_FILTER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_DESHAKE_FILTER = 1,
         .CONFIG_DESHAKE_OPENCL_FILTER = 0,
         .CONFIG_DESPILL_FILTER = 1,
@@ -2278,6 +2289,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_SMPTEHDBARS_FILTER = 1,
         .CONFIG_TESTSRC_FILTER = 1,
         .CONFIG_TESTSRC2_FILTER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_YUVTESTSRC_FILTER = 1,
         .CONFIG_NULLSINK_FILTER = 1,
         .CONFIG_ABITSCOPE_FILTER = 1,
@@ -2578,6 +2591,8 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_VC1_DEMUXER = 1,
         .CONFIG_VC1T_DEMUXER = 1,
         .CONFIG_VIVIDAS_DEMUXER = 1,
+    });
+    config_components_h.addValues(.{
         .CONFIG_VIVO_DEMUXER = 1,
         .CONFIG_VMD_DEMUXER = 1,
         .CONFIG_VOBSUB_DEMUXER = 1,
