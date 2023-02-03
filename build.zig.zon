@@ -1,0 +1,16 @@
+.{
+    .name = "libffmpeg",
+    .version = "5.1.2",
+
+    .dependencies = .{
+        .libz = .{
+            .url = "https://github.com/andrewrk/libz/archive/9e71b746b83d2b5bf5eb247663eb65a52cf0f68f.tar.gz",
+            .hash = "12204ea3490e5bdf379f56aa11784d906aed6d4c553c724fa5427169915f2cf4a651",
+        },
+
+        .libmp3lame = .{
+            .url = "https://github.com/andrewrk/libmp3lame/archive/67efbabf3bfd654b515fc31db5e4f47a2b074c73.tar.gz",
+            .hash = "122052fda6ca82c1010697a06960c91ff9d3db2a95a99b5e32e4816821b5c60bea8f",
+        },
+    },
+}
