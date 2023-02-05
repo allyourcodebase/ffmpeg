@@ -33,25 +33,7 @@ pub fn build(b: *std.build.Builder) void {
     });
     lib.addConfigHeader(avconfig_h);
 
-    @setEvalBranchQuota(2000);
-    lib.addConfigHeader(b.addConfigHeader(.{
-        .style = .blank,
-        .include_path = "config.h",
-    }, .{
-        .FFMPEG_CONFIGURATION = "",
-        .FFMPEG_LICENSE = "LGPL version 2.1 or later",
-        .CONFIG_THIS_YEAR = 2022,
-        .FFMPEG_DATADIR = "/dev/null",
-        .AVCONV_DATADIR = "/dev/null",
-        .CC_IDENT = "gcc 11.3.0 (GCC)",
-        .OS_NAME = .linux,
-        .av_restrict = .restrict,
-        .EXTERN_PREFIX = "",
-        .EXTERN_ASM = {},
-        .BUILDSUF = "",
-        .SLIBSUF = t.os.tag.dynamicLibSuffix(),
-        .HAVE_MMX2 = have_x86_feat(t, .mmx),
-        .SWS_MAX_FILTER_SIZE = 256,
+    const common_config = .{
         .ARCH_AARCH64 = @boolToInt(t.cpu.arch.isAARCH64()),
         .ARCH_ALPHA = 0,
         .ARCH_ARM = @boolToInt(t.cpu.arch.isARM()),
@@ -123,7 +105,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_SSE42 = have_x86_feat(t, .sse4_2),
         .HAVE_SSSE3 = have_x86_feat(t, .ssse3),
         .HAVE_XOP = have_x86_feat(t, .xop),
-        .HAVE_CPUNOP = have_x86_feat(t, .nopl),
+        .HAVE_CPUNOP = 0,
         .HAVE_I686 = 1,
         .HAVE_MIPSFPU = 0,
         .HAVE_MIPS32R2 = 0,
@@ -254,7 +236,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_CEXP = 0,
         .HAVE_INLINE_ASM = 1,
         .HAVE_SYMVER = 1,
-        .HAVE_X86ASM = 0,
+        .HAVE_X86ASM = 1,
         .HAVE_BIGENDIAN = @boolToInt(t.cpu.arch.endian() == .Big),
         .HAVE_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
         .HAVE_ARPA_INET_H = 1,
@@ -784,7 +766,35 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_VP8DSP = 1,
         .CONFIG_WMA_FREQS = 1,
         .CONFIG_WMV2DSP = 1,
-    }));
+    };
+
+    @setEvalBranchQuota(2000);
+    const config_asm = b.addConfigHeader(.{
+        .style = .nasm,
+        .include_path = "config.asm",
+    }, common_config);
+
+    const config_h = b.addConfigHeader(.{
+        .style = .blank,
+        .include_path = "config.h",
+    }, .{
+        .FFMPEG_CONFIGURATION = "",
+        .FFMPEG_LICENSE = "LGPL version 2.1 or later",
+        .CONFIG_THIS_YEAR = 2022,
+        .FFMPEG_DATADIR = "/dev/null",
+        .AVCONV_DATADIR = "/dev/null",
+        .CC_IDENT = "gcc 11.3.0 (GCC)",
+        .OS_NAME = .linux,
+        .av_restrict = .restrict,
+        .EXTERN_PREFIX = "",
+        .EXTERN_ASM = {},
+        .BUILDSUF = "",
+        .SLIBSUF = t.os.tag.dynamicLibSuffix(),
+        .HAVE_MMX2 = have_x86_feat(t, .mmx),
+        .SWS_MAX_FILTER_SIZE = 256,
+    });
+    config_h.addValues(common_config);
+    lib.addConfigHeader(config_h);
 
     lib.addCSourceFiles(&avcodec_sources, ffmpeg_cflags ++ [_][]const u8{
         "-DBUILDING_avcodec",
@@ -804,7 +814,7 @@ pub fn build(b: *std.build.Builder) void {
     lib.addCSourceFiles(&swscale_sources, ffmpeg_cflags ++ [_][]const u8{
         "-DBUILDING_swscale",
     });
-    switch (target.getCpuArch()) {
+    switch (t.cpu.arch) {
         .x86_64, .x86 => {
             lib.addCSourceFiles(&avcodec_sources_x86, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avcodec",
@@ -815,6 +825,37 @@ pub fn build(b: *std.build.Builder) void {
             lib.addCSourceFiles(&avutil_sources_x86, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avutil",
             });
+
+            const nasm_dep = b.dependency("nasm", .{
+                .optimize = .ReleaseFast,
+            });
+            const nasm_exe = nasm_dep.artifact("nasm");
+
+            for (nasm_sources) |input_file| {
+                const output_basename = basenameNewExtension(b, input_file, ".o");
+                const nasm_run = b.addRunArtifact(nasm_exe);
+
+                // nasm requires a trailing slash on include directories
+                const include_dir = b.fmt("-I{s}/", .{std.fs.path.dirname(input_file).?});
+
+                nasm_run.addArgs(&.{
+                    "-f",
+                    "elf64",
+                    "-g",
+                    "-F",
+                    "dwarf",
+                    "-I./",
+                    include_dir,
+                });
+
+                nasm_run.addArgs(&.{"--include"});
+                nasm_run.addFileSourceArg(config_asm.getFileSource());
+
+                nasm_run.addArgs(&.{"-o"});
+                lib.addObjectFileSource(nasm_run.addOutputFileArg(output_basename));
+
+                nasm_run.addFileSourceArg(.{ .path = input_file });
+            }
         },
         .arm, .armeb => {
             lib.addCSourceFiles(&avcodec_sources_arm, ffmpeg_cflags ++ [_][]const u8{
@@ -823,7 +864,7 @@ pub fn build(b: *std.build.Builder) void {
             lib.addCSourceFiles(&avutil_sources_arm, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avutil",
             });
-            if (std.Target.arm.featureSetHas(target.getCpuFeatures(), .neon)) {
+            if (std.Target.arm.featureSetHas(t.cpu.features, .neon)) {
                 lib.addCSourceFiles(&avcodec_sources_neon, ffmpeg_cflags ++ [_][]const u8{
                     "-DBUILDING_avcodec",
                 });
@@ -839,7 +880,7 @@ pub fn build(b: *std.build.Builder) void {
             lib.addCSourceFiles(&avutil_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avutil",
             });
-            if (std.Target.aarch64.featureSetHas(target.getCpuFeatures(), .neon)) {
+            if (std.Target.aarch64.featureSetHas(t.cpu.features, .neon)) {
                 lib.addCSourceFiles(&avcodec_sources_neon, ffmpeg_cflags ++ [_][]const u8{
                     "-DBUILDING_avcodec",
                 });
@@ -871,7 +912,7 @@ pub fn build(b: *std.build.Builder) void {
         },
         else => {},
     }
-    switch (target.getOsTag()) {
+    switch (t.os.tag) {
         .windows => {
             lib.addCSourceFiles(&avcodec_sources_windows, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avcodec",
@@ -3623,6 +3664,163 @@ const swscale_sources = [_][]const u8{
     "libswscale/yuv2rgb.c",
 };
 
+const nasm_sources = [_][]const u8{
+    "libswresample/x86/resample.asm",
+    "libswresample/x86/audio_convert.asm",
+    "libswresample/x86/rematrix.asm",
+    "libswscale/x86/input.asm",
+    "libswscale/x86/scale_avx2.asm",
+    "libswscale/x86/yuv_2_rgb.asm",
+    "libswscale/x86/yuv2yuvX.asm",
+    "libswscale/x86/rgb_2_rgb.asm",
+    "libswscale/x86/scale.asm",
+    "libswscale/x86/output.asm",
+    "libavutil/x86/x86util.asm",
+    "libavutil/x86/emms.asm",
+    "libavutil/x86/fixed_dsp.asm",
+    "libavutil/x86/pixelutils.asm",
+    "libavutil/x86/tx_float.asm",
+    "libavutil/x86/float_dsp.asm",
+    "libavutil/x86/cpuid.asm",
+    "libavutil/x86/imgutils.asm",
+    "libavutil/x86/lls.asm",
+    "libavfilter/x86/vf_atadenoise.asm",
+    "libavfilter/x86/vf_eq.asm",
+    "libavfilter/x86/avf_showcqt.asm",
+    "libavfilter/x86/vf_fspp.asm",
+    "libavfilter/x86/vf_v360.asm",
+    "libavfilter/x86/vf_maskedmerge.asm",
+    "libavfilter/x86/vf_gblur.asm",
+    "libavfilter/x86/vf_gradfun.asm",
+    "libavfilter/x86/vf_w3fdif.asm",
+    "libavfilter/x86/af_afir.asm",
+    "libavfilter/x86/yadif-16.asm",
+    "libavfilter/x86/vf_nlmeans.asm",
+    "libavfilter/x86/vf_lut3d.asm",
+    "libavfilter/x86/vf_idet.asm",
+    "libavfilter/x86/vf_psnr.asm",
+    "libavfilter/x86/vf_blend.asm",
+    "libavfilter/x86/af_volume.asm",
+    "libavfilter/x86/af_anlmdn.asm",
+    "libavfilter/x86/vf_hqdn3d.asm",
+    "libavfilter/x86/vf_interlace.asm",
+    "libavfilter/x86/vf_ssim.asm",
+    "libavfilter/x86/vf_removegrain.asm",
+    "libavfilter/x86/vf_bwdif.asm",
+    "libavfilter/x86/yadif-10.asm",
+    "libavfilter/x86/vf_pullup.asm",
+    "libavfilter/x86/vf_convolution.asm",
+    "libavfilter/x86/vf_limiter.asm",
+    "libavfilter/x86/vf_stereo3d.asm",
+    "libavfilter/x86/vf_maskedclamp.asm",
+    "libavfilter/x86/vf_threshold.asm",
+    "libavfilter/x86/scene_sad.asm",
+    "libavfilter/x86/colorspacedsp.asm",
+    "libavfilter/x86/vf_framerate.asm",
+    "libavfilter/x86/vf_hflip.asm",
+    "libavfilter/x86/vf_yadif.asm",
+    "libavfilter/x86/vf_pp7.asm",
+    "libavfilter/x86/vf_overlay.asm",
+    "libavfilter/x86/vf_transpose.asm",
+    "libavcodec/x86/h264_deblock_10bit.asm",
+    "libavcodec/x86/ac3dsp.asm",
+    "libavcodec/x86/h264_weight.asm",
+    "libavcodec/x86/vp9lpf.asm",
+    "libavcodec/x86/cavsidct.asm",
+    "libavcodec/x86/dct32.asm",
+    "libavcodec/x86/hpeldsp.asm",
+    "libavcodec/x86/utvideodsp.asm",
+    "libavcodec/x86/h264_intrapred.asm",
+    "libavcodec/x86/vp9mc.asm",
+    "libavcodec/x86/vp9itxfm_16bpp.asm",
+    "libavcodec/x86/hevc_idct.asm",
+    "libavcodec/x86/h264_intrapred_10bit.asm",
+    "libavcodec/x86/h264_qpel_10bit.asm",
+    "libavcodec/x86/svq1enc.asm",
+    "libavcodec/x86/jpeg2000dsp.asm",
+    "libavcodec/x86/vp9lpf_16bpp.asm",
+    "libavcodec/x86/mdct15.asm",
+    "libavcodec/x86/fmtconvert.asm",
+    "libavcodec/x86/vc1dsp_loopfilter.asm",
+    "libavcodec/x86/fpel.asm",
+    "libavcodec/x86/g722dsp.asm",
+    "libavcodec/x86/vp9itxfm_template.asm",
+    "libavcodec/x86/me_cmp.asm",
+    "libavcodec/x86/pixblockdsp.asm",
+    "libavcodec/x86/videodsp.asm",
+    "libavcodec/x86/sbcdsp.asm",
+    "libavcodec/x86/xvididct.asm",
+    "libavcodec/x86/hevc_mc.asm",
+    "libavcodec/x86/lossless_audiodsp.asm",
+    "libavcodec/x86/proresdsp.asm",
+    "libavcodec/x86/vp9itxfm.asm",
+    "libavcodec/x86/h264_deblock.asm",
+    "libavcodec/x86/vp8dsp.asm",
+    "libavcodec/x86/bswapdsp.asm",
+    "libavcodec/x86/mlpdsp.asm",
+    "libavcodec/x86/vc1dsp_mc.asm",
+    "libavcodec/x86/imdct36.asm",
+    "libavcodec/x86/alacdsp.asm",
+    "libavcodec/x86/ttadsp.asm",
+    "libavcodec/x86/hevc_sao.asm",
+    "libavcodec/x86/hpeldsp_vp3.asm",
+    "libavcodec/x86/dirac_dwt.asm",
+    "libavcodec/x86/ttaencdsp.asm",
+    "libavcodec/x86/exrdsp.asm",
+    "libavcodec/x86/lossless_videoencdsp.asm",
+    "libavcodec/x86/audiodsp.asm",
+    "libavcodec/x86/hevc_deblock.asm",
+    "libavcodec/x86/huffyuvdsp_template.asm",
+    "libavcodec/x86/h263_loopfilter.asm",
+    "libavcodec/x86/fft.asm",
+    "libavcodec/x86/vp9mc_16bpp.asm",
+    "libavcodec/x86/flacdsp.asm",
+    "libavcodec/x86/qpeldsp.asm",
+    "libavcodec/x86/qpel.asm",
+    "libavcodec/x86/takdsp.asm",
+    "libavcodec/x86/aacencdsp.asm",
+    "libavcodec/x86/hevc_sao_10bit.asm",
+    "libavcodec/x86/rv34dsp.asm",
+    "libavcodec/x86/vp3dsp.asm",
+    "libavcodec/x86/h264_idct.asm",
+    "libavcodec/x86/h264_qpel_8bit.asm",
+    "libavcodec/x86/vorbisdsp.asm",
+    "libavcodec/x86/vp9intrapred_16bpp.asm",
+    "libavcodec/x86/simple_idct.asm",
+    "libavcodec/x86/opusdsp.asm",
+    "libavcodec/x86/dnxhdenc.asm",
+    "libavcodec/x86/dcadsp.asm",
+    "libavcodec/x86/simple_idct10.asm",
+    "libavcodec/x86/sbrdsp.asm",
+    "libavcodec/x86/h264_chromamc_10bit.asm",
+    "libavcodec/x86/h264_idct_10bit.asm",
+    "libavcodec/x86/huffyuvencdsp.asm",
+    "libavcodec/x86/h264_weight_10bit.asm",
+    "libavcodec/x86/flac_dsp_gpl.asm",
+    "libavcodec/x86/ac3dsp_downmix.asm",
+    "libavcodec/x86/mpegvideoencdsp.asm",
+    "libavcodec/x86/aacpsdsp.asm",
+    "libavcodec/x86/vp8dsp_loopfilter.asm",
+    "libavcodec/x86/vp9intrapred.asm",
+    "libavcodec/x86/celt_pvq_search.asm",
+    "libavcodec/x86/rv40dsp.asm",
+    "libavcodec/x86/h264_chromamc.asm",
+    "libavcodec/x86/v210.asm",
+    "libavcodec/x86/lossless_videodsp.asm",
+    "libavcodec/x86/simple_idct10_template.asm",
+    "libavcodec/x86/v210enc.asm",
+    "libavcodec/x86/cfhddsp.asm",
+    "libavcodec/x86/huffyuvdsp.asm",
+    "libavcodec/x86/cfhdencdsp.asm",
+    "libavcodec/x86/idctdsp.asm",
+    "libavcodec/x86/blockdsp.asm",
+    "libavcodec/x86/vp6dsp.asm",
+    "libavcodec/x86/synth_filter.asm",
+    "libavcodec/x86/diracdsp.asm",
+    "libavcodec/x86/pngdsp.asm",
+    "libavcodec/x86/hevc_add_res.asm",
+};
+
 fn fastUnalignedLoads(t: std.Target) bool {
     return switch (t.cpu.arch) {
         .x86_64 => true,
@@ -3635,4 +3833,10 @@ fn have_x86_feat(t: std.Target, feat: std.Target.x86.Feature) c_int {
         .x86, .x86_64 => std.Target.x86.featureSetHas(t.cpu.features, feat),
         else => false,
     });
+}
+
+fn basenameNewExtension(b: *std.Build, path: []const u8, new_extension: []const u8) []const u8 {
+    const basename = std.fs.path.basename(path);
+    const ext = std.fs.path.extension(basename);
+    return b.fmt("{s}{s}", .{ basename[0 .. basename.len - ext.len], new_extension });
 }
