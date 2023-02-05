@@ -22,6 +22,17 @@ pub fn build(b: *std.build.Builder) void {
     lib.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
     lib.linkLibC();
     lib.addIncludePath(".");
+
+    const t = lib.target_info.target;
+    const avconfig_h = b.addConfigHeader(.{
+        .style = .blank,
+        .include_path = "libavutil/avconfig.h",
+    }, .{
+        .AV_HAVE_BIGENDIAN = @boolToInt(t.cpu.arch.endian() == .Big),
+        .AV_HAVE_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
+    });
+    lib.addConfigHeader(avconfig_h);
+
     lib.addCSourceFiles(&avcodec_sources, ffmpeg_cflags ++ [_][]const u8{
         "-DBUILDING_avcodec",
     });
@@ -116,6 +127,7 @@ pub fn build(b: *std.build.Builder) void {
         else => {},
     }
     lib.install();
+    lib.installConfigHeader(avconfig_h, .{});
     for (headers) |h| lib.installHeader(h, h);
 }
 
@@ -246,7 +258,6 @@ const headers = [_][]const u8{
     "libavutil/intmath.h",
     "libavutil/intreadwrite.h",
     "libavutil/timer.h",
-    "libavutil/avconfig.h",
     "libavutil/ffversion.h",
 
     "libswscale/swscale.h",
@@ -2858,3 +2869,10 @@ const swscale_sources = [_][]const u8{
     "libswscale/x86/yuv2rgb.c",
     "libswscale/yuv2rgb.c",
 };
+
+fn fastUnalignedLoads(t: std.Target) bool {
+    return switch (t.cpu.arch) {
+        .x86_64 => true,
+        else => false,
+    };
+}
