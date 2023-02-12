@@ -12,6 +12,14 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
+    const libvorbis_dep = b.dependency("libvorbis", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const libogg_dep = b.dependency("libogg", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const lib = b.addStaticLibrary(.{
         .name = "ffmpeg",
@@ -20,6 +28,8 @@ pub fn build(b: *std.build.Builder) void {
     });
     lib.linkLibrary(libz_dep.artifact("z"));
     lib.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
+    lib.linkLibrary(libvorbis_dep.artifact("vorbis"));
+    lib.linkLibrary(libogg_dep.artifact("ogg"));
     lib.linkLibC();
     lib.addIncludePath(".");
 
@@ -555,7 +565,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_LIBUAVS3D = 0,
         .CONFIG_LIBV4L2 = 0,
         .CONFIG_LIBVMAF = 0,
-        .CONFIG_LIBVORBIS = 0,
+        .CONFIG_LIBVORBIS = 1,
         .CONFIG_LIBVPX = 0,
         .CONFIG_LIBWEBP = 0,
         .CONFIG_LIBXML2 = 0,
@@ -1600,8 +1610,8 @@ const avcodec_sources = [_][]const u8{
     //"libavcodec/libtwolame.c",
     //"libavcodec/libuavs3d.c",
     //"libavcodec/libvo-amrwbenc.c",
-    //"libavcodec/libvorbisdec.c",
-    //"libavcodec/libvorbisenc.c",
+    "libavcodec/libvorbisdec.c",
+    "libavcodec/libvorbisenc.c",
     //"libavcodec/libvpx.c",
     //"libavcodec/libvpxdec.c",
     //"libavcodec/libvpxenc.c",

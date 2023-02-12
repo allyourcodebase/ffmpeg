@@ -12,6 +12,14 @@
             .url = "https://github.com/andrewrk/libmp3lame/archive/50a868a78dd8163895930680b859e7e36b9ee4cb.tar.gz",
             .hash = "122013b13adfabc64150cd16684885f61ffdc0328685ced717239d966f1e8432ca47",
         },
+        .libvorbis = .{
+            .url = "https://github.com/andrewrk/libvorbis/archive/2fa5ba210de9cb624c90c6ffebe36ff207855b1c.tar.gz",
+            .hash = "1220a02d833cfe0f6be907562c32b2442361ecbb3f3ee915b3924777613ca66bd852",
+        },
+        .libogg = .{
+            .url = "https://github.com/andrewrk/libogg/archive/e685da55da27100e6a46a64f9a34d8577b5b53b6.tar.gz",
+            .hash = "122039060feeb8f7f63e6b02204df40f631184fece51a3e15110ac05c7640a7db529",
+        },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
