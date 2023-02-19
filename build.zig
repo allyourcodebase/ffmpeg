@@ -628,7 +628,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_RUNTIME_CPUDETECT = 1,
         .CONFIG_SAFE_BITSTREAM_READER = 1,
         .CONFIG_SHARED = 0,
-        .CONFIG_SMALL = 0,
+        .CONFIG_SMALL = @boolToInt(optimize == .ReleaseSmall),
         .CONFIG_STATIC = 1,
         .CONFIG_SWSCALE_ALPHA = 1,
         .CONFIG_GPL = 0,
@@ -649,7 +649,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_DWT = 1,
         .CONFIG_ERROR_RESILIENCE = 1,
         .CONFIG_FAAN = 1,
-        .CONFIG_FAST_UNALIGNED = 1,
+        .CONFIG_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
         .CONFIG_FFT = 1,
         .CONFIG_LSP = 1,
         .CONFIG_MDCT = 1,
@@ -933,6 +933,15 @@ pub fn build(b: *std.build.Builder) void {
     lib.install();
     lib.installConfigHeader(avconfig_h, .{});
     for (headers) |h| lib.installHeader(h, h);
+
+    const metadata = b.addExecutable(.{
+        .name = "metadata",
+        .target = target,
+        .optimize = optimize,
+    });
+    metadata.addCSourceFiles(&.{"doc/examples/metadata.c"}, &.{});
+    metadata.linkLibrary(lib);
+    metadata.install();
 }
 
 const headers = [_][]const u8{
