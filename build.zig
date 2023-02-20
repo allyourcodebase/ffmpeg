@@ -895,6 +895,9 @@ pub fn build(b: *std.build.Builder) void {
             lib.addCSourceFiles(&swresample_sources_arm, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_swresample",
             });
+            lib.addCSourceFiles(&swscale_sources_arm, ffmpeg_cflags ++ [_][]const u8{
+                "-DBUILDING_swscale",
+            });
         },
         .aarch64, .aarch64_be, .aarch64_32 => {
             lib.addCSourceFiles(&avcodec_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
@@ -913,6 +916,9 @@ pub fn build(b: *std.build.Builder) void {
             }
             lib.addCSourceFiles(&swresample_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_swresample",
+            });
+            lib.addCSourceFiles(&swscale_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
+                "-DBUILDING_swscale",
             });
         },
         .loongarch32, .loongarch64 => {
@@ -937,6 +943,9 @@ pub fn build(b: *std.build.Builder) void {
             });
             lib.addCSourceFiles(&avutil_sources_ppc, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avutil",
+            });
+            lib.addCSourceFiles(&swscale_sources_ppc, ffmpeg_cflags ++ [_][]const u8{
+                "-DBUILDING_swscale",
             });
         },
         else => {},
@@ -3732,6 +3741,7 @@ const avfilter_sources = [_][]const u8{
 
 const avfilter_sources_aarch64 = [_][]const u8{
     "libavfilter/aarch64/vf_nlmeans_init.c",
+    "libavfilter/aarch64/vf_nlmeans_neon.S",
 };
 
 const avfilter_sources_x86 = [_][]const u8{
@@ -3829,8 +3839,40 @@ const swscale_sources = [_][]const u8{
 const swscale_sources_x86 = [_][]const u8{
     "libswscale/x86/hscale_fast_bilinear_simd.c",
     "libswscale/x86/rgb2rgb.c",
+    "libswscale/x86/rgb2rgb_template.c",
     "libswscale/x86/swscale.c",
+    "libswscale/x86/swscale_template.c",
+    "libswscale/x86/w64xmmtest.c",
     "libswscale/x86/yuv2rgb.c",
+    "libswscale/x86/yuv2rgb_template.c",
+};
+
+const swscale_sources_ppc = [_][]const u8{
+    "libswscale/ppc/yuv2rgb_altivec.c",
+    "libswscale/ppc/swscale_vsx.c",
+    "libswscale/ppc/yuv2yuv_altivec.c",
+    "libswscale/ppc/swscale_ppc_template.c",
+};
+
+const swscale_sources_arm = [_][]const u8{
+    "libswscale/arm/hscale.S",
+    "libswscale/arm/output.S",
+    "libswscale/arm/rgb2yuv_neon_16.S",
+    "libswscale/arm/rgb2yuv_neon_32.S",
+    "libswscale/arm/rgb2yuv_neon_common.S",
+    "libswscale/arm/swscale.c",
+    "libswscale/arm/swscale_unscaled.c",
+    "libswscale/arm/yuv2rgb_neon.S",
+};
+
+const swscale_sources_aarch64 = [_][]const u8{
+    "libswscale/aarch64/hscale.S",
+    "libswscale/aarch64/output.S",
+    "libswscale/aarch64/rgb2rgb.c",
+    "libswscale/aarch64/rgb2rgb_neon.S",
+    "libswscale/aarch64/swscale.c",
+    "libswscale/aarch64/swscale_unscaled.c",
+    "libswscale/aarch64/yuv2rgb_neon.S",
 };
 
 const nasm_sources = [_][]const u8{
