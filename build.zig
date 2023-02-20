@@ -3839,19 +3839,15 @@ const swscale_sources = [_][]const u8{
 const swscale_sources_x86 = [_][]const u8{
     "libswscale/x86/hscale_fast_bilinear_simd.c",
     "libswscale/x86/rgb2rgb.c",
-    "libswscale/x86/rgb2rgb_template.c",
     "libswscale/x86/swscale.c",
-    "libswscale/x86/swscale_template.c",
     "libswscale/x86/w64xmmtest.c",
     "libswscale/x86/yuv2rgb.c",
-    "libswscale/x86/yuv2rgb_template.c",
 };
 
 const swscale_sources_ppc = [_][]const u8{
     "libswscale/ppc/yuv2rgb_altivec.c",
     "libswscale/ppc/swscale_vsx.c",
     "libswscale/ppc/yuv2yuv_altivec.c",
-    "libswscale/ppc/swscale_ppc_template.c",
 };
 
 const swscale_sources_arm = [_][]const u8{
@@ -3955,7 +3951,6 @@ const nasm_sources = [_][]const u8{
     "libavcodec/x86/vc1dsp_loopfilter.asm",
     "libavcodec/x86/fpel.asm",
     "libavcodec/x86/g722dsp.asm",
-    "libavcodec/x86/vp9itxfm_template.asm",
     "libavcodec/x86/me_cmp.asm",
     "libavcodec/x86/pixblockdsp.asm",
     "libavcodec/x86/videodsp.asm",
@@ -3981,7 +3976,6 @@ const nasm_sources = [_][]const u8{
     "libavcodec/x86/lossless_videoencdsp.asm",
     "libavcodec/x86/audiodsp.asm",
     "libavcodec/x86/hevc_deblock.asm",
-    "libavcodec/x86/huffyuvdsp_template.asm",
     "libavcodec/x86/h263_loopfilter.asm",
     "libavcodec/x86/fft.asm",
     "libavcodec/x86/vp9mc_16bpp.asm",
@@ -4018,7 +4012,6 @@ const nasm_sources = [_][]const u8{
     "libavcodec/x86/h264_chromamc.asm",
     "libavcodec/x86/v210.asm",
     "libavcodec/x86/lossless_videodsp.asm",
-    "libavcodec/x86/simple_idct10_template.asm",
     "libavcodec/x86/v210enc.asm",
     "libavcodec/x86/cfhddsp.asm",
     "libavcodec/x86/huffyuvdsp.asm",
