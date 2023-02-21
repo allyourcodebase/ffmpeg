@@ -275,17 +275,17 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_GSM_H = 0,
         .HAVE_IO_H = 0,
         .HAVE_LINUX_DMA_BUF_H = 0,
-        .HAVE_LINUX_PERF_EVENT_H = 1,
+        .HAVE_LINUX_PERF_EVENT_H = @boolToInt(t.os.tag == .linux),
         .HAVE_MACHINE_IOCTL_BT848_H = 0,
         .HAVE_MACHINE_IOCTL_METEOR_H = 0,
-        .HAVE_MALLOC_H = 1,
+        .HAVE_MALLOC_H = @boolToInt(t.os.tag == .linux),
         .HAVE_OPENCV2_CORE_CORE_C_H = 0,
         .HAVE_OPENGL_GL3_H = 0,
         .HAVE_POLL_H = 1,
         .HAVE_SYS_PARAM_H = 1,
         .HAVE_SYS_RESOURCE_H = 1,
         .HAVE_SYS_SELECT_H = 1,
-        .HAVE_SYS_SOUNDCARD_H = 1,
+        .HAVE_SYS_SOUNDCARD_H = @boolToInt(t.os.tag == .linux),
         .HAVE_SYS_TIME_H = 1,
         .HAVE_SYS_UN_H = 1,
         .HAVE_SYS_VIDEOIO_H = 0,
@@ -293,9 +293,9 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_UDPLITE_H = 0,
         .HAVE_UNISTD_H = 1,
         .HAVE_VALGRIND_VALGRIND_H = 0,
-        .HAVE_WINDOWS_H = 0,
-        .HAVE_WINSOCK2_H = 0,
-        .HAVE_INTRINSICS_NEON = 0,
+        .HAVE_WINDOWS_H = @boolToInt(t.os.tag == .windows),
+        .HAVE_WINSOCK2_H = @boolToInt(t.os.tag == .windows),
+        .HAVE_INTRINSICS_NEON = have_arm_feat(t, .neon) | have_aarch64_feat(t, .neon),
         .HAVE_ATANF = 1,
         .HAVE_ATAN2F = 1,
         .HAVE_CBRT = 1,
@@ -328,7 +328,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_DOS_PATHS = 0,
         .HAVE_LIBC_MSVCRT = 0,
         .HAVE_MMAL_PARAMETER_VIDEO_MAX_NUM_CALLBACKS = 0,
-        .HAVE_SECTION_DATA_REL_RO = 1,
+        .HAVE_SECTION_DATA_REL_RO = @boolToInt(t.os.tag == .linux),
         .HAVE_THREADS = 1,
         .HAVE_UWP = 0,
         .HAVE_WINRT = 0,
@@ -340,7 +340,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_COMMANDLINETOARGVW = 0,
         .HAVE_FCNTL = 1,
         .HAVE_GETADDRINFO = 1,
-        .HAVE_GETAUXVAL = 1,
+        .HAVE_GETAUXVAL = @boolToInt(t.os.tag == .linux),
         .HAVE_GETENV = 1,
         .HAVE_GETHRTIME = 0,
         .HAVE_GETOPT = 1,
@@ -444,8 +444,8 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_STRUCT_SOCKADDR_IN6 = 1,
         .HAVE_STRUCT_SOCKADDR_SA_LEN = 0,
         .HAVE_STRUCT_SOCKADDR_STORAGE = 1,
-        .HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC = 1,
-        .HAVE_STRUCT_V4L2_FRMIVALENUM_DISCRETE = 1,
+        .HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC = @boolToInt(t.os.tag == .linux),
+        .HAVE_STRUCT_V4L2_FRMIVALENUM_DISCRETE = @boolToInt(t.os.tag == .linux),
         .HAVE_GZIP = 1,
         .HAVE_LIBDRM_GETFB2 = 0,
         .HAVE_MAKEINFO = 1,
@@ -627,7 +627,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_VDPAU = 0,
         .CONFIG_VIDEOTOOLBOX = 0,
         .CONFIG_VULKAN = 0,
-        .CONFIG_V4L2_M2M = 1,
+        .CONFIG_V4L2_M2M = @boolToInt(t.os.tag == .linux),
         .CONFIG_FTRAPV = 0,
         .CONFIG_GRAY = 0,
         .CONFIG_HARDCODED_TABLES = 0,
@@ -800,16 +800,30 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_THIS_YEAR = 2022,
         .FFMPEG_DATADIR = "/dev/null",
         .AVCONV_DATADIR = "/dev/null",
-        .CC_IDENT = "gcc 11.3.0 (GCC)",
+        .CC_IDENT = "clang 15.0.6 (CLANG)",
         .OS_NAME = .linux,
         .av_restrict = .restrict,
-        .EXTERN_PREFIX = "",
-        .EXTERN_ASM = {},
+        .EXTERN_PREFIX = switch (t.os.tag) {
+            .macos => "_",
+            else => "",
+        },
         .BUILDSUF = "",
         .SLIBSUF = t.os.tag.dynamicLibSuffix(),
         .HAVE_MMX2 = have_x86_feat(t, .mmx),
         .SWS_MAX_FILTER_SIZE = 256,
     });
+    switch (t.os.tag) {
+        .macos => {
+            config_h.addValues(.{
+                .EXTERN_ASM = ._,
+            });
+        },
+        else => {
+            config_h.addValues(.{
+                .EXTERN_ASM = {},
+            });
+        },
+    }
     config_h.addValues(common_config);
     lib.addConfigHeader(config_h);
 
@@ -953,6 +967,11 @@ pub fn build(b: *std.build.Builder) void {
     switch (t.os.tag) {
         .windows => {
             lib.addCSourceFiles(&avcodec_sources_windows, ffmpeg_cflags ++ [_][]const u8{
+                "-DBUILDING_avcodec",
+            });
+        },
+        .linux => {
+            lib.addCSourceFiles(&avcodec_sources_linux, ffmpeg_cflags ++ [_][]const u8{
                 "-DBUILDING_avcodec",
             });
         },
@@ -1125,6 +1144,7 @@ const ffmpeg_cflags: []const []const u8 = &.{
     "-D_LARGEFILE_SOURCE",
     "-D_POSIX_C_SOURCE=200112",
     "-D_XOPEN_SOURCE=600",
+    "-D_DARWIN_C_SOURCE",
     "-DZLIB_CONST",
     "-DHAVE_AV_CONFIG_H",
     "-std=c11",
@@ -2028,12 +2048,6 @@ const avcodec_sources = [_][]const u8{
     "libavcodec/v408enc.c",
     "libavcodec/v410dec.c",
     "libavcodec/v410enc.c",
-    "libavcodec/v4l2_buffers.c",
-    "libavcodec/v4l2_context.c",
-    "libavcodec/v4l2_fmt.c",
-    "libavcodec/v4l2_m2m.c",
-    "libavcodec/v4l2_m2m_dec.c",
-    "libavcodec/v4l2_m2m_enc.c",
     //"libavcodec/vaapi_av1.c",
     //"libavcodec/vaapi_decode.c",
     //"libavcodec/vaapi_encode.c",
@@ -2172,6 +2186,15 @@ const avcodec_sources = [_][]const u8{
     "libavcodec/zlib_wrapper.c",
     "libavcodec/zmbv.c",
     "libavcodec/zmbvenc.c",
+};
+
+const avcodec_sources_linux = [_][]const u8{
+    "libavcodec/v4l2_buffers.c",
+    "libavcodec/v4l2_context.c",
+    "libavcodec/v4l2_fmt.c",
+    "libavcodec/v4l2_m2m.c",
+    "libavcodec/v4l2_m2m_dec.c",
+    "libavcodec/v4l2_m2m_enc.c",
 };
 
 const avcodec_sources_windows = [_][]const u8{
@@ -2579,7 +2602,6 @@ const avcodec_sources_mips = [_][]const u8{
 };
 
 const avcodec_sources_ppc = [_][]const u8{
-    "libavcodec/ppc/asm.S",
     "libavcodec/ppc/audiodsp.c",
     "libavcodec/ppc/blockdsp.c",
     "libavcodec/ppc/fdctdsp.c",
@@ -2722,7 +2744,6 @@ const avutil_sources_x86 = [_][]const u8{
 };
 
 const avutil_sources_arm = [_][]const u8{
-    "libavutil/arm/asm.S",
     "libavutil/arm/cpu.c",
     "libavutil/arm/float_dsp_init_arm.c",
     "libavutil/arm/float_dsp_init_neon.c",
@@ -2732,7 +2753,6 @@ const avutil_sources_arm = [_][]const u8{
 };
 
 const avutil_sources_aarch64 = [_][]const u8{
-    "libavutil/aarch64/asm.S",
     "libavutil/aarch64/cpu.c",
     "libavutil/aarch64/float_dsp_init.c",
     "libavutil/aarch64/float_dsp_neon.S",
