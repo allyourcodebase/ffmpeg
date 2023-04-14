@@ -4,28 +4,28 @@
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/andrewrk/libz/archive/9e71b746b83d2b5bf5eb247663eb65a52cf0f68f.tar.gz",
-            .hash = "12204ea3490e5bdf379f56aa11784d906aed6d4c553c724fa5427169915f2cf4a651",
+            .url = "https://github.com/andrewrk/libz/archive/8bf2a1c61b87773131bee2086737b5f02b7c0888.tar.gz",
+            .hash = "12209e851f7e2c6ba2f01de3e11b1771f03e49666065320abd8414aac152bfa75fae",
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/50a868a78dd8163895930680b859e7e36b9ee4cb.tar.gz",
-            .hash = "122013b13adfabc64150cd16684885f61ffdc0328685ced717239d966f1e8432ca47",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/b8408fa9dc751baee2a03cd430a996920ca2c5bc.tar.gz",
+            .hash = "122025fb57739eb67edbbafed2b270479089ee7395cf4b0849001ab95c16a2bae0d9",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/2fa5ba210de9cb624c90c6ffebe36ff207855b1c.tar.gz",
-            .hash = "1220a02d833cfe0f6be907562c32b2442361ecbb3f3ee915b3924777613ca66bd852",
+            .url = "https://github.com/andrewrk/libvorbis/archive/a1dc13ff76e262007eea91894dd16d74c2147619.tar.gz",
+            .hash = "1220d6c5bf73bee37589a086147ab8f7e855ee98becd3f2e26e58a920ca8f766105f",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/e685da55da27100e6a46a64f9a34d8577b5b53b6.tar.gz",
-            .hash = "122039060feeb8f7f63e6b02204df40f631184fece51a3e15110ac05c7640a7db529",
+            .url = "https://github.com/andrewrk/libogg/archive/9f514ae46e28589e47d25017385eb0d6ff4c7e9a.tar.gz",
+            .hash = "1220f96a4eaae5bad95ab9391431f125b7cc32edbd6d17397ce066d498f8fc9b63c2",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/d459449930bbaa70e74b2dca2880132ca6d4479a.tar.gz",
-            .hash = "12205aad3d97f1d4941041b696e8fe2d3886f28d925c902fa3e305ac378e87e9a526",
+            .url = "https://github.com/andrewrk/nasm/archive/5ef3ed029e4917d07c88f265c7b12fcfd81bd6ab.tar.gz",
+            .hash = "122032bc8d97d857b7c2f71252da293e4f293a4ea0d162909fb0705ba17c40ae2a87",
         },
     },
 }

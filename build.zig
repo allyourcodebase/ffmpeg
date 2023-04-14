@@ -977,7 +977,7 @@ pub fn build(b: *std.build.Builder) void {
         },
         else => {},
     }
-    lib.install();
+    b.installArtifact(lib);
     lib.installConfigHeader(avconfig_h, .{});
     for (headers) |h| lib.installHeader(h, h);
 
@@ -988,7 +988,7 @@ pub fn build(b: *std.build.Builder) void {
     });
     metadata.addCSourceFiles(&.{"doc/examples/metadata.c"}, &.{});
     metadata.linkLibrary(lib);
-    metadata.install();
+    b.installArtifact(metadata);
 }
 
 const headers = [_][]const u8{
