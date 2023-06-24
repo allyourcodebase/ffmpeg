@@ -38,47 +38,47 @@ pub fn build(b: *std.build.Builder) void {
         .style = .blank,
         .include_path = "libavutil/avconfig.h",
     }, .{
-        .AV_HAVE_BIGENDIAN = @boolToInt(t.cpu.arch.endian() == .Big),
-        .AV_HAVE_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
+        .AV_HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .Big),
+        .AV_HAVE_FAST_UNALIGNED = @intFromBool(fastUnalignedLoads(t)),
     });
     lib.addConfigHeader(avconfig_h);
 
     const common_config = .{
-        .ARCH_AARCH64 = @boolToInt(t.cpu.arch.isAARCH64()),
+        .ARCH_AARCH64 = @intFromBool(t.cpu.arch.isAARCH64()),
         .ARCH_ALPHA = 0,
-        .ARCH_ARM = @boolToInt(t.cpu.arch.isARM()),
+        .ARCH_ARM = @intFromBool(t.cpu.arch.isARM()),
         .ARCH_AVR32 = 0,
         .ARCH_AVR32_AP = 0,
         .ARCH_AVR32_UC = 0,
         .ARCH_BFIN = 0,
         .ARCH_IA64 = 0,
-        .ARCH_LOONGARCH = @boolToInt(switch (t.cpu.arch) {
+        .ARCH_LOONGARCH = @intFromBool(switch (t.cpu.arch) {
             .loongarch32, .loongarch64 => true,
             else => false,
         }),
-        .ARCH_LOONGARCH32 = @boolToInt(t.cpu.arch == .loongarch32),
-        .ARCH_LOONGARCH64 = @boolToInt(t.cpu.arch == .loongarch64),
-        .ARCH_M68K = @boolToInt(t.cpu.arch == .m68k),
-        .ARCH_MIPS = @boolToInt(switch (t.cpu.arch) {
+        .ARCH_LOONGARCH32 = @intFromBool(t.cpu.arch == .loongarch32),
+        .ARCH_LOONGARCH64 = @intFromBool(t.cpu.arch == .loongarch64),
+        .ARCH_M68K = @intFromBool(t.cpu.arch == .m68k),
+        .ARCH_MIPS = @intFromBool(switch (t.cpu.arch) {
             .mips, .mipsel => true,
             else => false,
         }),
-        .ARCH_MIPS64 = @boolToInt(switch (t.cpu.arch) {
+        .ARCH_MIPS64 = @intFromBool(switch (t.cpu.arch) {
             .mips64, .mips64el => true,
             else => false,
         }),
         .ARCH_PARISC = 0,
-        .ARCH_PPC = @boolToInt(t.cpu.arch.isPPC()),
-        .ARCH_PPC64 = @boolToInt(t.cpu.arch.isPPC64()),
-        .ARCH_RISCV = @boolToInt(t.cpu.arch.isRISCV()),
-        .ARCH_S390 = @boolToInt(t.cpu.arch == .s390x),
+        .ARCH_PPC = @intFromBool(t.cpu.arch.isPPC()),
+        .ARCH_PPC64 = @intFromBool(t.cpu.arch.isPPC64()),
+        .ARCH_RISCV = @intFromBool(t.cpu.arch.isRISCV()),
+        .ARCH_S390 = @intFromBool(t.cpu.arch == .s390x),
         .ARCH_SH4 = 0,
-        .ARCH_SPARC = @boolToInt(t.cpu.arch.isSPARC()),
-        .ARCH_SPARC64 = @boolToInt(t.cpu.arch == .sparc64),
+        .ARCH_SPARC = @intFromBool(t.cpu.arch.isSPARC()),
+        .ARCH_SPARC64 = @intFromBool(t.cpu.arch == .sparc64),
         .ARCH_TILEGX = 0,
         .ARCH_TILEPRO = 0,
         .ARCH_TOMI = 0,
-        .ARCH_X86 = @boolToInt(t.cpu.arch.isX86()),
+        .ARCH_X86 = @intFromBool(t.cpu.arch.isX86()),
         .ARCH_X86_32 = have_x86_feat(t, .@"32bit_mode"),
         .ARCH_X86_64 = have_x86_feat(t, .@"64bit"),
         .HAVE_ARMV5TE = have_arm_feat(t, .has_v5te),
@@ -253,9 +253,9 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_CEXP = 0,
         .HAVE_INLINE_ASM = 1,
         .HAVE_SYMVER = 1,
-        .HAVE_X86ASM = @boolToInt(t.cpu.arch.isX86()),
-        .HAVE_BIGENDIAN = @boolToInt(t.cpu.arch.endian() == .Big),
-        .HAVE_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
+        .HAVE_X86ASM = @intFromBool(t.cpu.arch.isX86()),
+        .HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .Big),
+        .HAVE_FAST_UNALIGNED = @intFromBool(fastUnalignedLoads(t)),
         .HAVE_ARPA_INET_H = 1,
         .HAVE_ASM_TYPES_H = 1,
         .HAVE_CDIO_PARANOIA_H = 0,
@@ -275,17 +275,17 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_GSM_H = 0,
         .HAVE_IO_H = 0,
         .HAVE_LINUX_DMA_BUF_H = 0,
-        .HAVE_LINUX_PERF_EVENT_H = @boolToInt(t.os.tag == .linux),
+        .HAVE_LINUX_PERF_EVENT_H = @intFromBool(t.os.tag == .linux),
         .HAVE_MACHINE_IOCTL_BT848_H = 0,
         .HAVE_MACHINE_IOCTL_METEOR_H = 0,
-        .HAVE_MALLOC_H = @boolToInt(t.os.tag == .linux),
+        .HAVE_MALLOC_H = @intFromBool(t.os.tag == .linux),
         .HAVE_OPENCV2_CORE_CORE_C_H = 0,
         .HAVE_OPENGL_GL3_H = 0,
         .HAVE_POLL_H = 1,
         .HAVE_SYS_PARAM_H = 1,
         .HAVE_SYS_RESOURCE_H = 1,
         .HAVE_SYS_SELECT_H = 1,
-        .HAVE_SYS_SOUNDCARD_H = @boolToInt(t.os.tag == .linux),
+        .HAVE_SYS_SOUNDCARD_H = @intFromBool(t.os.tag == .linux),
         .HAVE_SYS_TIME_H = 1,
         .HAVE_SYS_UN_H = 1,
         .HAVE_SYS_VIDEOIO_H = 0,
@@ -293,8 +293,8 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_UDPLITE_H = 0,
         .HAVE_UNISTD_H = 1,
         .HAVE_VALGRIND_VALGRIND_H = 0,
-        .HAVE_WINDOWS_H = @boolToInt(t.os.tag == .windows),
-        .HAVE_WINSOCK2_H = @boolToInt(t.os.tag == .windows),
+        .HAVE_WINDOWS_H = @intFromBool(t.os.tag == .windows),
+        .HAVE_WINSOCK2_H = @intFromBool(t.os.tag == .windows),
         .HAVE_INTRINSICS_NEON = have_arm_feat(t, .neon) | have_aarch64_feat(t, .neon),
         .HAVE_ATANF = 1,
         .HAVE_ATAN2F = 1,
@@ -328,7 +328,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_DOS_PATHS = 0,
         .HAVE_LIBC_MSVCRT = 0,
         .HAVE_MMAL_PARAMETER_VIDEO_MAX_NUM_CALLBACKS = 0,
-        .HAVE_SECTION_DATA_REL_RO = @boolToInt(t.os.tag == .linux),
+        .HAVE_SECTION_DATA_REL_RO = @intFromBool(t.os.tag == .linux),
         .HAVE_THREADS = 1,
         .HAVE_UWP = 0,
         .HAVE_WINRT = 0,
@@ -340,7 +340,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_COMMANDLINETOARGVW = 0,
         .HAVE_FCNTL = 1,
         .HAVE_GETADDRINFO = 1,
-        .HAVE_GETAUXVAL = @boolToInt(t.os.tag == .linux),
+        .HAVE_GETAUXVAL = @intFromBool(t.os.tag == .linux),
         .HAVE_GETENV = 1,
         .HAVE_GETHRTIME = 0,
         .HAVE_GETOPT = 1,
@@ -444,8 +444,8 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_STRUCT_SOCKADDR_IN6 = 1,
         .HAVE_STRUCT_SOCKADDR_SA_LEN = 0,
         .HAVE_STRUCT_SOCKADDR_STORAGE = 1,
-        .HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC = @boolToInt(t.os.tag == .linux),
-        .HAVE_STRUCT_V4L2_FRMIVALENUM_DISCRETE = @boolToInt(t.os.tag == .linux),
+        .HAVE_STRUCT_STAT_ST_MTIM_TV_NSEC = @intFromBool(t.os.tag == .linux),
+        .HAVE_STRUCT_V4L2_FRMIVALENUM_DISCRETE = @intFromBool(t.os.tag == .linux),
         .HAVE_GZIP = 1,
         .HAVE_LIBDRM_GETFB2 = 0,
         .HAVE_MAKEINFO = 1,
@@ -627,7 +627,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_VDPAU = 0,
         .CONFIG_VIDEOTOOLBOX = 0,
         .CONFIG_VULKAN = 0,
-        .CONFIG_V4L2_M2M = @boolToInt(t.os.tag == .linux),
+        .CONFIG_V4L2_M2M = @intFromBool(t.os.tag == .linux),
         .CONFIG_FTRAPV = 0,
         .CONFIG_GRAY = 0,
         .CONFIG_HARDCODED_TABLES = 0,
@@ -635,7 +635,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_RUNTIME_CPUDETECT = 1,
         .CONFIG_SAFE_BITSTREAM_READER = 1,
         .CONFIG_SHARED = 0,
-        .CONFIG_SMALL = @boolToInt(optimize == .ReleaseSmall),
+        .CONFIG_SMALL = @intFromBool(optimize == .ReleaseSmall),
         .CONFIG_STATIC = 1,
         .CONFIG_SWSCALE_ALPHA = 1,
         .CONFIG_GPL = 0,
@@ -656,7 +656,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_DWT = 1,
         .CONFIG_ERROR_RESILIENCE = 1,
         .CONFIG_FAAN = 1,
-        .CONFIG_FAST_UNALIGNED = @boolToInt(fastUnalignedLoads(t)),
+        .CONFIG_FAST_UNALIGNED = @intFromBool(fastUnalignedLoads(t)),
         .CONFIG_FFT = 1,
         .CONFIG_LSP = 1,
         .CONFIG_MDCT = 1,
@@ -4053,21 +4053,21 @@ fn fastUnalignedLoads(t: std.Target) bool {
 }
 
 fn have_x86_feat(t: std.Target, feat: std.Target.x86.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .x86, .x86_64 => std.Target.x86.featureSetHas(t.cpu.features, feat),
         else => false,
     });
 }
 
 fn have_arm_feat(t: std.Target, feat: std.Target.arm.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .arm, .armeb => std.Target.arm.featureSetHas(t.cpu.features, feat),
         else => false,
     });
 }
 
 fn have_aarch64_feat(t: std.Target, feat: std.Target.aarch64.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .aarch64,
         .aarch64_be,
         .aarch64_32,
@@ -4078,7 +4078,7 @@ fn have_aarch64_feat(t: std.Target, feat: std.Target.aarch64.Feature) c_int {
 }
 
 fn have_ppc_feat(t: std.Target, feat: std.Target.powerpc.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .powerpc,
         .powerpcle,
         .powerpc64,
@@ -4090,7 +4090,7 @@ fn have_ppc_feat(t: std.Target, feat: std.Target.powerpc.Feature) c_int {
 }
 
 fn have_mips_feat(t: std.Target, feat: std.Target.mips.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .mips,
         .mipsel,
         .mips64,
@@ -4102,7 +4102,7 @@ fn have_mips_feat(t: std.Target, feat: std.Target.mips.Feature) c_int {
 }
 
 fn missing_mips_feat(t: std.Target, feat: std.Target.mips.Feature) c_int {
-    return @boolToInt(switch (t.cpu.arch) {
+    return @intFromBool(switch (t.cpu.arch) {
         .mips,
         .mipsel,
         .mips64,
