@@ -31,7 +31,7 @@ pub fn build(b: *std.build.Builder) void {
     lib.linkLibrary(libvorbis_dep.artifact("vorbis"));
     lib.linkLibrary(libogg_dep.artifact("ogg"));
     lib.linkLibC();
-    lib.addIncludePath(".");
+    lib.addIncludePath(.{ .path = "." });
 
     const t = lib.target_info.target;
     const avconfig_h = b.addConfigHeader(.{
@@ -886,12 +886,12 @@ pub fn build(b: *std.build.Builder) void {
                 });
 
                 nasm_run.addArgs(&.{"--include"});
-                nasm_run.addFileSourceArg(config_asm.getFileSource());
+                nasm_run.addFileArg(config_asm.getFileSource());
 
                 nasm_run.addArgs(&.{"-o"});
-                lib.addObjectFileSource(nasm_run.addOutputFileArg(output_basename));
+                lib.addObjectFile(nasm_run.addOutputFileArg(output_basename));
 
-                nasm_run.addFileSourceArg(.{ .path = input_file });
+                nasm_run.addFileArg(.{ .path = input_file });
             }
         },
         .arm, .armeb => {

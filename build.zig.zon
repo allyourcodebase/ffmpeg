@@ -9,23 +9,23 @@
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/b8408fa9dc751baee2a03cd430a996920ca2c5bc.tar.gz",
-            .hash = "122025fb57739eb67edbbafed2b270479089ee7395cf4b0849001ab95c16a2bae0d9",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/cb974f77c36ab0a4178959a51661a0b68d6d5e2b.tar.gz",
+            .hash = "122068be11cd3aeb0a2af8e676e422b9e98176c44f67cbb603ad088c8f80b6776d3b",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/a1dc13ff76e262007eea91894dd16d74c2147619.tar.gz",
-            .hash = "1220d6c5bf73bee37589a086147ab8f7e855ee98becd3f2e26e58a920ca8f766105f",
+            .url = "https://github.com/andrewrk/libvorbis/archive/c38446870a06a819df1928208fc57cba0f650063.tar.gz",
+            .hash = "12209c5c047c81c9a229c0a2a7fde89c8ae36bc3f078d92a0999a5aaf24f9c0ee715",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/9f514ae46e28589e47d25017385eb0d6ff4c7e9a.tar.gz",
-            .hash = "1220f96a4eaae5bad95ab9391431f125b7cc32edbd6d17397ce066d498f8fc9b63c2",
+            .url = "https://github.com/andrewrk/libogg/archive/0d8ad1d0547de5025e41bc949cf0e2113120d9ec.tar.gz",
+            .hash = "1220c358dd6440e1b169222a7fcfa9f525d1c6bbd376cc4c7bc8d9a925235c9db55c",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/5ef3ed029e4917d07c88f265c7b12fcfd81bd6ab.tar.gz",
-            .hash = "122032bc8d97d857b7c2f71252da293e4f293a4ea0d162909fb0705ba17c40ae2a87",
+            .url = "https://github.com/andrewrk/nasm/archive/212e09aa3e55f6f2ae5581b2a1c98254b91d4781.tar.gz",
+            .hash = "1220bed45a611c2a129858a848d2081c1db637c748dc2470000006eb31f8392ce7b9",
         },
     },
 }
