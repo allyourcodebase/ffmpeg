@@ -827,40 +827,51 @@ pub fn build(b: *std.build.Builder) void {
     config_h.addValues(common_config);
     lib.addConfigHeader(config_h);
 
-    lib.addCSourceFiles(&avcodec_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_avcodec",
+    lib.addCSourceFiles(.{
+        .files = &avcodec_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
     });
-    lib.addCSourceFiles(&avutil_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_avutil",
+    lib.addCSourceFiles(.{
+        .files = &avutil_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
     });
-    lib.addCSourceFiles(&avformat_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_avformat",
+    lib.addCSourceFiles(.{
+        .files = &avformat_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avformat"},
     });
-    lib.addCSourceFiles(&avfilter_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_avfilter",
+    lib.addCSourceFiles(.{
+        .files = &avfilter_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avfilter"},
     });
-    lib.addCSourceFiles(&swresample_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_swresample",
+    lib.addCSourceFiles(.{
+        .files = &swresample_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swresample"},
     });
-    lib.addCSourceFiles(&swscale_sources, ffmpeg_cflags ++ [_][]const u8{
-        "-DBUILDING_swscale",
+    lib.addCSourceFiles(.{
+        .files = &swscale_sources,
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swscale"},
     });
     switch (t.cpu.arch) {
         .x86_64, .x86 => {
-            lib.addCSourceFiles(&avcodec_sources_x86, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_x86,
+                .flags = ffmpeg_cflags ++ .{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avfilter_sources_x86, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avfilter",
+            lib.addCSourceFiles(.{
+                .files = &avfilter_sources_x86,
+                .flags = ffmpeg_cflags ++ .{"-DBUILDING_avfilter"},
             });
-            lib.addCSourceFiles(&avutil_sources_x86, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_x86,
+                .flags = ffmpeg_cflags ++ .{"-DBUILDING_avutil"},
             });
-            lib.addCSourceFiles(&swresample_sources_x86, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swresample",
+            lib.addCSourceFiles(.{
+                .files = &swresample_sources_x86,
+                .flags = ffmpeg_cflags ++ .{"-DBUILDING_swresample"},
             });
-            lib.addCSourceFiles(&swscale_sources_x86, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swscale",
+            lib.addCSourceFiles(.{
+                .files = &swscale_sources_x86,
+                .flags = ffmpeg_cflags ++ .{"-DBUILDING_swscale"},
             });
 
             const nasm_dep = b.dependency("nasm", .{
@@ -895,84 +906,104 @@ pub fn build(b: *std.build.Builder) void {
             }
         },
         .arm, .armeb => {
-            lib.addCSourceFiles(&avcodec_sources_arm, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_arm,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avutil_sources_arm, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_arm,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
             });
             if (std.Target.arm.featureSetHas(t.cpu.features, .neon)) {
-                lib.addCSourceFiles(&avcodec_sources_neon, ffmpeg_cflags ++ [_][]const u8{
-                    "-DBUILDING_avcodec",
+                lib.addCSourceFiles(.{
+                    .files = &avcodec_sources_neon,
+                    .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
                 });
             }
-            lib.addCSourceFiles(&swresample_sources_arm, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swresample",
+            lib.addCSourceFiles(.{
+                .files = &swresample_sources_arm,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swresample"},
             });
-            lib.addCSourceFiles(&swscale_sources_arm, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swscale",
+            lib.addCSourceFiles(.{
+                .files = &swscale_sources_arm,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swscale"},
             });
         },
         .aarch64, .aarch64_be, .aarch64_32 => {
-            lib.addCSourceFiles(&avcodec_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_aarch64,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avfilter_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avfilter",
+            lib.addCSourceFiles(.{
+                .files = &avfilter_sources_aarch64,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avfilter"},
             });
-            lib.addCSourceFiles(&avutil_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_aarch64,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
             });
             if (std.Target.aarch64.featureSetHas(t.cpu.features, .neon)) {
-                lib.addCSourceFiles(&avcodec_sources_neon, ffmpeg_cflags ++ [_][]const u8{
-                    "-DBUILDING_avcodec",
+                lib.addCSourceFiles(.{
+                    .files = &avcodec_sources_neon,
+                    .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
                 });
             }
-            lib.addCSourceFiles(&swresample_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swresample",
+            lib.addCSourceFiles(.{
+                .files = &swresample_sources_aarch64,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swresample"},
             });
-            lib.addCSourceFiles(&swscale_sources_aarch64, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swscale",
+            lib.addCSourceFiles(.{
+                .files = &swscale_sources_aarch64,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swscale"},
             });
         },
         .loongarch32, .loongarch64 => {
-            lib.addCSourceFiles(&avcodec_sources_loongarch, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_loongarch,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avutil_sources_loongarch, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_loongarch,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
             });
         },
         .mips, .mipsel, .mips64, .mips64el => {
-            lib.addCSourceFiles(&avcodec_sources_mips, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_mips,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avutil_sources_mips, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_mips,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
             });
         },
         .powerpc, .powerpcle => {
-            lib.addCSourceFiles(&avcodec_sources_ppc, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_ppc,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
-            lib.addCSourceFiles(&avutil_sources_ppc, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avutil",
+            lib.addCSourceFiles(.{
+                .files = &avutil_sources_ppc,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avutil"},
             });
-            lib.addCSourceFiles(&swscale_sources_ppc, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_swscale",
+            lib.addCSourceFiles(.{
+                .files = &swscale_sources_ppc,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_swscale"},
             });
         },
         else => {},
     }
     switch (t.os.tag) {
         .windows => {
-            lib.addCSourceFiles(&avcodec_sources_windows, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_windows,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
         },
         .linux => {
-            lib.addCSourceFiles(&avcodec_sources_linux, ffmpeg_cflags ++ [_][]const u8{
-                "-DBUILDING_avcodec",
+            lib.addCSourceFiles(.{
+                .files = &avcodec_sources_linux,
+                .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
             });
         },
         else => {},
@@ -986,7 +1017,9 @@ pub fn build(b: *std.build.Builder) void {
         .target = target,
         .optimize = optimize,
     });
-    metadata.addCSourceFiles(&.{"doc/examples/metadata.c"}, &.{});
+    metadata.addCSourceFiles(.{
+        .files = &.{"doc/examples/metadata.c"},
+    });
     metadata.linkLibrary(lib);
     b.installArtifact(metadata);
 }

@@ -1,31 +1,52 @@
 .{
     .name = "libffmpeg",
-    .version = "5.1.2",
+    .version = "5.1.3-1",
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/andrewrk/libz/archive/8bf2a1c61b87773131bee2086737b5f02b7c0888.tar.gz",
-            .hash = "12209e851f7e2c6ba2f01de3e11b1771f03e49666065320abd8414aac152bfa75fae",
+            .url = "https://github.com/andrewrk/libz/archive/6f1bcf921df0a3541a4efb65a5e0120cb0b3bb40.tar.gz",
+            .hash = "12209983b338d5734ac4df5a95cbc6e49e95adc116dba53c4c60db2e5ca80754efa8",
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/cb974f77c36ab0a4178959a51661a0b68d6d5e2b.tar.gz",
-            .hash = "122068be11cd3aeb0a2af8e676e422b9e98176c44f67cbb603ad088c8f80b6776d3b",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/2d84b369d71a05e000fac9540b9b3a2d16e03b3c.tar.gz",
+            .hash = "1220ff2550778a1eda13fe45b0902824755903503d7cb6f36836cf3f496d73552de5",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/c38446870a06a819df1928208fc57cba0f650063.tar.gz",
-            .hash = "12209c5c047c81c9a229c0a2a7fde89c8ae36bc3f078d92a0999a5aaf24f9c0ee715",
+            .url = "https://github.com/andrewrk/libvorbis/archive/438c71545bf5bb205c30301caca6f16fb252d37d.tar.gz",
+            .hash = "12209fbb0db77f1418844d41a06b1828f8f0a844dc8b052bef59da38c1f2b89bbbcd",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/0d8ad1d0547de5025e41bc949cf0e2113120d9ec.tar.gz",
-            .hash = "1220c358dd6440e1b169222a7fcfa9f525d1c6bbd376cc4c7bc8d9a925235c9db55c",
+            .url = "https://github.com/andrewrk/libogg/archive/6c2a602b4f6bee40f56a539bd00c77464ebe7d80.tar.gz",
+            .hash = "1220021cfa6e51c344055f233b460a6b1b329900c0240ac070c0871285735f957e5d",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/212e09aa3e55f6f2ae5581b2a1c98254b91d4781.tar.gz",
-            .hash = "1220bed45a611c2a129858a848d2081c1db637c748dc2470000006eb31f8392ce7b9",
+            .url = "https://github.com/andrewrk/nasm/archive/480f34cf01ec085c39da98c06546bac050bb20dc.tar.gz",
+            .hash = "122091124af52f42a89dc1b598b4a0c2a8248962a29bebf788691d3fa34f56545361",
         },
+    },
+    .paths = .{
+        "COPYING.GPLv2",
+        "COPYING.GPLv3",
+        "COPYING.LGPLv2.1",
+        "COPYING.LGPLv3",
+        "LICENSE.md",
+        "README.md",
+        "build.zig",
+        "build.zig.zon",
+        "compat",
+        "config_components.h",
+        "doc",
+        "libavcodec",
+        "libavdevice",
+        "libavfilter",
+        "libavformat",
+        "libavutil",
+        "libpostproc",
+        "libswresample",
+        "libswscale",
     },
 }
