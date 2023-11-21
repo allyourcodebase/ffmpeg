@@ -38,7 +38,7 @@ pub fn build(b: *std.build.Builder) void {
         .style = .blank,
         .include_path = "libavutil/avconfig.h",
     }, .{
-        .AV_HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .Big),
+        .AV_HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .big),
         .AV_HAVE_FAST_UNALIGNED = @intFromBool(fastUnalignedLoads(t)),
     });
     lib.addConfigHeader(avconfig_h);
@@ -254,7 +254,7 @@ pub fn build(b: *std.build.Builder) void {
         .HAVE_INLINE_ASM = 1,
         .HAVE_SYMVER = 1,
         .HAVE_X86ASM = @intFromBool(t.cpu.arch.isX86()),
-        .HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .Big),
+        .HAVE_BIGENDIAN = @intFromBool(t.cpu.arch.endian() == .big),
         .HAVE_FAST_UNALIGNED = @intFromBool(fastUnalignedLoads(t)),
         .HAVE_ARPA_INET_H = 1,
         .HAVE_ASM_TYPES_H = 1,
