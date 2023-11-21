@@ -24,8 +24,8 @@
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/480f34cf01ec085c39da98c06546bac050bb20dc.tar.gz",
-            .hash = "1220e482cb4dfb9d90b22b610ff6b9428585d1c0b635fb7a49002a08753ae3af6998",
+            .url = "https://github.com/andrewrk/nasm/archive/7746f12810e80c537b190781f938e627e1eb2871.tar.gz",
+            .hash = "1220201c5be62217b2321525b20d498749ca03bf461d344fa3041a0c54353f4eef61",
         },
     },
     .paths = .{
