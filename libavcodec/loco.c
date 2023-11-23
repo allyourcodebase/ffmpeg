@@ -26,9 +26,9 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
 #include "mathops.h"
 
 enum LOCO_MODE {
@@ -206,7 +206,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
-    p->key_frame = 1;
+    p->flags |= AV_FRAME_FLAG_KEY;
 
 #define ADVANCE_BY_DECODED do { \
     if (decoded < 0 || decoded >= buf_size) goto buf_too_small; \
@@ -338,12 +338,11 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
 const FFCodec ff_loco_decoder = {
     .p.name         = "loco",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("LOCO"),
+    CODEC_LONG_NAME("LOCO"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_LOCO,
     .priv_data_size = sizeof(LOCOContext),
     .init           = decode_init,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

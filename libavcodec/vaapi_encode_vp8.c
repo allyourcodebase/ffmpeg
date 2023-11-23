@@ -86,7 +86,7 @@ static int vaapi_encode_vp8_init_picture_params(AVCodecContext *avctx,
     switch (pic->type) {
     case PICTURE_TYPE_IDR:
     case PICTURE_TYPE_I:
-        av_assert0(pic->nb_refs == 0);
+        av_assert0(pic->nb_refs[0] == 0 && pic->nb_refs[1] == 0);
         vpic->ref_flags.bits.force_kf = 1;
         vpic->ref_last_frame =
         vpic->ref_gf_frame   =
@@ -94,14 +94,14 @@ static int vaapi_encode_vp8_init_picture_params(AVCodecContext *avctx,
             VA_INVALID_SURFACE;
         break;
     case PICTURE_TYPE_P:
-        av_assert0(pic->nb_refs == 1);
+        av_assert0(!pic->nb_refs[1]);
         vpic->ref_flags.bits.no_ref_last = 0;
         vpic->ref_flags.bits.no_ref_gf   = 1;
         vpic->ref_flags.bits.no_ref_arf  = 1;
         vpic->ref_last_frame =
         vpic->ref_gf_frame   =
         vpic->ref_arf_frame  =
-            pic->refs[0]->recon_surface;
+            pic->refs[0][0]->recon_surface;
         break;
     default:
         av_assert0(0 && "invalid picture type");
@@ -180,7 +180,7 @@ static av_cold int vaapi_encode_vp8_configure(AVCodecContext *avctx)
 
 static const VAAPIEncodeProfile vaapi_encode_vp8_profiles[] = {
     { 0 /* VP8 has no profiles */, 8, 3, 1, 1, VAProfileVP8Version0_3 },
-    { FF_PROFILE_UNKNOWN }
+    { AV_PROFILE_UNKNOWN }
 };
 
 static const VAAPIEncodeType vaapi_encode_type_vp8 = {
@@ -244,7 +244,7 @@ static const AVClass vaapi_encode_vp8_class = {
 
 const FFCodec ff_vp8_vaapi_encoder = {
     .p.name         = "vp8_vaapi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("VP8 (VAAPI)"),
+    CODEC_LONG_NAME("VP8 (VAAPI)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_VP8,
     .priv_data_size = sizeof(VAAPIEncodeVP8Context),
@@ -253,8 +253,9 @@ const FFCodec ff_vp8_vaapi_encoder = {
     .close          = &ff_vaapi_encode_close,
     .p.priv_class   = &vaapi_encode_vp8_class,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
-                      AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_vp8_defaults,
     .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,

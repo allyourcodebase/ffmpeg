@@ -622,8 +622,10 @@ static int ffmal_copy_frame(AVCodecContext *avctx,  AVFrame *frame,
     MMALDecodeContext *ctx = avctx->priv_data;
     int ret = 0;
 
-    frame->interlaced_frame = ctx->interlaced_frame;
-    frame->top_field_first = ctx->top_field_first;
+    if (ctx->interlaced_frame)
+        frame->flags |= AV_FRAME_FLAG_INTERLACED;
+    if (ctx->top_field_first)
+        frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
 
     if (avctx->pix_fmt == AV_PIX_FMT_MMAL) {
         if (!ctx->pool_out)
@@ -646,8 +648,8 @@ static int ffmal_copy_frame(AVCodecContext *avctx,  AVFrame *frame,
         av_image_fill_arrays(src, linesize,
                              buffer->data + buffer->type->video.offset[0],
                              avctx->pix_fmt, w, h, 1);
-        av_image_copy(frame->data, frame->linesize, (const uint8_t **)src, linesize,
-                      avctx->pix_fmt, avctx->width, avctx->height);
+        av_image_copy2(frame->data, frame->linesize, src, linesize,
+                       avctx->pix_fmt, avctx->width, avctx->height);
     }
 
     frame->sample_aspect_ratio = avctx->sample_aspect_ratio;
@@ -831,7 +833,7 @@ static const AVClass ffmmal_dec_class = {
 #define FFMMAL_DEC(NAME, ID) \
     const FFCodec ff_##NAME##_mmal_decoder = { \
         .p.name         = #NAME "_mmal", \
-        .p.long_name    = NULL_IF_CONFIG_SMALL(#NAME " (mmal)"), \
+        CODEC_LONG_NAME(#NAME " (mmal)"), \
         .p.type         = AVMEDIA_TYPE_VIDEO, \
         .p.id           = ID, \
         .priv_data_size = sizeof(MMALDecodeContext), \
@@ -841,7 +843,7 @@ static const AVClass ffmmal_dec_class = {
         .flush          = ffmmal_flush, \
         .p.priv_class   = &ffmmal_dec_class, \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_SETS_PKT_DTS, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE \
         .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_MMAL, \
                                                          AV_PIX_FMT_YUV420P, \
                                                          AV_PIX_FMT_NONE}, \

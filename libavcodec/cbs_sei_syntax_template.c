@@ -144,6 +144,23 @@ static int FUNC(alternative_transfer_characteristics)
     return 0;
 }
 
+static int FUNC(ambient_viewing_environment)
+    (CodedBitstreamContext *ctx, RWContext *rw,
+     SEIRawAmbientViewingEnvironment *current,
+     SEIMessageState *state)
+{
+    static const uint16_t max_ambient_light_value = 50000;
+    int err;
+
+    HEADER("Ambient Viewing Environment");
+
+    u(32, ambient_illuminance, 1, MAX_UINT_BITS(32));
+    u(16, ambient_light_x, 0, max_ambient_light_value);
+    u(16, ambient_light_y, 0, max_ambient_light_value);
+
+    return 0;
+}
+
 static int FUNC(message)(CodedBitstreamContext *ctx, RWContext *rw,
                          SEIRawMessage *current)
 {
@@ -217,7 +234,12 @@ static int FUNC(message)(CodedBitstreamContext *ctx, RWContext *rw,
     } else {
         uint8_t *data;
 
+#ifdef READ
+        allocate(current->payload_ref, current->payload_size);
+        current->payload = current->payload_ref;
+#else
         allocate(current->payload, current->payload_size);
+#endif
         data = current->payload;
 
         for (i = 0; i < current->payload_size; i++)

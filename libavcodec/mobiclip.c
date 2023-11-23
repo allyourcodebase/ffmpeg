@@ -27,12 +27,12 @@
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
-#include "bytestream.h"
 #include "bswapdsp.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
+#include "mathops.h"
 
 #define MOBI_RL_VLC_BITS 12
 #define MOBI_MV_VLC_BITS 6
@@ -279,11 +279,11 @@ static VLC mv_vlc[2][16];
 
 static av_cold void mobiclip_init_static(void)
 {
-    INIT_VLC_STATIC_FROM_LENGTHS(&rl_vlc[0], MOBI_RL_VLC_BITS, 104,
+    VLC_INIT_STATIC_FROM_LENGTHS(&rl_vlc[0], MOBI_RL_VLC_BITS, 104,
                                  bits0, sizeof(*bits0),
                                  syms0, sizeof(*syms0), sizeof(*syms0),
                                  0, 0, 1 << MOBI_RL_VLC_BITS);
-    INIT_VLC_STATIC_FROM_LENGTHS(&rl_vlc[1], MOBI_RL_VLC_BITS, 104,
+    VLC_INIT_STATIC_FROM_LENGTHS(&rl_vlc[1], MOBI_RL_VLC_BITS, 104,
                                  bits0, sizeof(*bits0),
                                  syms1, sizeof(*syms1), sizeof(*syms1),
                                  0, 0, 1 << MOBI_RL_VLC_BITS);
@@ -292,10 +292,10 @@ static av_cold void mobiclip_init_static(void)
         for (int j = 0; j < 16; j++) {
             mv_vlc[i][j].table           = &vlc_buf[(16 * i + j) << MOBI_MV_VLC_BITS];
             mv_vlc[i][j].table_allocated = 1 << MOBI_MV_VLC_BITS;
-            ff_init_vlc_from_lengths(&mv_vlc[i][j], MOBI_MV_VLC_BITS, mv_len[j],
+            ff_vlc_init_from_lengths(&mv_vlc[i][j], MOBI_MV_VLC_BITS, mv_len[j],
                                      mv_bits[i][j], sizeof(*mv_bits[i][j]),
                                      mv_syms[i][j], sizeof(*mv_syms[i][j]), sizeof(*mv_syms[i][j]),
-                                     0, INIT_VLC_USE_NEW_STATIC, NULL);
+                                     0, VLC_INIT_USE_STATIC, NULL);
         }
     }
 }
@@ -1216,6 +1216,9 @@ static int mobiclip_decode(AVCodecContext *avctx, AVFrame *rframe,
     AVFrame *frame = s->pic[s->current_pic];
     int ret;
 
+    if (avctx->height/16 * (avctx->width/16) * 2 > 8LL*FFALIGN(pkt->size, 2))
+        return AVERROR_INVALIDDATA;
+
     av_fast_padded_malloc(&s->bitstream, &s->bitstream_size,
                           pkt->size);
 
@@ -1232,7 +1235,7 @@ static int mobiclip_decode(AVCodecContext *avctx, AVFrame *rframe,
 
     if (get_bits1(gb)) {
         frame->pict_type = AV_PICTURE_TYPE_I;
-        frame->key_frame = 1;
+        frame->flags |= AV_FRAME_FLAG_KEY;
         s->moflex = get_bits1(gb);
         s->dct_tab_idx = get_bits1(gb);
 
@@ -1253,7 +1256,7 @@ static int mobiclip_decode(AVCodecContext *avctx, AVFrame *rframe,
         memset(motion, 0, s->motion_size);
 
         frame->pict_type = AV_PICTURE_TYPE_P;
-        frame->key_frame = 0;
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
         s->dct_tab_idx = 0;
 
         ret = setup_qtables(avctx, s->quantizer + (int64_t)get_se_golomb(gb));
@@ -1342,7 +1345,7 @@ static av_cold int mobiclip_close(AVCodecContext *avctx)
 
 const FFCodec ff_mobiclip_decoder = {
     .p.name         = "mobiclip",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("MobiClip Video"),
+    CODEC_LONG_NAME("MobiClip Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_MOBICLIP,
     .priv_data_size = sizeof(MobiClipContext),
@@ -1351,5 +1354,5 @@ const FFCodec ff_mobiclip_decoder = {
     .flush          = mobiclip_flush,
     .close          = mobiclip_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

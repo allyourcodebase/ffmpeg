@@ -32,7 +32,7 @@
 #include "libavutil/timestamp.h"
 
 #include "avcodec.h"
-#include "internal.h"
+#include "decode.h"
 
 #include "mediacodec.h"
 #include "mediacodec_surface.h"
@@ -84,85 +84,6 @@
 #define INPUT_DEQUEUE_TIMEOUT_US 8000
 #define OUTPUT_DEQUEUE_TIMEOUT_US 8000
 #define OUTPUT_DEQUEUE_BLOCK_TIMEOUT_US 1000000
-
-enum {
-    COLOR_RANGE_FULL    = 0x1,
-    COLOR_RANGE_LIMITED = 0x2,
-};
-
-static enum AVColorRange mcdec_get_color_range(int color_range)
-{
-    switch (color_range) {
-    case COLOR_RANGE_FULL:
-        return AVCOL_RANGE_JPEG;
-    case COLOR_RANGE_LIMITED:
-        return AVCOL_RANGE_MPEG;
-    default:
-        return AVCOL_RANGE_UNSPECIFIED;
-    }
-}
-
-enum {
-    COLOR_STANDARD_BT709      = 0x1,
-    COLOR_STANDARD_BT601_PAL  = 0x2,
-    COLOR_STANDARD_BT601_NTSC = 0x4,
-    COLOR_STANDARD_BT2020     = 0x6,
-};
-
-static enum AVColorSpace mcdec_get_color_space(int color_standard)
-{
-    switch (color_standard) {
-    case COLOR_STANDARD_BT709:
-        return AVCOL_SPC_BT709;
-    case COLOR_STANDARD_BT601_PAL:
-        return AVCOL_SPC_BT470BG;
-    case COLOR_STANDARD_BT601_NTSC:
-        return AVCOL_SPC_SMPTE170M;
-    case COLOR_STANDARD_BT2020:
-        return AVCOL_SPC_BT2020_NCL;
-    default:
-        return AVCOL_SPC_UNSPECIFIED;
-    }
-}
-
-static enum AVColorPrimaries mcdec_get_color_pri(int color_standard)
-{
-    switch (color_standard) {
-    case COLOR_STANDARD_BT709:
-        return AVCOL_PRI_BT709;
-    case COLOR_STANDARD_BT601_PAL:
-        return AVCOL_PRI_BT470BG;
-    case COLOR_STANDARD_BT601_NTSC:
-        return AVCOL_PRI_SMPTE170M;
-    case COLOR_STANDARD_BT2020:
-        return AVCOL_PRI_BT2020;
-    default:
-        return AVCOL_PRI_UNSPECIFIED;
-    }
-}
-
-enum {
-    COLOR_TRANSFER_LINEAR    = 0x1,
-    COLOR_TRANSFER_SDR_VIDEO = 0x3,
-    COLOR_TRANSFER_ST2084    = 0x6,
-    COLOR_TRANSFER_HLG       = 0x7,
-};
-
-static enum AVColorTransferCharacteristic mcdec_get_color_trc(int color_transfer)
-{
-    switch (color_transfer) {
-    case COLOR_TRANSFER_LINEAR:
-        return AVCOL_TRC_LINEAR;
-    case COLOR_TRANSFER_SDR_VIDEO:
-        return AVCOL_TRC_SMPTE170M;
-    case COLOR_TRANSFER_ST2084:
-        return AVCOL_TRC_SMPTEST2084;
-    case COLOR_TRANSFER_HLG:
-        return AVCOL_TRC_ARIB_STD_B67;
-    default:
-        return AVCOL_TRC_UNSPECIFIED;
-    }
-}
 
 enum {
     COLOR_FormatYUV420Planar                              = 0x13,
@@ -265,8 +186,7 @@ static void mediacodec_buffer_release(void *opaque, uint8_t *data)
         ff_AMediaCodec_releaseOutputBuffer(ctx->codec, buffer->index, 0);
     }
 
-    if (ctx->delay_flush)
-        ff_mediacodec_dec_unref(ctx);
+    ff_mediacodec_dec_unref(ctx);
     av_freep(&buffer);
 }
 
@@ -321,8 +241,7 @@ static int mediacodec_wrap_hw_buffer(AVCodecContext *avctx,
 
     buffer->ctx = s;
     buffer->serial = atomic_load(&s->serial);
-    if (s->delay_flush)
-        ff_mediacodec_dec_ref(s);
+    ff_mediacodec_dec_ref(s);
 
     buffer->index = index;
     buffer->pts = info->presentationTimeUs;
@@ -336,8 +255,7 @@ static int mediacodec_wrap_hw_buffer(AVCodecContext *avctx,
 
     return 0;
 fail:
-    av_freep(buffer);
-    av_buffer_unref(&frame->buf[0]);
+    av_freep(&buffer);
     status = ff_AMediaCodec_releaseOutputBuffer(s->codec, index, 0);
     if (status < 0) {
         av_log(avctx, AV_LOG_ERROR, "Failed to release output buffer\n");
@@ -489,8 +407,24 @@ static int mediacodec_dec_parse_format(AVCodecContext *avctx, MediaCodecDecConte
     AMEDIAFORMAT_GET_INT32(s->crop_left,   "crop-left",   0);
     AMEDIAFORMAT_GET_INT32(s->crop_right,  "crop-right",  0);
 
-    width = s->crop_right + 1 - s->crop_left;
-    height = s->crop_bottom + 1 - s->crop_top;
+    // Try "crop" for NDK
+    if (!(s->crop_right && s->crop_bottom) && s->use_ndk_codec)
+        ff_AMediaFormat_getRect(s->format, "crop", &s->crop_left, &s->crop_top, &s->crop_right, &s->crop_bottom);
+
+    if (s->crop_right && s->crop_bottom) {
+        width = s->crop_right + 1 - s->crop_left;
+        height = s->crop_bottom + 1 - s->crop_top;
+    } else {
+        /* TODO: NDK MediaFormat should try getRect() first.
+         * Try crop-width/crop-height, it works on NVIDIA Shield.
+         */
+        AMEDIAFORMAT_GET_INT32(width,  "crop-width",  0);
+        AMEDIAFORMAT_GET_INT32(height, "crop-height", 0);
+    }
+    if (!width || !height) {
+        width = s->width;
+        height = s->height;
+    }
 
     AMEDIAFORMAT_GET_INT32(s->display_width,  "display-width",  0);
     AMEDIAFORMAT_GET_INT32(s->display_height, "display-height", 0);
@@ -504,17 +438,17 @@ static int mediacodec_dec_parse_format(AVCodecContext *avctx, MediaCodecDecConte
 
     AMEDIAFORMAT_GET_INT32(color_range, "color-range", 0);
     if (color_range)
-        avctx->color_range = mcdec_get_color_range(color_range);
+        avctx->color_range = ff_AMediaFormatColorRange_to_AVColorRange(color_range);
 
     AMEDIAFORMAT_GET_INT32(color_standard, "color-standard", 0);
     if (color_standard) {
-        avctx->colorspace = mcdec_get_color_space(color_standard);
-        avctx->color_primaries = mcdec_get_color_pri(color_standard);
+        avctx->colorspace = ff_AMediaFormatColorStandard_to_AVColorSpace(color_standard);
+        avctx->color_primaries = ff_AMediaFormatColorStandard_to_AVColorPrimaries(color_standard);
     }
 
     AMEDIAFORMAT_GET_INT32(color_transfer, "color-transfer", 0);
     if (color_transfer)
-        avctx->color_trc = mcdec_get_color_trc(color_transfer);
+        avctx->color_trc = ff_AMediaFormatColorTransfer_to_AVColorTransfer(color_transfer);
 
     av_log(avctx, AV_LOG_INFO,
         "Output crop parameters top=%d bottom=%d left=%d right=%d, "
@@ -580,14 +514,14 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
             if (device_ctx->type == AV_HWDEVICE_TYPE_MEDIACODEC) {
                 if (device_ctx->hwctx) {
                     AVMediaCodecDeviceContext *mediacodec_ctx = (AVMediaCodecDeviceContext *)device_ctx->hwctx;
-                    s->surface = ff_mediacodec_surface_ref(mediacodec_ctx->surface, avctx);
+                    s->surface = ff_mediacodec_surface_ref(mediacodec_ctx->surface, mediacodec_ctx->native_window, avctx);
                     av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
                 }
             }
         }
 
         if (!s->surface && user_ctx && user_ctx->surface) {
-            s->surface = ff_mediacodec_surface_ref(user_ctx->surface, avctx);
+            s->surface = ff_mediacodec_surface_ref(user_ctx->surface, NULL, avctx);
             av_log(avctx, AV_LOG_INFO, "Using surface %p\n", s->surface);
         }
     }
@@ -599,12 +533,27 @@ int ff_mediacodec_dec_init(AVCodecContext *avctx, MediaCodecDecContext *s,
 
     s->codec_name = ff_AMediaCodecList_getCodecNameByType(mime, profile, 0, avctx);
     if (!s->codec_name) {
-        ret = AVERROR_EXTERNAL;
-        goto fail;
+        // getCodecNameByType() can fail due to missing JVM, while NDK
+        // mediacodec can be used without JVM.
+        if (!s->use_ndk_codec) {
+            ret = AVERROR_EXTERNAL;
+            goto fail;
+        }
+        av_log(avctx, AV_LOG_INFO, "Failed to getCodecNameByType\n");
+    } else {
+        av_log(avctx, AV_LOG_DEBUG, "Found decoder %s\n", s->codec_name);
     }
 
-    av_log(avctx, AV_LOG_DEBUG, "Found decoder %s\n", s->codec_name);
-    s->codec = ff_AMediaCodec_createCodecByName(s->codec_name);
+    if (s->codec_name)
+        s->codec = ff_AMediaCodec_createCodecByName(s->codec_name, s->use_ndk_codec);
+    else {
+        s->codec = ff_AMediaCodec_createDecoderByType(mime, s->use_ndk_codec);
+        if (s->codec) {
+            s->codec_name = ff_AMediaCodec_getName(s->codec);
+            if (!s->codec_name)
+                s->codec_name = av_strdup(mime);
+        }
+    }
     if (!s->codec) {
         av_log(avctx, AV_LOG_ERROR, "Failed to create media decoder for type %s and name %s\n", mime, s->codec_name);
         ret = AVERROR_EXTERNAL;
@@ -872,7 +821,7 @@ int ff_mediacodec_dec_receive(AVCodecContext *avctx, MediaCodecDecContext *s,
 */
 int ff_mediacodec_dec_flush(AVCodecContext *avctx, MediaCodecDecContext *s)
 {
-    if (!s->surface || atomic_load(&s->refcount) == 1) {
+    if (!s->surface || !s->delay_flush || atomic_load(&s->refcount) == 1) {
         int ret;
 
         /* No frames (holding a reference to the codec) are retained by the

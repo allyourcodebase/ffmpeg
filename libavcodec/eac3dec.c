@@ -138,9 +138,11 @@ static void ff_eac3_apply_spectral_extension(AC3DecodeContext *s)
             // spx_noise_blend and spx_signal_blend are both FP.23
             nscale *= 1.0 / (1<<23);
             sscale *= 1.0 / (1<<23);
+            if (nscale < -1.0)
+                nscale = -1.0;
 #endif
             for (i = 0; i < s->spx_band_sizes[bnd]; i++) {
-                float noise  = nscale * (int32_t)av_lfg_get(&s->dith_state);
+                UINTFLOAT noise = (INTFLOAT)(nscale * (int32_t)av_lfg_get(&s->dith_state));
                 s->transform_coeffs[ch][bin]   *= sscale;
                 s->transform_coeffs[ch][bin++] += noise;
             }
@@ -462,7 +464,16 @@ static int ff_eac3_parse_header(AC3DecodeContext *s)
     if (get_bits1(gbc)) {
         int addbsil = get_bits(gbc, 6);
         for (i = 0; i < addbsil + 1; i++) {
-            skip_bits(gbc, 8); // skip additional bit stream info
+            if (i == 0) {
+                /* In this 8 bit chunk, the LSB is equal to flag_ec3_extension_type_a
+                   which can be used to detect Atmos presence */
+                skip_bits(gbc, 7);
+                if (get_bits1(gbc)) {
+                    s->eac3_extension_type_a = 1;
+                }
+            } else {
+                skip_bits(gbc, 8); // skip additional bit stream info
+            }
         }
     }
 

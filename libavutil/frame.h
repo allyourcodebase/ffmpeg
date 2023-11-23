@@ -209,6 +209,21 @@ enum AVFrameSideDataType {
      * volume transform - CUVA 005.1-2021.
      */
     AV_FRAME_DATA_DYNAMIC_HDR_VIVID,
+
+    /**
+     * Ambient viewing environment metadata, as defined by H.274.
+     */
+    AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT,
+
+    /**
+     * Provide encoder-specific hinting information about changed/unchanged
+     * portions of a frame.  It can be used to pass information about which
+     * macroblocks can be skipped because they didn't change from the
+     * corresponding ones in the previous frame. This could be useful for
+     * applications which know this information in advance to speed up
+     * encoding.
+     */
+    AV_FRAME_DATA_VIDEO_HINT,
 };
 
 enum AVActiveFormatDescription {
@@ -411,10 +426,15 @@ typedef struct AVFrame {
      */
     int format;
 
+#if FF_API_FRAME_KEY
     /**
      * 1 -> keyframe, 0-> not
+     *
+     * @deprecated Use AV_FRAME_FLAG_KEY instead
      */
+    attribute_deprecated
     int key_frame;
+#endif
 
     /**
      * Picture type of the frame.
@@ -446,14 +466,18 @@ typedef struct AVFrame {
      */
     AVRational time_base;
 
+#if FF_API_FRAME_PICTURE_NUMBER
     /**
      * picture number in bitstream order
      */
+    attribute_deprecated
     int coded_picture_number;
     /**
      * picture number in display order
      */
+    attribute_deprecated
     int display_picture_number;
+#endif
 
     /**
      * quality (between 1 (good) and FF_LAMBDA_MAX (bad))
@@ -461,31 +485,68 @@ typedef struct AVFrame {
     int quality;
 
     /**
-     * for some private data of the user
+     * Frame owner's private data.
+     *
+     * This field may be set by the code that allocates/owns the frame data.
+     * It is then not touched by any library functions, except:
+     * - it is copied to other references by av_frame_copy_props() (and hence by
+     *   av_frame_ref());
+     * - it is set to NULL when the frame is cleared by av_frame_unref()
+     * - on the caller's explicit request. E.g. libavcodec encoders/decoders
+     *   will copy this field to/from @ref AVPacket "AVPackets" if the caller sets
+     *   @ref AV_CODEC_FLAG_COPY_OPAQUE.
+     *
+     * @see opaque_ref the reference-counted analogue
      */
     void *opaque;
 
     /**
-     * When decoding, this signals how much the picture must be delayed.
-     * extra_delay = repeat_pict / (2*fps)
+     * Number of fields in this frame which should be repeated, i.e. the total
+     * duration of this frame should be repeat_pict + 2 normal field durations.
+     *
+     * For interlaced frames this field may be set to 1, which signals that this
+     * frame should be presented as 3 fields: beginning with the first field (as
+     * determined by AV_FRAME_FLAG_TOP_FIELD_FIRST being set or not), followed
+     * by the second field, and then the first field again.
+     *
+     * For progressive frames this field may be set to a multiple of 2, which
+     * signals that this frame's duration should be (repeat_pict + 2) / 2
+     * normal frame durations.
+     *
+     * @note This field is computed from MPEG2 repeat_first_field flag and its
+     * associated flags, H.264 pic_struct from picture timing SEI, and
+     * their analogues in other codecs. Typically it should only be used when
+     * higher-layer timing information is not available.
      */
     int repeat_pict;
 
+#if FF_API_INTERLACED_FRAME
     /**
      * The content of the picture is interlaced.
+     *
+     * @deprecated Use AV_FRAME_FLAG_INTERLACED instead
      */
+    attribute_deprecated
     int interlaced_frame;
 
     /**
      * If the content is interlaced, is top field displayed first.
+     *
+     * @deprecated Use AV_FRAME_FLAG_TOP_FIELD_FIRST instead
      */
+    attribute_deprecated
     int top_field_first;
+#endif
 
+#if FF_API_PALETTE_HAS_CHANGED
     /**
      * Tell user application that palette has changed from previous frame.
      */
+    attribute_deprecated
     int palette_has_changed;
+#endif
 
+#if FF_API_REORDERED_OPAQUE
     /**
      * reordered opaque 64 bits (generally an integer or a double precision float
      * PTS but can be anything).
@@ -493,8 +554,12 @@ typedef struct AVFrame {
      * that time,
      * the decoder reorders values as needed and sets AVFrame.reordered_opaque
      * to exactly one of the values provided by the user through AVCodecContext.reordered_opaque
+     *
+     * @deprecated Use AV_CODEC_FLAG_COPY_OPAQUE instead
      */
+    attribute_deprecated
     int64_t reordered_opaque;
+#endif
 
     /**
      * Sample rate of the audio data.
@@ -558,9 +623,22 @@ typedef struct AVFrame {
  */
 #define AV_FRAME_FLAG_CORRUPT       (1 << 0)
 /**
+ * A flag to mark frames that are keyframes.
+ */
+#define AV_FRAME_FLAG_KEY (1 << 1)
+/**
  * A flag to mark the frames which need to be decoded, but shouldn't be output.
  */
 #define AV_FRAME_FLAG_DISCARD   (1 << 2)
+/**
+ * A flag to mark frames whose content is interlaced.
+ */
+#define AV_FRAME_FLAG_INTERLACED (1 << 3)
+/**
+ * A flag to mark frames where the top field is displayed first if the content
+ * is interlaced.
+ */
+#define AV_FRAME_FLAG_TOP_FIELD_FIRST (1 << 4)
 /**
  * @}
  */
@@ -597,20 +675,30 @@ typedef struct AVFrame {
      */
     int64_t best_effort_timestamp;
 
+#if FF_API_FRAME_PKT
     /**
      * reordered pos from the last AVPacket that has been input into the decoder
      * - encoding: unused
      * - decoding: Read by user.
+     * @deprecated use AV_CODEC_FLAG_COPY_OPAQUE to pass through arbitrary user
+     *             data from packets to frames
      */
+    attribute_deprecated
     int64_t pkt_pos;
+#endif
 
+#if FF_API_PKT_DURATION
     /**
      * duration of the corresponding packet, expressed in
      * AVStream->time_base units, 0 if unknown.
      * - encoding: unused
      * - decoding: Read by user.
+     *
+     * @deprecated use duration instead
      */
+    attribute_deprecated
     int64_t pkt_duration;
+#endif
 
     /**
      * metadata.
@@ -643,14 +731,19 @@ typedef struct AVFrame {
     int channels;
 #endif
 
+#if FF_API_FRAME_PKT
     /**
      * size of the corresponding packet containing the compressed
      * frame.
      * It is set to a negative value if unknown.
      * - encoding: unused
      * - decoding: set by libavcodec, read by user.
+     * @deprecated use AV_CODEC_FLAG_COPY_OPAQUE to pass through arbitrary user
+     *             data from packets to frames
      */
+    attribute_deprecated
     int pkt_size;
+#endif
 
     /**
      * For hwaccel-format frames, this should be a reference to the
@@ -659,13 +752,18 @@ typedef struct AVFrame {
     AVBufferRef *hw_frames_ctx;
 
     /**
-     * AVBufferRef for free use by the API user. FFmpeg will never check the
-     * contents of the buffer ref. FFmpeg calls av_buffer_unref() on it when
-     * the frame is unreferenced. av_frame_copy_props() calls create a new
-     * reference with av_buffer_ref() for the target frame's opaque_ref field.
+     * Frame owner's private data.
      *
-     * This is unrelated to the opaque field, although it serves a similar
-     * purpose.
+     * This field may be set by the code that allocates/owns the frame data.
+     * It is then not touched by any library functions, except:
+     * - a new reference to the underlying buffer is propagated by
+     *   av_frame_copy_props() (and hence by av_frame_ref());
+     * - it is unreferenced in av_frame_unref();
+     * - on the caller's explicit request. E.g. libavcodec encoders/decoders
+     *   will propagate a new reference to/from @ref AVPacket "AVPackets" if the
+     *   caller sets @ref AV_CODEC_FLAG_COPY_OPAQUE.
+     *
+     * @see opaque the plain pointer analogue
      */
     AVBufferRef *opaque_ref;
 
@@ -702,18 +800,14 @@ typedef struct AVFrame {
      * Channel layout of the audio data.
      */
     AVChannelLayout ch_layout;
+
+    /**
+     * Duration of the frame, in the same units as pts. 0 if unknown.
+     */
+    int64_t duration;
 } AVFrame;
 
 
-#if FF_API_COLORSPACE_NAME
-/**
- * Get the name of a colorspace.
- * @return a static string identifying the colorspace; can be NULL.
- * @deprecated use av_color_space_name()
- */
-attribute_deprecated
-const char *av_get_colorspace_name(enum AVColorSpace val);
-#endif
 /**
  * Allocate an AVFrame and set its fields to default values.  The resulting
  * struct must be freed using av_frame_free().
@@ -751,6 +845,19 @@ void av_frame_free(AVFrame **frame);
  * @return 0 on success, a negative AVERROR on error
  */
 int av_frame_ref(AVFrame *dst, const AVFrame *src);
+
+/**
+ * Ensure the destination frame refers to the same data described by the source
+ * frame, either by creating a new reference for each AVBufferRef from src if
+ * they differ from those in dst, by allocating new buffers and copying data if
+ * src is not reference counted, or by unrefencing it if src is empty.
+ *
+ * Frame properties on dst will be replaced by those from src.
+ *
+ * @return 0 on success, a negative AVERROR on error. On error, dst is
+ *         unreferenced.
+ */
+int av_frame_replace(AVFrame *dst, const AVFrame *src);
 
 /**
  * Create a new frame that references the same data as src.
@@ -818,7 +925,8 @@ int av_frame_is_writable(AVFrame *frame);
  * Ensure that the frame data is writable, avoiding data copy if possible.
  *
  * Do nothing if the frame is writable, allocate new buffers and copy the data
- * if it is not.
+ * if it is not. Non-refcounted frames behave as non-writable, i.e. a copy
+ * is always made.
  *
  * @return 0 on success, a negative AVERROR on error.
  *
@@ -853,12 +961,13 @@ int av_frame_copy_props(AVFrame *dst, const AVFrame *src);
 /**
  * Get the buffer reference a given data plane is stored in.
  *
+ * @param frame the frame to get the plane's buffer from
  * @param plane index of the data plane of interest in frame->extended_data.
  *
  * @return the buffer reference that contains the plane or NULL if the input
  * frame is not valid.
  */
-AVBufferRef *av_frame_get_plane_buffer(AVFrame *frame, int plane);
+AVBufferRef *av_frame_get_plane_buffer(const AVFrame *frame, int plane);
 
 /**
  * Add a new side data to a frame.

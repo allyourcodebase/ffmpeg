@@ -22,7 +22,9 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 typedef struct WeaveContext {
     const AVClass *class;
@@ -148,8 +150,17 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
                       FFMIN(s->planeheight[1], ff_filter_get_nb_threads(ctx)));
 
     out->pts = s->double_weave ? s->prev->pts : in->pts / 2;
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
     out->interlaced_frame = 1;
     out->top_field_first = !s->first_field;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    out->flags |= AV_FRAME_FLAG_INTERLACED;
+    if (s->first_field)
+        out->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
+    else
+        out->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
 
     if (!s->double_weave)
         av_frame_free(&in);

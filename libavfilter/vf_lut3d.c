@@ -29,13 +29,11 @@
 #include "float.h"
 
 #include "libavutil/opt.h"
-#include "libavutil/file.h"
-#include "libavutil/intreadwrite.h"
+#include "libavutil/file_open.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "lut3d.h"
@@ -1303,13 +1301,6 @@ static const AVFilterPad lut3d_inputs[] = {
     },
 };
 
-static const AVFilterPad lut3d_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_lut3d = {
     .name          = "lut3d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 3D LUT."),
@@ -1317,7 +1308,7 @@ const AVFilter ff_vf_lut3d = {
     .init          = lut3d_init,
     .uninit        = lut3d_uninit,
     FILTER_INPUTS(lut3d_inputs),
-    FILTER_OUTPUTS(lut3d_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut3d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
@@ -1330,7 +1321,7 @@ const AVFilter ff_vf_lut3d = {
 static void update_clut_packed(LUT3DContext *lut3d, const AVFrame *frame)
 {
     const uint8_t *data = frame->data[0];
-    const int linesize  = frame->linesize[0];
+    const ptrdiff_t linesize  = frame->linesize[0];
     const int w = lut3d->clut_width;
     const int step = lut3d->clut_step;
     const uint8_t *rgba_map = lut3d->clut_rgba_map;
@@ -1369,9 +1360,9 @@ static void update_clut_planar(LUT3DContext *lut3d, const AVFrame *frame)
     const uint8_t *datag = frame->data[0];
     const uint8_t *datab = frame->data[1];
     const uint8_t *datar = frame->data[2];
-    const int glinesize  = frame->linesize[0];
-    const int blinesize  = frame->linesize[1];
-    const int rlinesize  = frame->linesize[2];
+    const ptrdiff_t glinesize  = frame->linesize[0];
+    const ptrdiff_t blinesize  = frame->linesize[1];
+    const ptrdiff_t rlinesize  = frame->linesize[2];
     const int w = lut3d->clut_width;
     const int level = lut3d->lutsize;
     const int level2 = lut3d->lutsize2;
@@ -1416,9 +1407,9 @@ static void update_clut_float(LUT3DContext *lut3d, const AVFrame *frame)
     const uint8_t *datag = frame->data[0];
     const uint8_t *datab = frame->data[1];
     const uint8_t *datar = frame->data[2];
-    const int glinesize  = frame->linesize[0];
-    const int blinesize  = frame->linesize[1];
-    const int rlinesize  = frame->linesize[2];
+    const ptrdiff_t glinesize  = frame->linesize[0];
+    const ptrdiff_t blinesize  = frame->linesize[1];
+    const ptrdiff_t rlinesize  = frame->linesize[2];
     const int w = lut3d->clut_width;
     const int level = lut3d->lutsize;
     const int level2 = lut3d->lutsize2;
@@ -2234,20 +2225,13 @@ static const AVFilterPad lut1d_inputs[] = {
     },
 };
 
-static const AVFilterPad lut1d_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_lut1d = {
     .name          = "lut1d",
     .description   = NULL_IF_CONFIG_SMALL("Adjust colors using a 1D LUT."),
     .priv_size     = sizeof(LUT1DContext),
     .init          = lut1d_init,
     FILTER_INPUTS(lut1d_inputs),
-    FILTER_OUTPUTS(lut1d_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .priv_class    = &lut1d_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

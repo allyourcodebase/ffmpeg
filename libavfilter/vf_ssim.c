@@ -35,15 +35,14 @@
  */
 
 #include "libavutil/avstring.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "ssim.h"
-#include "video.h"
 
 typedef struct SSIMContext {
     const AVClass *class;
@@ -357,6 +356,13 @@ static int do_ssim(FFFrameSync *fs)
         td.ref_linesize[n] = ref->linesize[n];
         td.planewidth[n] = s->planewidth[n];
         td.planeheight[n] = s->planeheight[n];
+    }
+
+    if (master->color_range != ref->color_range) {
+        av_log(ctx, AV_LOG_WARNING, "master and reference "
+               "frames use different color ranges (%s != %s)\n",
+               av_color_range_name(master->color_range),
+               av_color_range_name(ref->color_range));
     }
 
     ff_filter_execute(ctx, s->ssim_plane, &td, NULL,

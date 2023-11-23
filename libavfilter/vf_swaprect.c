@@ -64,8 +64,16 @@ static int query_formats(AVFilterContext *ctx)
     return ff_set_common_formats(ctx, ff_formats_pixdesc_filter(0, reject_flags));
 }
 
-static const char *const var_names[] = {   "w",   "h",   "a",   "n",   "t",   "pos",   "sar",   "dar",        NULL };
-enum                                   { VAR_W, VAR_H, VAR_A, VAR_N, VAR_T, VAR_POS, VAR_SAR, VAR_DAR, VAR_VARS_NB };
+static const char *const var_names[] = {   "w",   "h",   "a",   "n",   "t",
+#if FF_API_FRAME_PKT
+                                                                           "pos",
+#endif
+                                                                                      "sar",   "dar",        NULL };
+enum                                   { VAR_W, VAR_H, VAR_A, VAR_N, VAR_T,
+#if FF_API_FRAME_PKT
+                                                                           VAR_POS,
+#endif
+                                                                                    VAR_SAR, VAR_DAR, VAR_VARS_NB };
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
@@ -90,7 +98,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     var_values[VAR_DAR] = var_values[VAR_A] * var_values[VAR_SAR];
     var_values[VAR_N]   = inlink->frame_count_out;
     var_values[VAR_T]   = in->pts == AV_NOPTS_VALUE ? NAN : in->pts * av_q2d(inlink->time_base);
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     var_values[VAR_POS] = in->pkt_pos == -1 ? NAN : in->pkt_pos;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     ret = av_expr_parse_and_eval(&dw, s->w,
                                  var_names, &var_values[0],
@@ -225,13 +237,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_swaprect = {
     .name          = "swaprect",
     .description   = NULL_IF_CONFIG_SMALL("Swap 2 rectangular objects in video."),
@@ -239,7 +244,7 @@ const AVFilter ff_vf_swaprect = {
     .priv_class    = &swaprect_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .process_command = ff_filter_process_command,

@@ -72,7 +72,8 @@ static int ivf_write_header(AVFormatContext *s)
     avio_wl16(pb, par->height);
     avio_wl32(pb, s->streams[0]->time_base.den);
     avio_wl32(pb, s->streams[0]->time_base.num);
-    avio_wl64(pb, 0xFFFFFFFFFFFFFFFFULL); // length is overwritten at the end of muxing
+    avio_wl32(pb, 0xFFFFFFFF); // "number of frames" is overwritten at the end of muxing
+    avio_wl32(pb, 0); // unused
 
     return 0;
 }
@@ -99,16 +100,12 @@ static int ivf_write_trailer(AVFormatContext *s)
     AVIOContext *pb = s->pb;
     IVFEncContext *ctx = s->priv_data;
 
-    if ((pb->seekable & AVIO_SEEKABLE_NORMAL) &&
-        (ctx->frame_cnt > 1 || (ctx->frame_cnt == 1 && ctx->last_pkt_duration))) {
+    // overwrite the "number of frames"
+    if ((pb->seekable & AVIO_SEEKABLE_NORMAL)) {
         int64_t end = avio_tell(pb);
 
         avio_seek(pb, 24, SEEK_SET);
-        // overwrite the "length" field (duration)
-        avio_wl32(pb, ctx->last_pkt_duration ?
-                  ctx->sum_delta_pts + ctx->last_pkt_duration :
-                  ctx->frame_cnt * ctx->sum_delta_pts / (ctx->frame_cnt - 1));
-        avio_wl32(pb, 0); // zero out unused bytes
+        avio_wl32(pb, ctx->frame_cnt);
         avio_seek(pb, end, SEEK_SET);
     }
 
@@ -122,16 +119,16 @@ static const AVCodecTag codec_ivf_tags[] = {
     { AV_CODEC_ID_NONE, 0 }
 };
 
-const AVOutputFormat ff_ivf_muxer = {
+const FFOutputFormat ff_ivf_muxer = {
+    .p.name         = "ivf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("On2 IVF"),
+    .p.extensions   = "ivf",
+    .p.audio_codec  = AV_CODEC_ID_NONE,
+    .p.video_codec  = AV_CODEC_ID_VP8,
+    .p.codec_tag    = (const AVCodecTag* const []){ codec_ivf_tags, 0 },
     .priv_data_size = sizeof(IVFEncContext),
-    .name         = "ivf",
-    .long_name    = NULL_IF_CONFIG_SMALL("On2 IVF"),
-    .extensions   = "ivf",
-    .audio_codec  = AV_CODEC_ID_NONE,
-    .video_codec  = AV_CODEC_ID_VP8,
     .init         = ivf_init,
     .write_header = ivf_write_header,
     .write_packet = ivf_write_packet,
     .write_trailer = ivf_write_trailer,
-    .codec_tag    = (const AVCodecTag* const []){ codec_ivf_tags, 0 },
 };

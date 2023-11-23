@@ -393,7 +393,7 @@ static void guess_mv(ERContext *s)
     const ptrdiff_t mb_stride = s->mb_stride;
     const int mb_width  = s->mb_width;
     int mb_height = s->mb_height;
-    int i, depth, num_avail;
+    int i, num_avail;
     int mb_x, mb_y;
     ptrdiff_t mot_step, mot_stride;
     int blocklist_length, next_blocklist_length;
@@ -469,7 +469,7 @@ static void guess_mv(ERContext *s)
         }
     }
 
-    for (depth = 0; ; depth++) {
+    for (;;) {
         int changed, pass, none_left;
         int blocklist_index;
 
@@ -804,7 +804,7 @@ void ff_er_frame_start(ERContext *s)
 
 static int er_supported(ERContext *s)
 {
-    if(s->avctx->hwaccel && s->avctx->hwaccel->decode_slice           ||
+    if (s->avctx->hwaccel ||
        !s->cur_pic.f                                                  ||
        s->cur_pic.field_picture
     )
@@ -828,7 +828,7 @@ void ff_er_add_slice(ERContext *s, int startx, int starty,
     const int end_xy   = s->mb_index2xy[end_i];
     int mask           = -1;
 
-    if (s->avctx->hwaccel && s->avctx->hwaccel->decode_slice)
+    if (s->avctx->hwaccel)
         return;
 
     if (start_i > end_i || start_xy > end_xy) {
@@ -889,7 +889,7 @@ void ff_er_add_slice(ERContext *s, int startx, int starty,
     }
 }
 
-void ff_er_frame_end(ERContext *s)
+void ff_er_frame_end(ERContext *s, int *decode_error_flags)
 {
     int *linesize = NULL;
     int i, mb_x, mb_y, error, error_type, dc_error, mv_error, ac_error;
@@ -946,17 +946,17 @@ void ff_er_frame_end(ERContext *s)
         av_log(s->avctx, AV_LOG_ERROR, "Warning MVs not available\n");
 
         for (i = 0; i < 2; i++) {
-            s->ref_index_buf[i]  = av_buffer_allocz(s->mb_stride * s->mb_height * 4 * sizeof(uint8_t));
-            s->motion_val_buf[i] = av_buffer_allocz((size + 4) * 2 * sizeof(uint16_t));
-            if (!s->ref_index_buf[i] || !s->motion_val_buf[i])
+            s->ref_index[i]       = av_calloc(s->mb_stride * s->mb_height, 4 * sizeof(uint8_t));
+            s->motion_val_base[i] = av_calloc(size + 4, 2 * sizeof(uint16_t));
+            if (!s->ref_index[i] || !s->motion_val_base[i])
                 break;
-            s->cur_pic.ref_index[i]  = s->ref_index_buf[i]->data;
-            s->cur_pic.motion_val[i] = (int16_t (*)[2])s->motion_val_buf[i]->data + 4;
+            s->cur_pic.ref_index[i]  = s->ref_index[i];
+            s->cur_pic.motion_val[i] = s->motion_val_base[i] + 4;
         }
         if (i < 2) {
             for (i = 0; i < 2; i++) {
-                av_buffer_unref(&s->ref_index_buf[i]);
-                av_buffer_unref(&s->motion_val_buf[i]);
+                av_freep(&s->ref_index[i]);
+                av_freep(&s->motion_val_base[i]);
                 s->cur_pic.ref_index[i]  = NULL;
                 s->cur_pic.motion_val[i] = NULL;
             }
@@ -1114,7 +1114,10 @@ void ff_er_frame_end(ERContext *s)
     av_log(s->avctx, AV_LOG_INFO, "concealing %d DC, %d AC, %d MV errors in %c frame\n",
            dc_error, ac_error, mv_error, av_get_picture_type_char(s->cur_pic.f->pict_type));
 
-    s->cur_pic.f->decode_error_flags |= FF_DECODE_ERROR_CONCEALMENT_ACTIVE;
+    if (decode_error_flags)
+        *decode_error_flags |= FF_DECODE_ERROR_CONCEALMENT_ACTIVE;
+    else
+        s->cur_pic.f->decode_error_flags |= FF_DECODE_ERROR_CONCEALMENT_ACTIVE;
 
     is_intra_likely = is_intra_more_likely(s);
 
@@ -1343,8 +1346,8 @@ void ff_er_frame_end(ERContext *s)
     }
 
     for (i = 0; i < 2; i++) {
-        av_buffer_unref(&s->ref_index_buf[i]);
-        av_buffer_unref(&s->motion_val_buf[i]);
+        av_freep(&s->ref_index[i]);
+        av_freep(&s->motion_val_base[i]);
         s->cur_pic.ref_index[i]  = NULL;
         s->cur_pic.motion_val[i] = NULL;
     }

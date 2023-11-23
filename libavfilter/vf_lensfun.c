@@ -28,11 +28,9 @@
 #include <float.h>
 #include <math.h>
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
-#include "libswscale/swscale.h"
 #include "avfilter.h"
-#include "formats.h"
+#include "filters.h"
 #include "internal.h"
 #include "video.h"
 
@@ -443,9 +441,14 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     AVFrame *out;
     VignettingThreadData vignetting_thread_data;
     DistortionCorrectionThreadData distortion_correction_thread_data;
+    int ret;
 
     if (lensfun->mode & VIGNETTING) {
-        av_frame_make_writable(in);
+        ret = ff_inlink_make_frame_writable(inlink, &in);
+        if (ret < 0) {
+            av_frame_free(&in);
+            return ret;
+        }
 
         vignetting_thread_data = (VignettingThreadData) {
             .width = inlink->w,
@@ -516,13 +519,6 @@ static const AVFilterPad lensfun_inputs[] = {
     },
 };
 
-static const AVFilterPad lensfun_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_lensfun = {
     .name          = "lensfun",
     .description   = NULL_IF_CONFIG_SMALL("Apply correction to an image based on info derived from the lensfun database."),
@@ -530,7 +526,7 @@ const AVFilter ff_vf_lensfun = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(lensfun_inputs),
-    FILTER_OUTPUTS(lensfun_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_RGB24),
     .priv_class    = &lensfun_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

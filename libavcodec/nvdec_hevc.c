@@ -29,6 +29,7 @@
 #include "internal.h"
 #include "hevcdec.h"
 #include "hevc_data.h"
+#include "hwaccel_internal.h"
 
 static void dpb_add(CUVIDHEVCPICPARAMS *pp, int idx, const HEVCFrame *src)
 {
@@ -204,8 +205,8 @@ static int nvdec_hevc_start_frame(AVCodecContext *avctx,
         ppc->row_height_minus1[i] = pps->row_height[i] - 1;
 
 #if NVDECAPI_CHECK_VERSION(9, 0)
-    if (pps->chroma_qp_offset_list_len_minus1 > FF_ARRAY_ELEMS(ppc->cb_qp_offset_list) ||
-        pps->chroma_qp_offset_list_len_minus1 > FF_ARRAY_ELEMS(ppc->cr_qp_offset_list)) {
+    if (pps->chroma_qp_offset_list_len_minus1 >= FF_ARRAY_ELEMS(ppc->cb_qp_offset_list) ||
+        pps->chroma_qp_offset_list_len_minus1 >= FF_ARRAY_ELEMS(ppc->cr_qp_offset_list)) {
         av_log(avctx, AV_LOG_ERROR, "Too many chroma_qp_offsets\n");
         return AVERROR(ENOSYS);
     }
@@ -305,14 +306,23 @@ static int nvdec_hevc_frame_params(AVCodecContext *avctx,
 static int nvdec_hevc_decode_init(AVCodecContext *avctx) {
     NVDECContext *ctx = avctx->internal->hwaccel_priv_data;
     ctx->supports_444 = 1;
+
+    if (avctx->profile != AV_PROFILE_HEVC_MAIN &&
+        avctx->profile != AV_PROFILE_HEVC_MAIN_10 &&
+        avctx->profile != AV_PROFILE_HEVC_MAIN_STILL_PICTURE &&
+        avctx->profile != AV_PROFILE_HEVC_REXT) {
+        av_log(avctx, AV_LOG_ERROR, "Unsupported HEVC profile: %d\n", avctx->profile);
+        return AVERROR(ENOTSUP);
+    }
+
     return ff_nvdec_decode_init(avctx);
 }
 
-const AVHWAccel ff_hevc_nvdec_hwaccel = {
-    .name                 = "hevc_nvdec",
-    .type                 = AVMEDIA_TYPE_VIDEO,
-    .id                   = AV_CODEC_ID_HEVC,
-    .pix_fmt              = AV_PIX_FMT_CUDA,
+const FFHWAccel ff_hevc_nvdec_hwaccel = {
+    .p.name               = "hevc_nvdec",
+    .p.type               = AVMEDIA_TYPE_VIDEO,
+    .p.id                 = AV_CODEC_ID_HEVC,
+    .p.pix_fmt            = AV_PIX_FMT_CUDA,
     .start_frame          = nvdec_hevc_start_frame,
     .end_frame            = ff_nvdec_end_frame,
     .decode_slice         = nvdec_hevc_decode_slice,

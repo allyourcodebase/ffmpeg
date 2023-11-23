@@ -397,9 +397,13 @@ int av_hwframe_transfer_get_formats(AVBufferRef *hwframe_ref,
 
 static int transfer_data_alloc(AVFrame *dst, const AVFrame *src, int flags)
 {
-    AVHWFramesContext *ctx = (AVHWFramesContext*)src->hw_frames_ctx->data;
+    AVHWFramesContext *ctx;
     AVFrame *frame_tmp;
     int ret = 0;
+
+    if (!src->hw_frames_ctx)
+        return AVERROR(EINVAL);
+    ctx = (AVHWFramesContext*)src->hw_frames_ctx->data;
 
     frame_tmp = av_frame_alloc();
     if (!frame_tmp)
@@ -815,8 +819,7 @@ int av_hwframe_map(AVFrame *dst, const AVFrame *src, int flags)
                 return AVERROR(EINVAL);
             }
             hwmap = (HWMapDescriptor*)src->buf[0]->data;
-            av_frame_unref(dst);
-            return av_frame_ref(dst, hwmap->source);
+            return av_frame_replace(dst, hwmap->source);
         }
     }
 
@@ -946,6 +949,5 @@ fail:
 int ff_hwframe_map_replace(AVFrame *dst, const AVFrame *src)
 {
     HWMapDescriptor *hwmap = (HWMapDescriptor*)dst->buf[0]->data;
-    av_frame_unref(hwmap->source);
-    return av_frame_ref(hwmap->source, src);
+    return av_frame_replace(hwmap->source, src);
 }

@@ -38,10 +38,13 @@
 #include "mpeg4video.h"
 #include "mpeg4videodata.h"
 #include "mpeg4videodec.h"
+#include "mpeg4videodefs.h"
 #include "h263.h"
 #include "h263data.h"
 #include "h263dec.h"
+#include "internal.h"
 #include "profiles.h"
+#include "qpeldsp.h"
 #include "threadframe.h"
 #include "xvididct.h"
 #include "unary.h"
@@ -70,6 +73,176 @@ static const int mb_type_b_map[4] = {
     MB_TYPE_L1      | MB_TYPE_16x16,
     MB_TYPE_L0      | MB_TYPE_16x16,
 };
+
+static void gmc1_motion(MpegEncContext *s, const Mpeg4DecContext *ctx,
+                        uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
+                        uint8_t *const *ref_picture)
+{
+    const uint8_t *ptr;
+    int src_x, src_y, motion_x, motion_y;
+    ptrdiff_t offset, linesize, uvlinesize;
+    int emu = 0;
+
+    motion_x   = ctx->sprite_offset[0][0];
+    motion_y   = ctx->sprite_offset[0][1];
+    src_x      = s->mb_x * 16 + (motion_x >> (ctx->sprite_warping_accuracy + 1));
+    src_y      = s->mb_y * 16 + (motion_y >> (ctx->sprite_warping_accuracy + 1));
+    motion_x *= 1 << (3 - ctx->sprite_warping_accuracy);
+    motion_y *= 1 << (3 - ctx->sprite_warping_accuracy);
+    src_x      = av_clip(src_x, -16, s->width);
+    if (src_x == s->width)
+        motion_x = 0;
+    src_y = av_clip(src_y, -16, s->height);
+    if (src_y == s->height)
+        motion_y = 0;
+
+    linesize   = s->linesize;
+    uvlinesize = s->uvlinesize;
+
+    ptr = ref_picture[0] + src_y * linesize + src_x;
+
+    if ((unsigned)src_x >= FFMAX(s->h_edge_pos - 17, 0) ||
+        (unsigned)src_y >= FFMAX(s->v_edge_pos - 17, 0)) {
+        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
+                                 linesize, linesize,
+                                 17, 17,
+                                 src_x, src_y,
+                                 s->h_edge_pos, s->v_edge_pos);
+        ptr = s->sc.edge_emu_buffer;
+    }
+
+    if ((motion_x | motion_y) & 7) {
+        ctx->mdsp.gmc1(dest_y, ptr, linesize, 16,
+                       motion_x & 15, motion_y & 15, 128 - s->no_rounding);
+        ctx->mdsp.gmc1(dest_y + 8, ptr + 8, linesize, 16,
+                       motion_x & 15, motion_y & 15, 128 - s->no_rounding);
+    } else {
+        int dxy;
+
+        dxy = ((motion_x >> 3) & 1) | ((motion_y >> 2) & 2);
+        if (s->no_rounding) {
+            s->hdsp.put_no_rnd_pixels_tab[0][dxy](dest_y, ptr, linesize, 16);
+        } else {
+            s->hdsp.put_pixels_tab[0][dxy](dest_y, ptr, linesize, 16);
+        }
+    }
+
+    if (CONFIG_GRAY && s->avctx->flags & AV_CODEC_FLAG_GRAY)
+        return;
+
+    motion_x   = ctx->sprite_offset[1][0];
+    motion_y   = ctx->sprite_offset[1][1];
+    src_x      = s->mb_x * 8 + (motion_x >> (ctx->sprite_warping_accuracy + 1));
+    src_y      = s->mb_y * 8 + (motion_y >> (ctx->sprite_warping_accuracy + 1));
+    motion_x  *= 1 << (3 - ctx->sprite_warping_accuracy);
+    motion_y  *= 1 << (3 - ctx->sprite_warping_accuracy);
+    src_x      = av_clip(src_x, -8, s->width >> 1);
+    if (src_x == s->width >> 1)
+        motion_x = 0;
+    src_y = av_clip(src_y, -8, s->height >> 1);
+    if (src_y == s->height >> 1)
+        motion_y = 0;
+
+    offset = (src_y * uvlinesize) + src_x;
+    ptr    = ref_picture[1] + offset;
+    if ((unsigned)src_x >= FFMAX((s->h_edge_pos >> 1) - 9, 0) ||
+        (unsigned)src_y >= FFMAX((s->v_edge_pos >> 1) - 9, 0)) {
+        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
+                                 uvlinesize, uvlinesize,
+                                 9, 9,
+                                 src_x, src_y,
+                                 s->h_edge_pos >> 1, s->v_edge_pos >> 1);
+        ptr = s->sc.edge_emu_buffer;
+        emu = 1;
+    }
+    ctx->mdsp.gmc1(dest_cb, ptr, uvlinesize, 8,
+                   motion_x & 15, motion_y & 15, 128 - s->no_rounding);
+
+    ptr = ref_picture[2] + offset;
+    if (emu) {
+        s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, ptr,
+                                 uvlinesize, uvlinesize,
+                                 9, 9,
+                                 src_x, src_y,
+                                 s->h_edge_pos >> 1, s->v_edge_pos >> 1);
+        ptr = s->sc.edge_emu_buffer;
+    }
+    ctx->mdsp.gmc1(dest_cr, ptr, uvlinesize, 8,
+                   motion_x & 15, motion_y & 15, 128 - s->no_rounding);
+}
+
+static void gmc_motion(MpegEncContext *s, const Mpeg4DecContext *ctx,
+                       uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
+                       uint8_t *const *ref_picture)
+{
+    const uint8_t *ptr;
+    int linesize, uvlinesize;
+    const int a = ctx->sprite_warping_accuracy;
+    int ox, oy;
+
+    linesize   = s->linesize;
+    uvlinesize = s->uvlinesize;
+
+    ptr = ref_picture[0];
+
+    ox = ctx->sprite_offset[0][0] + ctx->sprite_delta[0][0] * s->mb_x * 16 +
+         ctx->sprite_delta[0][1] * s->mb_y * 16;
+    oy = ctx->sprite_offset[0][1] + ctx->sprite_delta[1][0] * s->mb_x * 16 +
+         ctx->sprite_delta[1][1] * s->mb_y * 16;
+
+    ctx->mdsp.gmc(dest_y, ptr, linesize, 16,
+                  ox, oy,
+                  ctx->sprite_delta[0][0], ctx->sprite_delta[0][1],
+                  ctx->sprite_delta[1][0], ctx->sprite_delta[1][1],
+                  a + 1, (1 << (2 * a + 1)) - s->no_rounding,
+                  s->h_edge_pos, s->v_edge_pos);
+    ctx->mdsp.gmc(dest_y + 8, ptr, linesize, 16,
+                  ox + ctx->sprite_delta[0][0] * 8,
+                  oy + ctx->sprite_delta[1][0] * 8,
+                  ctx->sprite_delta[0][0], ctx->sprite_delta[0][1],
+                  ctx->sprite_delta[1][0], ctx->sprite_delta[1][1],
+                  a + 1, (1 << (2 * a + 1)) - s->no_rounding,
+                  s->h_edge_pos, s->v_edge_pos);
+
+    if (CONFIG_GRAY && s->avctx->flags & AV_CODEC_FLAG_GRAY)
+        return;
+
+    ox = ctx->sprite_offset[1][0] + ctx->sprite_delta[0][0] * s->mb_x * 8 +
+         ctx->sprite_delta[0][1] * s->mb_y * 8;
+    oy = ctx->sprite_offset[1][1] + ctx->sprite_delta[1][0] * s->mb_x * 8 +
+         ctx->sprite_delta[1][1] * s->mb_y * 8;
+
+    ptr = ref_picture[1];
+    ctx->mdsp.gmc(dest_cb, ptr, uvlinesize, 8,
+                  ox, oy,
+                  ctx->sprite_delta[0][0], ctx->sprite_delta[0][1],
+                  ctx->sprite_delta[1][0], ctx->sprite_delta[1][1],
+                  a + 1, (1 << (2 * a + 1)) - s->no_rounding,
+                  (s->h_edge_pos + 1) >> 1, (s->v_edge_pos + 1) >> 1);
+
+    ptr = ref_picture[2];
+    ctx->mdsp.gmc(dest_cr, ptr, uvlinesize, 8,
+                  ox, oy,
+                  ctx->sprite_delta[0][0], ctx->sprite_delta[0][1],
+                  ctx->sprite_delta[1][0], ctx->sprite_delta[1][1],
+                  a + 1, (1 << (2 * a + 1)) - s->no_rounding,
+                  (s->h_edge_pos + 1) >> 1, (s->v_edge_pos + 1) >> 1);
+}
+
+void ff_mpeg4_mcsel_motion(MpegEncContext *s,
+                           uint8_t *dest_y, uint8_t *dest_cb, uint8_t *dest_cr,
+                           uint8_t *const *ref_picture)
+{
+    const Mpeg4DecContext *const ctx = (Mpeg4DecContext*)s;
+
+    if (ctx->real_sprite_warping_points == 1) {
+        gmc1_motion(s, ctx, dest_y, dest_cb, dest_cr,
+                    ref_picture);
+    } else {
+        gmc_motion(s, ctx, dest_y, dest_cb, dest_cr,
+                    ref_picture);
+    }
+}
 
 void ff_mpeg4_decode_studio(MpegEncContext *s, uint8_t *dest_y, uint8_t *dest_cb,
                             uint8_t *dest_cr, int block_size, int uvlinesize,
@@ -123,7 +296,7 @@ void ff_mpeg4_decode_studio(MpegEncContext *s, uint8_t *dest_y, uint8_t *dest_cb
             int hsub = i ? s->chroma_x_shift : 0;
             int lowres = s->avctx->lowres;
             int step = 1 << lowres;
-            dest_pcm[i] += (linesize[i] / 2) * ((16 >> vsub) - 1);
+            dest_pcm[i] += (linesize[i] / 2) * ((16 >> vsub + lowres) - 1);
             for (int h = (16 >> (vsub + lowres)) - 1; h >= 0; h--){
                 for (int w = (16 >> (hsub + lowres)) - 1, idx = 0; w >= 0; w--, idx += step)
                     dest_pcm[i][w] = src[idx];
@@ -219,7 +392,11 @@ static inline int mpeg4_is_resync(Mpeg4DecContext *ctx)
         if (v == 0x7F)
             return s->mb_num;
     } else {
-        if (v == ff_mpeg4_resync_prefix[bits_count & 7]) {
+        static const uint16_t mpeg4_resync_prefix[8] = {
+            0x7F00, 0x7E00, 0x7C00, 0x7800, 0x7000, 0x6000, 0x4000, 0x0000
+        };
+
+        if (v == mpeg4_resync_prefix[bits_count & 7]) {
             int len, mb_num;
             int mb_num_bits = av_log2(s->mb_num - 1) + 1;
             GetBitContext gb = s->gb;
@@ -247,8 +424,8 @@ static inline int mpeg4_is_resync(Mpeg4DecContext *ctx)
 static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *gb)
 {
     MpegEncContext *s = &ctx->m;
-    int a     = 2 << s->sprite_warping_accuracy;
-    int rho   = 3  - s->sprite_warping_accuracy;
+    int a     = 2 << ctx->sprite_warping_accuracy;
+    int rho   = 3  - ctx->sprite_warping_accuracy;
     int r     = 16 / a;
     int alpha = 1;
     int beta  = 0;
@@ -436,7 +613,7 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
         sprite_delta[1][1] = a;
         ctx->sprite_shift[0] = 0;
         ctx->sprite_shift[1] = 0;
-        s->real_sprite_warping_points = 1;
+        ctx->real_sprite_warping_points = 1;
     } else {
         int shift_y = 16 - ctx->sprite_shift[0];
         int shift_c = 16 - ctx->sprite_shift[1];
@@ -482,18 +659,18 @@ static int mpeg4_decode_sprite_trajectory(Mpeg4DecContext *ctx, GetBitContext *g
                 goto overflow;
             }
         }
-        s->real_sprite_warping_points = ctx->num_sprite_warping_points;
+        ctx->real_sprite_warping_points = ctx->num_sprite_warping_points;
     }
 
     for (i = 0; i < 4; i++) {
-        s->sprite_offset[i&1][i>>1] = sprite_offset[i&1][i>>1];
-        s->sprite_delta [i&1][i>>1] = sprite_delta [i&1][i>>1];
+        ctx->sprite_offset[i&1][i>>1] = sprite_offset[i&1][i>>1];
+        ctx->sprite_delta [i&1][i>>1] = sprite_delta [i&1][i>>1];
     }
 
     return 0;
 overflow:
-    memset(s->sprite_offset, 0, sizeof(s->sprite_offset));
-    memset(s->sprite_delta, 0, sizeof(s->sprite_delta));
+    memset(ctx->sprite_offset, 0, sizeof(ctx->sprite_offset));
+    memset(ctx->sprite_delta,  0, sizeof(ctx->sprite_delta));
     return AVERROR_PATCHWELCOME;
 }
 
@@ -661,31 +838,31 @@ static inline int get_amv(Mpeg4DecContext *ctx, int n)
     MpegEncContext *s = &ctx->m;
     int x, y, mb_v, sum, dx, dy, shift;
     int len     = 1 << (s->f_code + 4);
-    const int a = s->sprite_warping_accuracy;
+    const int a = ctx->sprite_warping_accuracy;
 
     if (s->workaround_bugs & FF_BUG_AMV)
         len >>= s->quarter_sample;
 
-    if (s->real_sprite_warping_points == 1) {
+    if (ctx->real_sprite_warping_points == 1) {
         if (ctx->divx_version == 500 && ctx->divx_build == 413 && a >= s->quarter_sample)
-            sum = s->sprite_offset[0][n] / (1 << (a - s->quarter_sample));
+            sum = ctx->sprite_offset[0][n] / (1 << (a - s->quarter_sample));
         else
-            sum = RSHIFT(s->sprite_offset[0][n] * (1 << s->quarter_sample), a);
+            sum = RSHIFT(ctx->sprite_offset[0][n] * (1 << s->quarter_sample), a);
     } else {
-        dx    = s->sprite_delta[n][0];
-        dy    = s->sprite_delta[n][1];
+        dx    = ctx->sprite_delta[n][0];
+        dy    = ctx->sprite_delta[n][1];
         shift = ctx->sprite_shift[0];
         if (n)
             dy -= 1 << (shift + a + 1);
         else
             dx -= 1 << (shift + a + 1);
-        mb_v = s->sprite_offset[0][n] + dx * s->mb_x * 16U + dy * s->mb_y * 16U;
+        mb_v = ctx->sprite_offset[0][n] + dx * s->mb_x * 16U + dy * s->mb_y * 16U;
 
         sum = 0;
         for (y = 0; y < 16; y++) {
             int v;
 
-            v = mb_v + dy * y;
+            v = mb_v + (unsigned)dy * y;
             // FIXME optimize
             for (x = 0; x < 16; x++) {
                 sum += v >> shift;
@@ -772,7 +949,8 @@ static int mpeg4_decode_partition_a(Mpeg4DecContext *ctx)
             int dir = 0;
 
             mb_num++;
-            ff_update_block_index(s);
+            ff_update_block_index(s, s->avctx->bits_per_raw_sample,
+                                  s->avctx->lowres, s->chroma_x_shift);
             if (s->mb_x == s->resync_mb_x && s->mb_y == s->resync_mb_y + 1)
                 s->first_slice_line = 0;
 
@@ -963,7 +1141,8 @@ static int mpeg4_decode_partition_b(MpegEncContext *s, int mb_count)
             const int xy = s->mb_x + s->mb_y * s->mb_stride;
 
             mb_num++;
-            ff_update_block_index(s);
+            ff_update_block_index(s, s->avctx->bits_per_raw_sample,
+                                  s->avctx->lowres, s->chroma_x_shift);
             if (s->mb_x == s->resync_mb_x && s->mb_y == s->resync_mb_y + 1)
                 s->first_slice_line = 0;
 
@@ -1154,9 +1333,9 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
         }
         if (s->ac_pred) {
             if (dc_pred_dir == 0)
-                scan_table = s->intra_v_scantable.permutated;  /* left */
+                scan_table = s->permutated_intra_v_scantable;  /* left */
             else
-                scan_table = s->intra_h_scantable.permutated;  /* top */
+                scan_table = s->permutated_intra_h_scantable;  /* top */
         } else {
             scan_table = s->intra_scantable.permutated;
         }
@@ -1259,7 +1438,7 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
                                 if (SHOW_UBITS(re, &s->gb, 1) == 0) {
                                     av_log(s->avctx, AV_LOG_ERROR,
                                            "1. marker bit missing in 3. esc\n");
-                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR))
+                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR) || get_bits_left(&s->gb) <= 0)
                                         return AVERROR_INVALIDDATA;
                                 }
                                 SKIP_CACHE(re, &s->gb, 1);
@@ -1270,7 +1449,7 @@ static inline int mpeg4_decode_block(Mpeg4DecContext *ctx, int16_t *block,
                                 if (SHOW_UBITS(re, &s->gb, 1) == 0) {
                                     av_log(s->avctx, AV_LOG_ERROR,
                                            "2. marker bit missing in 3. esc\n");
-                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR))
+                                    if (!(s->avctx->err_recognition & AV_EF_IGNORE_ERR) || get_bits_left(&s->gb) <= 0)
                                         return AVERROR_INVALIDDATA;
                                 }
 
@@ -1475,6 +1654,7 @@ static int mpeg4_decode_mb(MpegEncContext *s, int16_t block[6][64])
     int16_t *mot_val;
     static const int8_t quant_tab[4] = { -1, -2, 1, 2 };
     const int xy = s->mb_x + s->mb_y * s->mb_stride;
+    int next;
 
     av_assert2(s ==  (void*)ctx);
     av_assert2(s->h263_pred);
@@ -1826,26 +2006,24 @@ intra:
 
 end:
     /* per-MB end of slice check */
-    if (s->codec_id == AV_CODEC_ID_MPEG4) {
-        int next = mpeg4_is_resync(ctx);
-        if (next) {
-            if        (s->mb_x + s->mb_y*s->mb_width + 1 >  next && (s->avctx->err_recognition & AV_EF_AGGRESSIVE)) {
-                return AVERROR_INVALIDDATA;
-            } else if (s->mb_x + s->mb_y*s->mb_width + 1 >= next)
-                return SLICE_END;
-
-            if (s->pict_type == AV_PICTURE_TYPE_B) {
-                const int delta= s->mb_x + 1 == s->mb_width ? 2 : 1;
-                ff_thread_await_progress(&s->next_picture_ptr->tf,
-                                         (s->mb_x + delta >= s->mb_width)
-                                         ? FFMIN(s->mb_y + 1, s->mb_height - 1)
-                                         : s->mb_y, 0);
-                if (s->next_picture.mbskip_table[xy + delta])
-                    return SLICE_OK;
-            }
-
+    next = mpeg4_is_resync(ctx);
+    if (next) {
+        if        (s->mb_x + s->mb_y*s->mb_width + 1 >  next && (s->avctx->err_recognition & AV_EF_AGGRESSIVE)) {
+            return AVERROR_INVALIDDATA;
+        } else if (s->mb_x + s->mb_y*s->mb_width + 1 >= next)
             return SLICE_END;
+
+        if (s->pict_type == AV_PICTURE_TYPE_B) {
+            const int delta = s->mb_x + 1 == s->mb_width ? 2 : 1;
+            ff_thread_await_progress(&s->next_picture_ptr->tf,
+                                        (s->mb_x + delta >= s->mb_width)
+                                        ? FFMIN(s->mb_y + 1, s->mb_height - 1)
+                                        : s->mb_y, 0);
+            if (s->next_picture.mbskip_table[xy + delta])
+                return SLICE_OK;
         }
+
+        return SLICE_END;
     }
 
     return SLICE_OK;
@@ -2387,10 +2565,10 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
      */
     if (ctx->vo_type == CORE_STUDIO_VO_TYPE ||
         ctx->vo_type == SIMPLE_STUDIO_VO_TYPE) {
-        if (s->avctx->profile != FF_PROFILE_UNKNOWN && s->avctx->profile != FF_PROFILE_MPEG4_SIMPLE_STUDIO)
+        if (s->avctx->profile != AV_PROFILE_UNKNOWN && s->avctx->profile != AV_PROFILE_MPEG4_SIMPLE_STUDIO)
             return AVERROR_INVALIDDATA;
         s->studio_profile = 1;
-        s->avctx->profile = FF_PROFILE_MPEG4_SIMPLE_STUDIO;
+        s->avctx->profile = AV_PROFILE_MPEG4_SIMPLE_STUDIO;
         return decode_studio_vol_header(ctx, gb);
     } else if (s->studio_profile) {
         return AVERROR_PATCHWELCOME;
@@ -2471,8 +2649,6 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     else
         s->avctx->framerate.den = 1;
 
-    s->avctx->time_base = av_inv_q(av_mul_q(s->avctx->framerate, (AVRational){s->avctx->ticks_per_frame, 1}));
-
     ctx->t_frame = 0;
 
     if (ctx->shape != BIN_ONLY_SHAPE) {
@@ -2525,7 +2701,7 @@ static int decode_vol_header(Mpeg4DecContext *ctx, GetBitContext *gb)
                 ctx->num_sprite_warping_points = 0;
                 return AVERROR_INVALIDDATA;
             }
-            s->sprite_warping_accuracy  = get_bits(gb, 2);
+            ctx->sprite_warping_accuracy  = get_bits(gb, 2);
             ctx->sprite_brightness_change = get_bits1(gb);
             if (ctx->vol_sprite_usage == STATIC_SPRITE)
                 skip_bits1(gb); // low_latency_sprite
@@ -2911,7 +3087,6 @@ int ff_mpeg4_workaround_bugs(AVCodecContext *avctx)
                ctx->divx_version, ctx->divx_build, s->divx_packed ? "p" : "");
 
     if (CONFIG_MPEG4_DECODER && ctx->xvid_build >= 0 &&
-        s->codec_id == AV_CODEC_ID_MPEG4 &&
         avctx->idct_algo == FF_IDCT_AUTO) {
         avctx->idct_algo = FF_IDCT_XVID;
         ff_mpv_idct_init(s);
@@ -2967,10 +3142,6 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb,
 
         av_log(s->avctx, AV_LOG_WARNING,
                "time_increment_bits set to %d bits, based on bitstream analysis\n", ctx->time_increment_bits);
-        if (s->avctx->framerate.num && 4*s->avctx->framerate.num < 1<<ctx->time_increment_bits) {
-            s->avctx->framerate.num = 1<<ctx->time_increment_bits;
-            s->avctx->time_base = av_inv_q(av_mul_q(s->avctx->framerate, (AVRational){s->avctx->ticks_per_frame, 1}));
-        }
     }
 
     if (IS_3IV1)
@@ -3087,13 +3258,17 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb,
     if (s->alternate_scan) {
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable,   ff_alternate_vertical_scan);
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable,   ff_alternate_vertical_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_h_scantable, ff_alternate_vertical_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_v_scantable, ff_alternate_vertical_scan);
+        ff_permute_scantable(s->permutated_intra_h_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
+        ff_permute_scantable(s->permutated_intra_v_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
     } else {
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable,   ff_zigzag_direct);
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable,   ff_zigzag_direct);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_h_scantable, ff_alternate_horizontal_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_v_scantable, ff_alternate_vertical_scan);
+        ff_permute_scantable(s->permutated_intra_h_scantable, ff_alternate_horizontal_scan,
+                             s->idsp.idct_permutation);
+        ff_permute_scantable(s->permutated_intra_v_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
     }
 
     /* Skip at this point when only parsing since the remaining
@@ -3113,8 +3288,8 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb,
             if (ctx->vol_sprite_usage == STATIC_SPRITE)
                 av_log(s->avctx, AV_LOG_ERROR, "static sprite not supported\n");
         } else {
-            memset(s->sprite_offset, 0, sizeof(s->sprite_offset));
-            memset(s->sprite_delta, 0, sizeof(s->sprite_delta));
+            memset(ctx->sprite_offset, 0, sizeof(ctx->sprite_offset));
+            memset(ctx->sprite_delta,  0, sizeof(ctx->sprite_delta));
         }
     }
 
@@ -3156,7 +3331,7 @@ static int decode_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb,
                    gb->size_in_bits,s->progressive_sequence, s->alternate_scan,
                    s->top_field_first, s->quarter_sample ? 'q' : 'h',
                    s->data_partitioning, ctx->resync_marker,
-                   ctx->num_sprite_warping_points, s->sprite_warping_accuracy,
+                   ctx->num_sprite_warping_points, ctx->sprite_warping_accuracy,
                    1 - s->no_rounding, ctx->vo_type,
                    ctx->vol_control_parameters ? " VOLC" : " ", ctx->intra_dc_threshold,
                    ctx->cplx_estimation_trash_i, ctx->cplx_estimation_trash_p,
@@ -3261,13 +3436,17 @@ static int decode_studio_vop_header(Mpeg4DecContext *ctx, GetBitContext *gb)
     if (s->alternate_scan) {
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable,   ff_alternate_vertical_scan);
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable,   ff_alternate_vertical_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_h_scantable, ff_alternate_vertical_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_v_scantable, ff_alternate_vertical_scan);
+        ff_permute_scantable(s->permutated_intra_h_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
+        ff_permute_scantable(s->permutated_intra_v_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
     } else {
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable,   ff_zigzag_direct);
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable,   ff_zigzag_direct);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_h_scantable, ff_alternate_horizontal_scan);
-        ff_init_scantable(s->idsp.idct_permutation, &s->intra_v_scantable, ff_alternate_vertical_scan);
+        ff_permute_scantable(s->permutated_intra_h_scantable, ff_alternate_horizontal_scan,
+                             s->idsp.idct_permutation);
+        ff_permute_scantable(s->permutated_intra_v_scantable, ff_alternate_vertical_scan,
+                             s->idsp.idct_permutation);
     }
 
     mpeg4_load_default_matrices(s);
@@ -3424,7 +3603,7 @@ int ff_mpeg4_decode_picture_header(Mpeg4DecContext *ctx, GetBitContext *gb,
         } else if (startcode == VOS_STARTCODE) {
             int profile, level;
             mpeg4_decode_profile_level(s, gb, &profile, &level);
-            if (profile == FF_PROFILE_MPEG4_SIMPLE_STUDIO &&
+            if (profile == AV_PROFILE_MPEG4_SIMPLE_STUDIO &&
                 (level > 0 && level < 9)) {
                 s->studio_profile = 1;
                 next_start_code_studio(gb);
@@ -3513,6 +3692,7 @@ int ff_mpeg4_frame_end(AVCodecContext *avctx, const uint8_t *buf, int buf_size)
     return 0;
 }
 
+#if CONFIG_MPEG4_DECODER
 #if HAVE_THREADS
 static int mpeg4_update_thread_context(AVCodecContext *dst,
                                        const AVCodecContext *src)
@@ -3531,7 +3711,9 @@ static int mpeg4_update_thread_context(AVCodecContext *dst,
     s->shape                     = s1->shape;
     s->vol_sprite_usage          = s1->vol_sprite_usage;
     s->sprite_brightness_change  = s1->sprite_brightness_change;
+    s->sprite_warping_accuracy   = s1->sprite_warping_accuracy;
     s->num_sprite_warping_points = s1->num_sprite_warping_points;
+    s->m.data_partitioning       = s1->m.data_partitioning;
     s->rvlc                      = s1->rvlc;
     s->resync_marker             = s1->resync_marker;
     s->t_frame                   = s1->t_frame;
@@ -3554,7 +3736,7 @@ static int mpeg4_update_thread_context(AVCodecContext *dst,
     memcpy(s->sprite_shift, s1->sprite_shift, sizeof(s1->sprite_shift));
     memcpy(s->sprite_traj,  s1->sprite_traj,  sizeof(s1->sprite_traj));
 
-    if (CONFIG_MPEG4_DECODER && !init && s1->xvid_build >= 0)
+    if (!init && s1->xvid_build >= 0)
         ff_xvid_idct_init(&s->m.idsp, dst);
 
     return 0;
@@ -3577,12 +3759,12 @@ static av_cold void mpeg4_init_static(void)
 {
     static uint8_t mpeg4_rvlc_rl_tables[2][2][2 * MAX_RUN + MAX_LEVEL + 3];
 
-    INIT_VLC_STATIC_FROM_LENGTHS(&studio_luma_dc, STUDIO_INTRA_BITS, 19,
+    VLC_INIT_STATIC_FROM_LENGTHS(&studio_luma_dc, STUDIO_INTRA_BITS, 19,
                                  &ff_mpeg4_studio_dc_luma[0][1], 2,
                                  &ff_mpeg4_studio_dc_luma[0][0], 2, 1,
                                  0, 0, 528);
 
-    INIT_VLC_STATIC_FROM_LENGTHS(&studio_chroma_dc, STUDIO_INTRA_BITS, 19,
+    VLC_INIT_STATIC_FROM_LENGTHS(&studio_chroma_dc, STUDIO_INTRA_BITS, 19,
                                  &ff_mpeg4_studio_dc_chroma[0][1], 2,
                                  &ff_mpeg4_studio_dc_chroma[0][0], 2, 1,
                                  0, 0, 528);
@@ -3592,11 +3774,11 @@ static av_cold void mpeg4_init_static(void)
 
         studio_intra_tab[i].table           = &vlc_buf[offset];
         studio_intra_tab[i].table_allocated = FF_ARRAY_ELEMS(vlc_buf) - offset;
-        ff_init_vlc_from_lengths(&studio_intra_tab[i],
+        ff_vlc_init_from_lengths(&studio_intra_tab[i],
                                  STUDIO_INTRA_BITS, 24,
                                  &ff_mpeg4_studio_intra[i][0][1], 2,
                                  &ff_mpeg4_studio_intra[i][0][0], 2, 1,
-                                 0, INIT_VLC_STATIC_OVERLONG, NULL);
+                                 0, VLC_INIT_STATIC_OVERLONG, NULL);
         offset += studio_intra_tab[i].table_size;
     }
 
@@ -3604,18 +3786,18 @@ static av_cold void mpeg4_init_static(void)
     ff_rl_init(&ff_rvlc_rl_inter, mpeg4_rvlc_rl_tables[0]);
     ff_rl_init(&ff_rvlc_rl_intra, mpeg4_rvlc_rl_tables[1]);
     INIT_FIRST_VLC_RL(ff_mpeg4_rl_intra, 554);
-    INIT_VLC_RL(ff_rvlc_rl_inter, 1072);
+    VLC_INIT_RL(ff_rvlc_rl_inter, 1072);
     INIT_FIRST_VLC_RL(ff_rvlc_rl_intra, 1072);
-    INIT_VLC_STATIC(&dc_lum, DC_VLC_BITS, 10 /* 13 */,
+    VLC_INIT_STATIC(&dc_lum, DC_VLC_BITS, 10 /* 13 */,
                     &ff_mpeg4_DCtab_lum[0][1], 2, 1,
                     &ff_mpeg4_DCtab_lum[0][0], 2, 1, 512);
-    INIT_VLC_STATIC(&dc_chrom, DC_VLC_BITS, 10 /* 13 */,
+    VLC_INIT_STATIC(&dc_chrom, DC_VLC_BITS, 10 /* 13 */,
                     &ff_mpeg4_DCtab_chrom[0][1], 2, 1,
                     &ff_mpeg4_DCtab_chrom[0][0], 2, 1, 512);
-    INIT_VLC_STATIC_FROM_LENGTHS(&sprite_trajectory, SPRITE_TRAJ_VLC_BITS, 15,
+    VLC_INIT_STATIC_FROM_LENGTHS(&sprite_trajectory, SPRITE_TRAJ_VLC_BITS, 15,
                                  ff_sprite_trajectory_lens, 1,
                                  NULL, 0, 0, 0, 0, 128);
-    INIT_VLC_STATIC(&mb_type_b_vlc, MB_TYPE_B_VLC_BITS, 4,
+    VLC_INIT_STATIC(&mb_type_b_vlc, MB_TYPE_B_VLC_BITS, 4,
                     &ff_mb_type_b_tab[0][1], 2, 1,
                     &ff_mb_type_b_tab[0][0], 2, 1, 16);
 }
@@ -3642,7 +3824,18 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     avctx->chroma_sample_location = AVCHROMA_LOC_LEFT;
 
+    ff_qpeldsp_init(&s->qdsp);
+    ff_mpeg4videodsp_init(&ctx->mdsp);
+
     ff_thread_once(&init_static_once, mpeg4_init_static);
+
+    /* Must be after initializing the MPEG-4 static tables */
+    if (avctx->extradata_size && !avctx->internal->is_copy) {
+        GetBitContext gb;
+
+        if (init_get_bits8(&gb, avctx->extradata, avctx->extradata_size) >= 0)
+            ff_mpeg4_decode_picture_header(ctx, &gb, 1, 0);
+    }
 
     return 0;
 }
@@ -3664,7 +3857,7 @@ static const AVClass mpeg4_class = {
 
 const FFCodec ff_mpeg4_decoder = {
     .p.name                = "mpeg4",
-    .p.long_name           = NULL_IF_CONFIG_SMALL("MPEG-4 part 2"),
+    CODEC_LONG_NAME("MPEG-4 part 2"),
     .p.type                = AVMEDIA_TYPE_VIDEO,
     .p.id                  = AV_CODEC_ID_MPEG4,
     .priv_data_size        = sizeof(Mpeg4DecContext),
@@ -3672,19 +3865,15 @@ const FFCodec ff_mpeg4_decoder = {
     .close                 = ff_h263_decode_end,
     FF_CODEC_DECODE_CB(ff_h263_decode_frame),
     .p.capabilities        = AV_CODEC_CAP_DRAW_HORIZ_BAND | AV_CODEC_CAP_DR1 |
-#if FF_API_FLAG_TRUNCATED
-                             AV_CODEC_CAP_TRUNCATED |
-#endif
                              AV_CODEC_CAP_DELAY | AV_CODEC_CAP_FRAME_THREADS,
-    .caps_internal         = FF_CODEC_CAP_INIT_THREADSAFE |
-                             FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM |
+    .caps_internal         = FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM |
                              FF_CODEC_CAP_ALLOCATE_PROGRESS,
     .flush                 = ff_mpeg_flush,
     .p.max_lowres          = 3,
     .p.pix_fmts            = ff_h263_hwaccel_pixfmt_list_420,
     .p.profiles            = NULL_IF_CONFIG_SMALL(ff_mpeg4_video_profiles),
-    .update_thread_context = ONLY_IF_THREADS_ENABLED(mpeg4_update_thread_context),
-    .update_thread_context_for_user = ONLY_IF_THREADS_ENABLED(mpeg4_update_thread_context_for_user),
+    UPDATE_THREAD_CONTEXT(mpeg4_update_thread_context),
+    UPDATE_THREAD_CONTEXT_FOR_USER(mpeg4_update_thread_context_for_user),
     .p.priv_class = &mpeg4_class,
     .hw_configs            = (const AVCodecHWConfigInternal *const []) {
 #if CONFIG_MPEG4_NVDEC_HWACCEL
@@ -3702,3 +3891,4 @@ const FFCodec ff_mpeg4_decoder = {
                                NULL
                            },
 };
+#endif /* CONFIG_MPEG4_DECODER */

@@ -30,9 +30,11 @@
 #include "config_components.h"
 
 #include "libavutil/bprint.h"
+#include "libavutil/intreadwrite.h"
 #include "avformat.h"
 #include "internal.h"
 #include "avio_internal.h"
+#include "mux.h"
 #include "pcm.h"
 #include "libavutil/avassert.h"
 
@@ -62,11 +64,15 @@ static const AVCodecTag *const au_codec_tags[] = { codec_au_tags, NULL };
 
 static int au_probe(const AVProbeData *p)
 {
-    if (p->buf[0] == '.' && p->buf[1] == 's' &&
-        p->buf[2] == 'n' && p->buf[3] == 'd')
-        return AVPROBE_SCORE_MAX;
-    else
+    if (p->buf_size < 24 ||
+        AV_RL32(p->buf) != MKTAG('.', 's', 'n', 'd') ||
+        AV_RN32(p->buf+4)  == 0 ||
+        AV_RN32(p->buf+8)  == 0 ||
+        AV_RN32(p->buf+12) == 0 ||
+        AV_RN32(p->buf+16) == 0 ||
+        AV_RN32(p->buf+20) == 0)
         return 0;
+    return AVPROBE_SCORE_MAX;
 }
 
 static int au_read_annotation(AVFormatContext *s, int size)
@@ -331,19 +337,19 @@ static int au_write_trailer(AVFormatContext *s)
     return 0;
 }
 
-const AVOutputFormat ff_au_muxer = {
-    .name          = "au",
-    .long_name     = NULL_IF_CONFIG_SMALL("Sun AU"),
-    .mime_type     = "audio/basic",
-    .extensions    = "au",
+const FFOutputFormat ff_au_muxer = {
+    .p.name         = "au",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Sun AU"),
+    .p.mime_type    = "audio/basic",
+    .p.extensions   = "au",
+    .p.codec_tag    = au_codec_tags,
+    .p.audio_codec  = AV_CODEC_ID_PCM_S16BE,
+    .p.video_codec  = AV_CODEC_ID_NONE,
+    .p.flags        = AVFMT_NOTIMESTAMPS,
     .priv_data_size = sizeof(AUContext),
-    .audio_codec   = AV_CODEC_ID_PCM_S16BE,
-    .video_codec   = AV_CODEC_ID_NONE,
     .write_header  = au_write_header,
     .write_packet  = ff_raw_write_packet,
     .write_trailer = au_write_trailer,
-    .codec_tag     = au_codec_tags,
-    .flags         = AVFMT_NOTIMESTAMPS,
 };
 
 #endif /* CONFIG_AU_MUXER */

@@ -30,6 +30,7 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "audio.h"
+#include "formats.h"
 #include "internal.h"
 
 #define SWR_CH_MAX 64
@@ -243,6 +244,10 @@ static int try_push_frame(AVFilterContext *ctx, int nb_samples)
     outbuf->pts = inbuf[0]->pts;
 
     outbuf->nb_samples     = nb_samples;
+    outbuf->duration = av_rescale_q(outbuf->nb_samples,
+                                    av_make_q(1, outlink->sample_rate),
+                                    outlink->time_base);
+
     if ((ret = av_channel_layout_copy(&outbuf->ch_layout, &outlink->ch_layout)) < 0)
         return ret;
 #if FF_API_OLD_CHANNEL_LAYOUT

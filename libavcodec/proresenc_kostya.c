@@ -135,6 +135,32 @@ static const uint8_t prores_quant_matrices[][64] = {
     },
 };
 
+static const uint8_t prores_dc_codebook[4] = {
+    0x04, // rice_order = 0, exp_golomb_order = 1, switch_bits = 0
+    0x28, // rice_order = 1, exp_golomb_order = 2, switch_bits = 0
+    0x4D, // rice_order = 2, exp_golomb_order = 3, switch_bits = 1
+    0x70  // rice_order = 3, exp_golomb_order = 4, switch_bits = 0
+};
+
+static const uint8_t prores_ac_codebook[7] = {
+    0x04, // rice_order = 0, exp_golomb_order = 1, switch_bits = 0
+    0x28, // rice_order = 1, exp_golomb_order = 2, switch_bits = 0
+    0x4C, // rice_order = 2, exp_golomb_order = 3, switch_bits = 0
+    0x05, // rice_order = 0, exp_golomb_order = 1, switch_bits = 1
+    0x29, // rice_order = 1, exp_golomb_order = 2, switch_bits = 1
+    0x06, // rice_order = 0, exp_golomb_order = 1, switch_bits = 2
+    0x0A, // rice_order = 0, exp_golomb_order = 2, switch_bits = 2
+};
+
+/**
+ * Lookup tables for adaptive switching between codebooks
+ * according with previous run/level value.
+ */
+static const uint8_t prores_run_to_cb_index[16] =
+    { 5, 5, 3, 3, 0, 4, 4, 4, 4, 1, 1, 1, 1, 1, 1, 2 };
+
+static const uint8_t prores_lev_to_cb_index[10] = { 0, 6, 3, 5, 0, 1, 1, 1, 1, 2 };
+
 #define NUM_MB_LIMITS 4
 static const int prores_mb_limits[NUM_MB_LIMITS] = {
     1620, // up to 720x576
@@ -423,7 +449,7 @@ static void encode_dcs(PutBitContext *pb, int16_t *blocks,
         new_sign = GET_SIGN(delta);
         delta    = (delta ^ sign) - sign;
         code     = MAKE_CODE(delta);
-        encode_vlc_codeword(pb, ff_prores_dc_codebook[codebook], code);
+        encode_vlc_codeword(pb, prores_dc_codebook[codebook], code);
         codebook = (code + (code & 1)) >> 1;
         codebook = FFMIN(codebook, 3);
         sign     = new_sign;
@@ -441,8 +467,8 @@ static void encode_acs(PutBitContext *pb, int16_t *blocks,
     int max_coeffs, abs_level;
 
     max_coeffs = blocks_per_slice << 6;
-    run_cb     = ff_prores_run_to_cb_index[4];
-    lev_cb     = ff_prores_lev_to_cb_index[2];
+    run_cb     = prores_run_to_cb_index[4];
+    lev_cb     = prores_lev_to_cb_index[2];
     run        = 0;
 
     for (i = 1; i < 64; i++) {
@@ -450,13 +476,13 @@ static void encode_acs(PutBitContext *pb, int16_t *blocks,
             level = blocks[idx] / qmat[scan[i]];
             if (level) {
                 abs_level = FFABS(level);
-                encode_vlc_codeword(pb, ff_prores_ac_codebook[run_cb], run);
-                encode_vlc_codeword(pb, ff_prores_ac_codebook[lev_cb],
+                encode_vlc_codeword(pb, prores_ac_codebook[run_cb], run);
+                encode_vlc_codeword(pb, prores_ac_codebook[lev_cb],
                                     abs_level - 1);
                 put_sbits(pb, 1, GET_SIGN(level));
 
-                run_cb = ff_prores_run_to_cb_index[FFMIN(run, 15)];
-                lev_cb = ff_prores_lev_to_cb_index[FFMIN(abs_level, 9)];
+                run_cb = prores_run_to_cb_index[FFMIN(run, 15)];
+                lev_cb = prores_lev_to_cb_index[FFMIN(abs_level, 9)];
                 run    = 0;
             } else {
                 run++;
@@ -559,7 +585,7 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic,
     if (ctx->pictures_per_frame == 1)
         line_add = 0;
     else
-        line_add = ctx->cur_picture_idx ^ !pic->top_field_first;
+        line_add = ctx->cur_picture_idx ^ !(pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
 
     if (ctx->force_quant) {
         qmat = ctx->quants[0];
@@ -667,7 +693,7 @@ static int estimate_dcs(int *error, int16_t *blocks, int blocks_per_slice,
         new_sign = GET_SIGN(delta);
         delta    = (delta ^ sign) - sign;
         code     = MAKE_CODE(delta);
-        bits    += estimate_vlc(ff_prores_dc_codebook[codebook], code);
+        bits    += estimate_vlc(prores_dc_codebook[codebook], code);
         codebook = (code + (code & 1)) >> 1;
         codebook = FFMIN(codebook, 3);
         sign     = new_sign;
@@ -687,8 +713,8 @@ static int estimate_acs(int *error, int16_t *blocks, int blocks_per_slice,
     int bits = 0;
 
     max_coeffs = blocks_per_slice << 6;
-    run_cb     = ff_prores_run_to_cb_index[4];
-    lev_cb     = ff_prores_lev_to_cb_index[2];
+    run_cb     = prores_run_to_cb_index[4];
+    lev_cb     = prores_lev_to_cb_index[2];
     run        = 0;
 
     for (i = 1; i < 64; i++) {
@@ -697,12 +723,12 @@ static int estimate_acs(int *error, int16_t *blocks, int blocks_per_slice,
             *error += FFABS(blocks[idx]) % qmat[scan[i]];
             if (level) {
                 abs_level = FFABS(level);
-                bits += estimate_vlc(ff_prores_ac_codebook[run_cb], run);
-                bits += estimate_vlc(ff_prores_ac_codebook[lev_cb],
+                bits += estimate_vlc(prores_ac_codebook[run_cb], run);
+                bits += estimate_vlc(prores_ac_codebook[lev_cb],
                                      abs_level - 1) + 1;
 
-                run_cb = ff_prores_run_to_cb_index[FFMIN(run, 15)];
-                lev_cb = ff_prores_lev_to_cb_index[FFMIN(abs_level, 9)];
+                run_cb = prores_run_to_cb_index[FFMIN(run, 15)];
+                lev_cb = prores_lev_to_cb_index[FFMIN(abs_level, 9)];
                 run    = 0;
             } else {
                 run++;
@@ -812,7 +838,7 @@ static int find_slice_quant(AVCodecContext *avctx,
     if (ctx->pictures_per_frame == 1)
         line_add = 0;
     else
-        line_add = ctx->cur_picture_idx ^ !ctx->pic->top_field_first;
+        line_add = ctx->cur_picture_idx ^ !(ctx->pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST);
     mbs = x + mbs_per_slice;
 
     for (i = 0; i < ctx->num_planes; i++) {
@@ -1019,7 +1045,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
     frame_flags = ctx->chroma_factor << 6;
     if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT)
-        frame_flags |= pic->top_field_first ? 0x04 : 0x08;
+        frame_flags |= (pic->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) ? 0x04 : 0x08;
     bytestream_put_byte  (&buf, frame_flags);
 
     bytestream_put_byte  (&buf, 0);             // reserved
@@ -1329,6 +1355,7 @@ static av_cold int encode_init(AVCodecContext *avctx)
     }
 
     avctx->codec_tag   = ctx->profile_info->tag;
+    avctx->profile = ctx->profile;
 
     av_log(avctx, AV_LOG_DEBUG,
            "profile %d, %d slices, interlacing: %s, %d bits per MB\n",
@@ -1395,19 +1422,20 @@ static const AVClass proresenc_class = {
 
 const FFCodec ff_prores_ks_encoder = {
     .p.name         = "prores_ks",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple ProRes (iCodec Pro)"),
+    CODEC_LONG_NAME("Apple ProRes (iCodec Pro)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_PRORES,
     .priv_data_size = sizeof(ProresContext),
     .init           = encode_init,
     .close          = encode_close,
     FF_CODEC_ENCODE_CB(encode_frame),
-    .p.capabilities = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS,
+    .p.capabilities = AV_CODEC_CAP_SLICE_THREADS | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.pix_fmts     = (const enum AVPixelFormat[]) {
                           AV_PIX_FMT_YUV422P10, AV_PIX_FMT_YUV444P10,
                           AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_NONE
                       },
     .p.priv_class   = &proresenc_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

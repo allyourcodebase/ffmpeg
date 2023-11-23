@@ -22,6 +22,7 @@
 #include "libavutil/avstring.h"
 #include "avformat.h"
 #include "internal.h"
+#include "mux.h"
 
 #include "libavutil/opt.h"
 
@@ -62,15 +63,16 @@ static int write_header(AVFormatContext *s)
         if (trailer)
             trailer = strstr(trailer, "\n");
 
-        if (trailer++) {
-            header_size = (trailer - par->extradata);
+        if (trailer) {
+            header_size = (++trailer - par->extradata);
             ass->trailer_size = par->extradata_size - header_size;
             if (ass->trailer_size)
                 ass->trailer = trailer;
         }
 
+        header_size = av_strnlen(par->extradata, header_size);
         avio_write(s->pb, par->extradata, header_size);
-        if (par->extradata[header_size - 1] != '\n')
+        if (header_size && par->extradata[header_size - 1] != '\n')
             avio_write(s->pb, "\r\n", 2);
         ass->ssa_mode = !strstr(par->extradata, "\n[V4+ Styles]");
         if (!strstr(par->extradata, "\n[Events]"))
@@ -226,16 +228,16 @@ static const AVClass ass_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_ass_muxer = {
-    .name           = "ass",
-    .long_name      = NULL_IF_CONFIG_SMALL("SSA (SubStation Alpha) subtitle"),
-    .mime_type      = "text/x-ass",
-    .extensions     = "ass,ssa",
+const FFOutputFormat ff_ass_muxer = {
+    .p.name           = "ass",
+    .p.long_name      = NULL_IF_CONFIG_SMALL("SSA (SubStation Alpha) subtitle"),
+    .p.mime_type      = "text/x-ass",
+    .p.extensions     = "ass,ssa",
+    .p.subtitle_codec = AV_CODEC_ID_ASS,
+    .p.flags          = AVFMT_GLOBALHEADER | AVFMT_NOTIMESTAMPS | AVFMT_TS_NONSTRICT,
+    .p.priv_class     = &ass_class,
     .priv_data_size = sizeof(ASSContext),
-    .subtitle_codec = AV_CODEC_ID_ASS,
     .write_header   = write_header,
     .write_packet   = write_packet,
     .write_trailer  = write_trailer,
-    .flags          = AVFMT_GLOBALHEADER | AVFMT_NOTIMESTAMPS | AVFMT_TS_NONSTRICT,
-    .priv_class     = &ass_class,
 };

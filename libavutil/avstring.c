@@ -32,7 +32,6 @@
 #include "bprint.h"
 #include "error.h"
 #include "macros.h"
-#include "version.h"
 
 int av_strstart(const char *str, const char *pfx, const char **ptr)
 {
@@ -138,16 +137,6 @@ char *av_asprintf(const char *fmt, ...)
 end:
     return p;
 }
-
-#if FF_API_D2STR
-char *av_d2str(double d)
-{
-    char *str = av_malloc(16);
-    if (str)
-        snprintf(str, 16, "%f", d);
-    return str;
-}
-#endif
 
 #define WHITESPACES " \n\t\r"
 

@@ -30,9 +30,9 @@
 #include "bswapdsp.h"
 #include "bytestream.h"
 #include "codec_internal.h"
+#include "decode.h"
 #include "get_bits.h"
 #include "golomb.h"
-#include "internal.h"
 
 #define MAX_CHANNELS 8
 #define MAX_BLOCKSIZE 65535
@@ -280,7 +280,7 @@ static int decode_wave_header(AVCodecContext *avctx, const uint8_t *header,
                               int header_size)
 {
     int len, bps;
-    short wave_format;
+    uint16_t wave_format;
     GetByteContext gb;
 
     bytestream2_init(&gb, header, header_size);
@@ -805,7 +805,7 @@ static av_cold int shorten_decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_shorten_decoder = {
     .p.name         = "shorten",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Shorten"),
+    CODEC_LONG_NAME("Shorten"),
     .p.type         = AVMEDIA_TYPE_AUDIO,
     .p.id           = AV_CODEC_ID_SHORTEN,
     .priv_data_size = sizeof(ShortenContext),
@@ -814,10 +814,11 @@ const FFCodec ff_shorten_decoder = {
     FF_CODEC_DECODE_CB(shorten_decode_frame),
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DELAY |
-                      AV_CODEC_CAP_DR1 |
-                      AV_CODEC_CAP_SUBFRAMES ,
+#if FF_API_SUBFRAMES
+                      AV_CODEC_CAP_SUBFRAMES |
+#endif
+                      AV_CODEC_CAP_DR1,
     .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
                                                       AV_SAMPLE_FMT_U8P,
                                                       AV_SAMPLE_FMT_NONE },
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -277,7 +277,8 @@ static uint8_t *read_sb_block(AVIOContext *src, unsigned *size,
     return buf;
 }
 
-static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *buf, int size)
+static int track_header(VividasDemuxContext *viv, AVFormatContext *s,
+                        const uint8_t *buf, int size)
 {
     int i, j, ret;
     int64_t off;
@@ -286,7 +287,7 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     FFIOContext pb0;
     AVIOContext *const pb = &pb0.pub;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_header_len
     avio_r8(pb); // '1'
@@ -432,7 +433,8 @@ static int track_header(VividasDemuxContext *viv, AVFormatContext *s,  uint8_t *
     return 0;
 }
 
-static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *buf, unsigned size)
+static int track_index(VividasDemuxContext *viv, AVFormatContext *s,
+                       const uint8_t *buf, unsigned size)
 {
     int64_t off;
     int64_t poff;
@@ -443,7 +445,7 @@ static int track_index(VividasDemuxContext *viv, AVFormatContext *s, uint8_t *bu
     int64_t filesize = avio_size(s->pb);
     uint64_t n_sb_blocks_tmp;
 
-    ffio_init_context(&pb0, buf, size, 0, NULL, NULL, NULL, NULL);
+    ffio_init_read_context(&pb0, buf, size);
 
     ffio_read_varlen(pb); // track_index_len
     avio_r8(pb); // 'c'
@@ -683,6 +685,7 @@ static int viv_read_packet(AVFormatContext *s,
 
     if (viv->sb_entries[viv->current_sb_entry].flag == 0) {
         uint64_t v_size = ffio_read_varlen(pb);
+        int last = 0, last_start;
 
         if (!viv->num_audio)
             return AVERROR_INVALIDDATA;
@@ -706,12 +709,18 @@ static int viv_read_packet(AVFormatContext *s,
 
             if (i > 0 && start == 0)
                 break;
+            if (start < last)
+                return AVERROR_INVALIDDATA;
 
             viv->n_audio_subpackets = i + 1;
+            last =
             viv->audio_subpackets[i].start = start;
             viv->audio_subpackets[i].pcm_bytes = pcm_bytes;
         }
+        last_start =
         viv->audio_subpackets[viv->n_audio_subpackets].start = (int)(off - avio_tell(pb));
+        if (last_start < last)
+            return AVERROR_INVALIDDATA;
         viv->current_audio_subpacket = 0;
 
     } else {

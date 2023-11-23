@@ -170,8 +170,11 @@ static int lrc_read_header(AVFormatContext *s)
     av_bprint_init(&line, 0, AV_BPRINT_SIZE_UNLIMITED);
 
     while(!avio_feof(s->pb)) {
-        int64_t pos = read_line(&line, s->pb);
-        int64_t header_offset = find_header(line.str);
+        int64_t header_offset, pos = read_line(&line, s->pb);
+
+        if (!av_bprint_is_complete(&line))
+            goto err_nomem_out;
+        header_offset = find_header(line.str);
         if(header_offset >= 0) {
             char *comma_offset = strchr(line.str, ':');
             if(comma_offset) {
@@ -205,7 +208,7 @@ static int lrc_read_header(AVFormatContext *s)
                 sub = ff_subtitles_queue_insert(&lrc->q, line.str + ts_strlength,
                                                 line.len - ts_strlength, 0);
                 if (!sub)
-                    return AVERROR(ENOMEM);
+                    goto err_nomem_out;
                 sub->pos = pos;
                 sub->pts = ts_start - lrc->ts_offset;
                 sub->duration = -1;
@@ -216,6 +219,9 @@ static int lrc_read_header(AVFormatContext *s)
     ff_metadata_conv_ctx(s, NULL, ff_lrc_metadata_conv);
     av_bprint_finalize(&line, NULL);
     return 0;
+err_nomem_out:
+    av_bprint_finalize(&line, NULL);
+    return AVERROR(ENOMEM);
 }
 
 const AVInputFormat ff_lrc_demuxer = {

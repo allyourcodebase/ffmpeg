@@ -26,15 +26,14 @@
  */
 
 #include "libavutil/avstring.h"
+#include "libavutil/file_open.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
 #include "psnr.h"
-#include "video.h"
 
 typedef struct PSNRContext {
     const AVClass *class;
@@ -187,6 +186,13 @@ static int do_psnr(FFFrameSync *fs)
         td.ref_linesize[c] = ref->linesize[c];
         td.planewidth[c] = s->planewidth[c];
         td.planeheight[c] = s->planeheight[c];
+    }
+
+    if (master->color_range != ref->color_range) {
+        av_log(ctx, AV_LOG_WARNING, "master and reference "
+               "frames use different color ranges (%s != %s)\n",
+               av_color_range_name(master->color_range),
+               av_color_range_name(ref->color_range));
     }
 
     ff_filter_execute(ctx, compute_images_mse, &td, NULL,

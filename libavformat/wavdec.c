@@ -555,7 +555,7 @@ static int wav_read_header(AVFormatContext *s)
         case MKTAG('I', 'D', '3', ' '):
         case MKTAG('i', 'd', '3', ' '): {
             ID3v2ExtraMeta *id3v2_extra_meta;
-            ff_id3v2_read_dict(pb, &ffformatcontext(s)->id3v2_meta, ID3v2_DEFAULT_MAGIC, &id3v2_extra_meta);
+            ff_id3v2_read(s, ID3v2_DEFAULT_MAGIC, &id3v2_extra_meta, 0);
             if (id3v2_extra_meta) {
                 ff_id3v2_parse_apic(s, id3v2_extra_meta);
                 ff_id3v2_parse_chapters(s, id3v2_extra_meta);
@@ -730,6 +730,10 @@ smv_retry:
                 goto smv_out;
             }
             size = avio_rl24(s->pb);
+            if (size > wav->smv_block_size) {
+                ret = AVERROR_EOF;
+                goto smv_out;
+            }
             ret  = av_get_packet(s->pb, pkt, size);
             if (ret < 0)
                 goto smv_out;
@@ -763,6 +767,8 @@ smv_out:
                 goto smv_retry;
             return AVERROR_EOF;
         }
+        if (INT64_MAX - left < avio_tell(s->pb))
+            return AVERROR_INVALIDDATA;
         wav->data_end = avio_tell(s->pb) + left;
     }
 
@@ -881,8 +887,11 @@ static int w64_read_header(AVFormatContext *s)
         if (avio_read(pb, guid, 16) != 16)
             break;
         size = avio_rl64(pb);
-        if (size <= 24 || INT64_MAX - size < avio_tell(pb))
+        if (size <= 24 || INT64_MAX - size < avio_tell(pb)) {
+            if (data_ofs)
+                break;
             return AVERROR_INVALIDDATA;
+        }
 
         if (!memcmp(guid, ff_w64_guid_fmt, 16)) {
             /* subtract chunk header size - normal wav file doesn't count it */
@@ -890,7 +899,18 @@ static int w64_read_header(AVFormatContext *s)
             if (ret < 0)
                 return ret;
             avio_skip(pb, FFALIGN(size, INT64_C(8)) - size);
+            if (st->codecpar->block_align) {
+                int block_align = st->codecpar->block_align;
 
+                block_align = FFMAX(block_align,
+                                    ((st->codecpar->bits_per_coded_sample + 7) / 8) *
+                                    st->codecpar->ch_layout.nb_channels);
+                if (block_align > st->codecpar->block_align) {
+                    av_log(s, AV_LOG_WARNING, "invalid block_align: %d, broken file.\n",
+                           st->codecpar->block_align);
+                    st->codecpar->block_align = block_align;
+                }
+            }
             avpriv_set_pts_info(st, 64, 1, st->codecpar->sample_rate);
         } else if (!memcmp(guid, ff_w64_guid_fact, 16)) {
             int64_t samples;

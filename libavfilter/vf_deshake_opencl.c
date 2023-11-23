@@ -48,17 +48,16 @@
 #include <float.h>
 #include <libavutil/lfg.h>
 #include "libavutil/opt.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/fifo.h"
 #include "libavutil/common.h"
 #include "libavutil/avassert.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/pixfmt.h"
 #include "avfilter.h"
 #include "framequeue.h"
 #include "filters.h"
 #include "transform.h"
-#include "formats.h"
 #include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
@@ -1251,7 +1250,7 @@ static int deshake_opencl_init(AVFilterContext *avctx)
     }
     ctx->sw_format = hw_frames_ctx->sw_format;
 
-    err = ff_opencl_filter_load_program(avctx, &ff_opencl_source_deshake, 1);
+    err = ff_opencl_filter_load_program(avctx, &ff_source_deshake_cl, 1);
     if (err < 0)
         goto fail;
 
@@ -1413,8 +1412,15 @@ static int filter_frame(AVFilterLink *link, AVFrame *input_frame)
             &debug_matches, 1);
     }
 
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
     if (input_frame->pkt_duration) {
         duration = input_frame->pkt_duration;
+    } else
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+    if (input_frame->duration) {
+        duration = input_frame->duration;
     } else {
         duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
     }
@@ -2162,5 +2168,6 @@ const AVFilter ff_vf_deshake_opencl = {
     FILTER_INPUTS(deshake_opencl_inputs),
     FILTER_OUTPUTS(deshake_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE
+    .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

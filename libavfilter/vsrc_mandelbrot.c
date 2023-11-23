@@ -27,12 +27,10 @@
  */
 
 #include "avfilter.h"
-#include "formats.h"
 #include "video.h"
 #include "internal.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include <float.h>
 #include <math.h>
 
@@ -395,6 +393,7 @@ static int request_frame(AVFilterLink *link)
 
     picref->sample_aspect_ratio = (AVRational) {1, 1};
     picref->pts = s->pts++;
+    picref->duration = 1;
 
     draw_mandelbrot(link->src, (uint32_t*)picref->data[0], picref->linesize[0]/4, picref->pts);
     return ff_filter_frame(link, picref);

@@ -31,7 +31,7 @@ enum WindowFunc     { WFUNC_RECT, WFUNC_HANNING, WFUNC_HAMMING, WFUNC_BLACKMAN,
                       WFUNC_BHARRIS, WFUNC_BNUTTALL, WFUNC_SINE, WFUNC_NUTTALL,
                       WFUNC_BHANN, WFUNC_LANCZOS, WFUNC_GAUSS, WFUNC_TUKEY,
                       WFUNC_DOLPH, WFUNC_CAUCHY, WFUNC_PARZEN, WFUNC_POISSON,
-                      WFUNC_BOHMAN,
+                      WFUNC_BOHMAN, WFUNC_KAISER,
                       NB_WFUNC };
 
 #define WIN_FUNC_OPTION(win_func_opt_name, win_func_offset, flag, default_window_func)                              \
@@ -56,7 +56,9 @@ enum WindowFunc     { WFUNC_RECT, WFUNC_HANNING, WFUNC_HAMMING, WFUNC_BLACKMAN,
         { "cauchy",   "Cauchy",           0, AV_OPT_TYPE_CONST, {.i64=WFUNC_CAUCHY},   0, 0, flag, "win_func" }, \
         { "parzen",   "Parzen",           0, AV_OPT_TYPE_CONST, {.i64=WFUNC_PARZEN},   0, 0, flag, "win_func" }, \
         { "poisson",  "Poisson",          0, AV_OPT_TYPE_CONST, {.i64=WFUNC_POISSON},  0, 0, flag, "win_func" }, \
-        { "bohman",   "Bohman",           0, AV_OPT_TYPE_CONST, {.i64=WFUNC_BOHMAN},   0, 0, flag, "win_func" }
+        { "bohman",   "Bohman",           0, AV_OPT_TYPE_CONST, {.i64=WFUNC_BOHMAN},   0, 0, flag, "win_func" }, \
+        { "kaiser",   "Kaiser",           0, AV_OPT_TYPE_CONST, {.i64=WFUNC_KAISER},   0, 0, flag, "win_func" }
+
 
 static inline void generate_window_func(float *lut, int N, int win_func,
                                         float *overlap)
@@ -216,6 +218,16 @@ static inline void generate_window_func(float *lut, int N, int win_func,
         }
         *overlap = 0.75;
         break;
+    case WFUNC_KAISER:
+    {
+        double scale = 1.0 / av_bessel_i0(12.);
+        for (n = 0; n < N; n++) {
+            double x = 2.0 / (double)(N - 1);
+            lut[n] = av_bessel_i0(12. * sqrt(1. - SQR(n * x - 1.))) * scale;
+        }
+        *overlap = 0.75;
+        break;
+    }
     default:
         av_assert0(0);
     }

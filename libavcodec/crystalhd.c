@@ -329,6 +329,10 @@ static av_cold int init(AVCodecContext *avctx)
     av_log(avctx, AV_LOG_VERBOSE, "CrystalHD Init for %s\n",
            avctx->codec->name);
 
+    av_log(avctx, AV_LOG_WARNING, "CrystalHD support is deprecated and will "
+           "be removed. Please contact the developers if you are interested in "
+           "maintaining it.\n");
+
     avctx->pix_fmt = AV_PIX_FMT_YUYV422;
 
     /* Initialize the library */
@@ -539,15 +543,19 @@ static inline CopyRet copy_frame(AVCodecContext *avctx,
         av_image_copy_plane(dst, dStride, src, sStride, bwidth, height);
     }
 
-    frame->interlaced_frame = interlaced;
+    frame->flags |= AV_FRAME_FLAG_INTERLACED * !!interlaced;
     if (interlaced)
-        frame->top_field_first = !bottom_first;
+        frame->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST * !bottom_first;
 
     frame->pts = pkt_pts;
 
+    frame->duration = 0;
+#if FF_API_FRAME_PKT
+FF_DISABLE_DEPRECATION_WARNINGS
     frame->pkt_pos = -1;
-    frame->pkt_duration = 0;
     frame->pkt_size = -1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     if (!priv->need_second_field) {
         *got_frame       = 1;
@@ -776,7 +784,7 @@ static int crystalhd_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     }; \
     const FFCodec ff_##x##_crystalhd_decoder = { \
         .p.name         = #x "_crystalhd", \
-        .p.long_name    = NULL_IF_CONFIG_SMALL("CrystalHD " #X " decoder"), \
+        CODEC_LONG_NAME("CrystalHD " #X " decoder"), \
         .p.type         = AVMEDIA_TYPE_VIDEO, \
         .p.id           = AV_CODEC_ID_##X, \
         .priv_data_size = sizeof(CHDContext), \
@@ -787,7 +795,8 @@ static int crystalhd_receive_frame(AVCodecContext *avctx, AVFrame *frame)
         .flush          = flush, \
         .bsfs           = bsf_name, \
         .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING | AV_CODEC_CAP_HARDWARE, \
-        .caps_internal  = FF_CODEC_CAP_SETS_FRAME_PROPS, \
+        .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE | \
+                          FF_CODEC_CAP_SETS_FRAME_PROPS, \
         .p.pix_fmts     = (const enum AVPixelFormat[]){AV_PIX_FMT_YUYV422, AV_PIX_FMT_NONE}, \
         .p.wrapper_name = "crystalhd", \
     };

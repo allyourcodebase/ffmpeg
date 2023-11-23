@@ -23,7 +23,6 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 
 #define MAX_OVERSAMPLE 64
 
@@ -473,20 +472,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_asoftclip = {
     .name           = "asoftclip",
     .description    = NULL_IF_CONFIG_SMALL("Audio Soft Clipper."),
     .priv_size      = sizeof(ASoftClipContext),
     .priv_class     = &asoftclip_class,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .uninit         = uninit,
     .process_command = ff_filter_process_command,

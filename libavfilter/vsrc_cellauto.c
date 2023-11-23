@@ -29,12 +29,10 @@
 #include "libavutil/internal.h"
 #include "libavutil/lfg.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/avstring.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "formats.h"
 #include "video.h"
 
 typedef struct CellAutoContext {
@@ -302,6 +300,7 @@ static int request_frame(AVFilterLink *outlink)
     evolve(outlink->src);
 
     picref->pts = s->pts++;
+    picref->duration = 1;
 
 #ifdef DEBUG
     show_cellauto_row(outlink->src);

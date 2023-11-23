@@ -30,7 +30,6 @@
 #include "config.h"
 
 #if HAVE_WINDOWS_H
-#define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #endif
 #if HAVE_OPENGL_GL3_H
@@ -50,6 +49,7 @@
 #endif
 
 #include "libavutil/common.h"
+#include "libavutil/frame.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -152,7 +152,7 @@ typedef struct FFOpenGLFunctions {
 {\
     GLenum err_code; \
     if ((err_code = glGetError()) != GL_NO_ERROR) { \
-        av_log(ctx, AV_LOG_ERROR, "OpenGL error occurred in '%s', line %d: %d\n", __FUNCTION__, __LINE__, err_code); \
+        av_log(ctx, AV_LOG_ERROR, "OpenGL error occurred in '%s', line %d: %d\n", __func__, __LINE__, err_code); \
         goto fail; \
     } \
 }\
@@ -594,7 +594,8 @@ static av_cold int opengl_read_limits(AVFormatContext *h)
     }
 
     av_log(h, AV_LOG_DEBUG, "OpenGL version: %s\n", version);
-    sscanf(version, "%d.%d", &major, &minor);
+    if (sscanf(version, "%d.%d", &major, &minor) != 2)
+        return AVERROR(ENOSYS);
 
     for (i = 0; required_extensions[i].extension; i++) {
         if (major < required_extensions[i].major &&
@@ -1200,6 +1201,10 @@ static int opengl_draw(AVFormatContext *h, void *input, int repaint, int is_pkt)
     int ret;
 
 #if CONFIG_SDL2
+    /* At this point, opengl->glcontext implies opengl->glcontext */
+    if (opengl->glcontext)
+        SDL_GL_MakeCurrent(opengl->window, opengl->glcontext);
+
     if (!opengl->no_window && (ret = opengl_sdl_process_events(h)) < 0)
         goto fail;
 #endif
@@ -1292,17 +1297,17 @@ static const AVClass opengl_class = {
     .category   = AV_CLASS_CATEGORY_DEVICE_VIDEO_OUTPUT,
 };
 
-const AVOutputFormat ff_opengl_muxer = {
-    .name           = "opengl",
-    .long_name      = NULL_IF_CONFIG_SMALL("OpenGL output"),
+const FFOutputFormat ff_opengl_muxer = {
+    .p.name              = "opengl",
+    .p.long_name         = NULL_IF_CONFIG_SMALL("OpenGL output"),
+    .p.audio_codec       = AV_CODEC_ID_NONE,
+    .p.video_codec       = AV_CODEC_ID_WRAPPED_AVFRAME,
+    .p.flags             = AVFMT_NOFILE | AVFMT_VARIABLE_FPS | AVFMT_NOTIMESTAMPS,
+    .p.priv_class        = &opengl_class,
     .priv_data_size = sizeof(OpenGLContext),
-    .audio_codec    = AV_CODEC_ID_NONE,
-    .video_codec    = AV_CODEC_ID_WRAPPED_AVFRAME,
     .write_header   = opengl_write_header,
     .write_packet   = opengl_write_packet,
     .write_uncoded_frame = opengl_write_frame,
     .write_trailer  = opengl_write_trailer,
     .control_message = opengl_control_message,
-    .flags          = AVFMT_NOFILE | AVFMT_VARIABLE_FPS | AVFMT_NOTIMESTAMPS,
-    .priv_class     = &opengl_class,
 };

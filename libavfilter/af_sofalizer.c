@@ -36,6 +36,7 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "audio.h"
 
@@ -525,7 +526,7 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
         }
 
         /* transform input signal of current channel to frequency domain */
-        tx_fn(fft, fft_out, fft_in, sizeof(float));
+        tx_fn(fft, fft_out, fft_in, sizeof(*fft_in));
 
         for (j = 0; j < n_fft; j++) {
             const AVComplexFloat *hcomplex = hrtf_offset + j;
@@ -541,7 +542,7 @@ static int sofalizer_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
     }
 
     /* transform output signal of current channel back to time domain */
-    itx_fn(ifft, fft_out, fft_acc, sizeof(float));
+    itx_fn(ifft, fft_out, fft_acc, sizeof(*fft_acc));
 
     for (j = 0; j < in->nb_samples; j++) {
         /* write output signal of current channel to output buffer */
@@ -597,7 +598,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     } else if (s->type == FREQUENCY_DOMAIN) {
         ff_filter_execute(ctx, sofalizer_fast_convolute, &td, NULL, 2);
     }
-    emms_c();
 
     /* display error message if clipping occurred */
     if (n_clippings[0] + n_clippings[1] > 0) {
@@ -832,7 +832,7 @@ static int load_data(AVFilterContext *ctx, int azim, int elev, float radius, int
     s->n_fft = n_fft = 1 << (32 - ff_clz(n_max + s->framesize));
 
     if (s->type == FREQUENCY_DOMAIN) {
-        float scale;
+        float scale = 1.f;
 
         av_tx_uninit(&s->fft[0]);
         av_tx_uninit(&s->fft[1]);
@@ -927,9 +927,9 @@ static int load_data(AVFilterContext *ctx, int azim, int elev, float radius, int
             }
 
             /* actually transform to frequency domain (IRs -> HRTFs) */
-            s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(float));
+            s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(*fft_in_l));
             memcpy(data_hrtf_l + offset, fft_out_l, n_fft * sizeof(*fft_out_l));
-            s->tx_fn[1](s->fft[1], fft_out_r, fft_in_r, sizeof(float));
+            s->tx_fn[1](s->fft[1], fft_out_r, fft_in_r, sizeof(*fft_in_r));
             memcpy(data_hrtf_r + offset, fft_out_r, n_fft * sizeof(*fft_out_r));
         }
     }
@@ -1086,13 +1086,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_sofalizer = {
     .name          = "sofalizer",
     .description   = NULL_IF_CONFIG_SMALL("SOFAlizer (Spatially Oriented Format for Acoustics)."),
@@ -1102,7 +1095,7 @@ const AVFilter ff_af_sofalizer = {
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

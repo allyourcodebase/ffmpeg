@@ -30,6 +30,7 @@
 #include "avformat.h"
 #include "id3v2.h"
 #include "internal.h"
+#include "url.h"
 
 
 /**
@@ -48,6 +49,31 @@ int av_match_ext(const char *filename, const char *extensions)
     if (ext)
         return av_match_name(ext + 1, extensions);
     return 0;
+}
+
+int ff_match_url_ext(const char *url, const char *extensions)
+{
+    const char *ext;
+    URLComponents uc;
+    int ret;
+    char scratchpad[128];
+
+    if (!url)
+        return 0;
+
+    ret = ff_url_decompose(&uc, url, NULL);
+    if (ret < 0 || !URL_COMPONENT_HAVE(uc, scheme))
+        return ret;
+    for (ext = uc.query; *ext != '.' && ext > uc.path; ext--)
+        ;
+
+    if (*ext != '.')
+        return 0;
+    if (uc.query - ext > sizeof(scratchpad))
+        return AVERROR(ENOMEM); //not enough memory in our scratchpad
+    av_strlcpy(scratchpad, ext + 1, uc.query - ext);
+
+    return av_match_name(scratchpad, extensions);
 }
 
 const AVOutputFormat *av_guess_format(const char *short_name, const char *filename,
@@ -111,8 +137,6 @@ enum AVCodecID av_guess_codec(const AVOutputFormat *fmt, const char *short_name,
         return fmt->audio_codec;
     else if (type == AVMEDIA_TYPE_SUBTITLE)
         return fmt->subtitle_codec;
-    else if (type == AVMEDIA_TYPE_DATA)
-        return fmt->data_codec;
     else
         return AV_CODEC_ID_NONE;
 }
@@ -233,6 +257,7 @@ int av_probe_input_buffer2(AVIOContext *pb, const AVInputFormat **fmt,
     int ret = 0, probe_size, buf_offset = 0;
     int score = 0;
     int ret2;
+    int eof = 0;
 
     if (!max_probe_size)
         max_probe_size = PROBE_BUF_MAX;
@@ -256,7 +281,7 @@ int av_probe_input_buffer2(AVIOContext *pb, const AVInputFormat **fmt,
         }
     }
 
-    for (probe_size = PROBE_BUF_MIN; probe_size <= max_probe_size && !*fmt;
+    for (probe_size = PROBE_BUF_MIN; probe_size <= max_probe_size && !*fmt && !eof;
          probe_size = FFMIN(probe_size << 1,
                             FFMAX(max_probe_size, probe_size + 1))) {
         score = probe_size < max_probe_size ? AVPROBE_SCORE_RETRY : 0;
@@ -272,6 +297,7 @@ int av_probe_input_buffer2(AVIOContext *pb, const AVInputFormat **fmt,
 
             score = 0;
             ret   = 0;          /* error was end of file, nothing read */
+            eof   = 1;
         }
         buf_offset += ret;
         if (buf_offset < offset)

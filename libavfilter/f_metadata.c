@@ -36,7 +36,6 @@
 #include "libavformat/avio.h"
 #include "avfilter.h"
 #include "audio.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 
@@ -308,7 +307,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     AVFilterLink *outlink = ctx->outputs[0];
     MetadataContext *s = ctx->priv;
     AVDictionary **metadata = &frame->metadata;
-    AVDictionaryEntry *e;
+    const AVDictionaryEntry *e;
 
     e = av_dict_get(*metadata, !s->key ? "" : s->key, NULL,
                     !s->key ? AV_DICT_IGNORE_SUFFIX: 0);
@@ -339,7 +338,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             s->print(ctx, "frame:%-4"PRId64" pts:%-7s pts_time:%s\n",
                      inlink->frame_count_out, av_ts2str(frame->pts), av_ts2timestr(frame->pts, &inlink->time_base));
             s->print(ctx, "%s=%s\n", e->key, e->value);
-            while ((e = av_dict_get(*metadata, "", e, AV_DICT_IGNORE_SUFFIX)) != NULL) {
+            while ((e = av_dict_iterate(*metadata, e)) != NULL) {
                 s->print(ctx, "%s=%s\n", e->key, e->value);
             }
         } else if (e && e->value && (!s->value || (e->value && s->compare(s, e->value, s->value)))) {
@@ -377,13 +376,6 @@ static const AVFilterPad ainputs[] = {
     },
 };
 
-static const AVFilterPad aoutputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_ametadata = {
     .name          = "ametadata",
     .description   = NULL_IF_CONFIG_SMALL("Manipulate audio frame metadata."),
@@ -392,7 +384,7 @@ const AVFilter ff_af_ametadata = {
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(ainputs),
-    FILTER_OUTPUTS(aoutputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
                      AVFILTER_FLAG_METADATA_ONLY,
 };
@@ -411,13 +403,6 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_metadata = {
     .name        = "metadata",
     .description = NULL_IF_CONFIG_SMALL("Manipulate video frame metadata."),
@@ -426,7 +411,7 @@ const AVFilter ff_vf_metadata = {
     .init        = init,
     .uninit      = uninit,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
                    AVFILTER_FLAG_METADATA_ONLY,
 };

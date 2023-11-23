@@ -32,7 +32,7 @@
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 #define CDTOONS_HEADER_SIZE   44
 #define CDTOONS_MAX_SPRITES 1200
@@ -384,7 +384,11 @@ static int cdtoons_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
             }
             /* first palette entry indicates transparency */
             c->pal[0]                     = 0;
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
             c->frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
         }
     }
 
@@ -445,7 +449,7 @@ static av_cold int cdtoons_decode_end(AVCodecContext *avctx)
 
 const FFCodec ff_cdtoons_decoder = {
     .p.name         = "cdtoons",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("CDToons video"),
+    CODEC_LONG_NAME("CDToons video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CDTOONS,
     .priv_data_size = sizeof(CDToonsContext),
@@ -454,5 +458,4 @@ const FFCodec ff_cdtoons_decoder = {
     FF_CODEC_DECODE_CB(cdtoons_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .flush          = cdtoons_flush,
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE,
 };

@@ -26,11 +26,10 @@
  */
 
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
+#include "video.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "libavformat/avio.h"
 #include "libswscale/swscale.h"
 #include "dnn_filter_common.h"
 
@@ -46,8 +45,7 @@ typedef struct SRContext {
 #define OFFSET(x) offsetof(SRContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption sr_options[] = {
-    { "dnn_backend", "DNN backend used for model execution", OFFSET(dnnctx.backend_type), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 1, FLAGS, "backend" },
-    { "native", "native backend flag", 0, AV_OPT_TYPE_CONST, { .i64 = 0 }, 0, 0, FLAGS, "backend" },
+    { "dnn_backend", "DNN backend used for model execution", OFFSET(dnnctx.backend_type), AV_OPT_TYPE_INT, { .i64 = 1 }, 0, 1, FLAGS, "backend" },
 #if (CONFIG_LIBTENSORFLOW == 1)
     { "tensorflow", "tensorflow backend flag", 0, AV_OPT_TYPE_CONST, { .i64 = 1 }, 0, 0, FLAGS, "backend" },
 #endif
@@ -159,8 +157,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         sws_scale(ctx->sws_uv_scale, (const uint8_t **)(in->data + 2), in->linesize + 2,
                   0, ctx->sws_uv_height, out->data + 2, out->linesize + 2);
     }
-
-    av_frame_free(&in);
+    if (in != out) {
+        av_frame_free(&in);
+    }
     return ff_filter_frame(outlink, out);
 }
 

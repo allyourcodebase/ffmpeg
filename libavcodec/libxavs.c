@@ -141,7 +141,7 @@ static int XAVS_frame(AVCodecContext *avctx, AVPacket *pkt,
 
         x4->pic.i_pts  = frame->pts;
         x4->pic.i_type = XAVS_TYPE_AUTO;
-        x4->pts_buffer[avctx->frame_number % (avctx->max_b_frames+1)] = frame->pts;
+        x4->pts_buffer[avctx->frame_num % (avctx->max_b_frames+1)] = frame->pts;
     }
 
     if (xavs_encoder_encode(x4->enc, &nal, &nnal,
@@ -423,7 +423,7 @@ static const FFCodecDefault xavs_defaults[] = {
 
 const FFCodec ff_libxavs_encoder = {
     .p.name         = "libxavs",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("libxavs Chinese AVS (Audio Video Standard)"),
+    CODEC_LONG_NAME("libxavs Chinese AVS (Audio Video Standard)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_CAVS,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY |
@@ -432,7 +432,8 @@ const FFCodec ff_libxavs_encoder = {
     .init           = XAVS_init,
     FF_CODEC_ENCODE_CB(XAVS_frame),
     .close          = XAVS_close,
-    .caps_internal  = FF_CODEC_CAP_AUTO_THREADS,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_AUTO_THREADS,
     .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE },
     .p.priv_class   = &xavs_class,
     .defaults       = xavs_defaults,

@@ -28,6 +28,9 @@
 #include "libavutil/opt.h"
 
 #include "libavcodec/ac3_parser_internal.h"
+#include "libavcodec/bytestream.h"
+#include "libavcodec/defs.h"
+#include "libavcodec/h264.h"
 #include "libavcodec/startcode.h"
 
 #include "avformat.h"
@@ -111,6 +114,7 @@ typedef struct MpegTSWrite {
 #define MPEGTS_FLAG_SYSTEM_B        0x08
 #define MPEGTS_FLAG_DISCONT         0x10
 #define MPEGTS_FLAG_NIT             0x20
+#define MPEGTS_FLAG_OMIT_RAI        0x40
     int flags;
     int copyts;
     int tables_version;
@@ -296,11 +300,11 @@ static int put_arib_caption_descriptor(AVFormatContext *s, uint8_t **q_ptr,
     uint8_t *q = *q_ptr;
 
     switch (codecpar->profile) {
-    case FF_PROFILE_ARIB_PROFILE_A:
+    case AV_PROFILE_ARIB_PROFILE_A:
         stream_identifier = 0x30;
         data_component_id = 0x0008;
         break;
-    case FF_PROFILE_ARIB_PROFILE_C:
+    case AV_PROFILE_ARIB_PROFILE_C:
         stream_identifier = 0x87;
         data_component_id = 0x0012;
         break;
@@ -418,13 +422,16 @@ static int get_dvb_stream_type(AVFormatContext *s, AVStream *st)
     case AV_CODEC_ID_TIMED_ID3:
         stream_type = STREAM_TYPE_METADATA;
         break;
+    case AV_CODEC_ID_SMPTE_2038:
+        stream_type = STREAM_TYPE_PRIVATE_DATA;
+        break;
     case AV_CODEC_ID_DVB_SUBTITLE:
     case AV_CODEC_ID_DVB_TELETEXT:
     case AV_CODEC_ID_ARIB_CAPTION:
         stream_type = STREAM_TYPE_PRIVATE_DATA;
         break;
     case AV_CODEC_ID_SMPTE_KLV:
-        if (st->codecpar->profile == FF_PROFILE_KLVA_SYNC) {
+        if (st->codecpar->profile == AV_PROFILE_KLVA_SYNC) {
             stream_type = STREAM_TYPE_METADATA;
         } else {
             stream_type = STREAM_TYPE_PRIVATE_DATA;
@@ -800,6 +807,8 @@ static int mpegts_write_pmt(AVFormatContext *s, MpegTSService *service)
         case AVMEDIA_TYPE_DATA:
             if (codec_id == AV_CODEC_ID_SMPTE_KLV) {
                 put_registration_descriptor(&q, MKTAG('K', 'L', 'V', 'A'));
+            } else if (codec_id == AV_CODEC_ID_SMPTE_2038) {
+                put_registration_descriptor(&q, MKTAG('V', 'A', 'N', 'C'));
             } else if (codec_id == AV_CODEC_ID_TIMED_ID3) {
                 const char *tag = "ID3 ";
                 *q++ = METADATA_DESCRIPTOR;
@@ -1451,7 +1460,8 @@ static int get_pes_stream_id(AVFormatContext *s, AVStream *st, int stream_id, in
                st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
         return STREAM_ID_PRIVATE_STREAM_1;
     } else if (st->codecpar->codec_type == AVMEDIA_TYPE_DATA) {
-        if (stream_id == STREAM_ID_PRIVATE_STREAM_1) /* asynchronous KLV */
+        if (st->codecpar->codec_id == AV_CODEC_ID_SMPTE_KLV &&
+            stream_id == STREAM_ID_PRIVATE_STREAM_1) /* asynchronous KLV */
             *async = 1;
         return stream_id != -1 ? stream_id : STREAM_ID_METADATA_STREAM;
     } else {
@@ -1565,7 +1575,8 @@ static void mpegts_write_pes(AVFormatContext *s, AVStream *st,
             q = get_ts_payload_start(buf);
             ts_st->discontinuity = 0;
         }
-        if (key && is_start && pts != AV_NOPTS_VALUE &&
+        if (!(ts->flags & MPEGTS_FLAG_OMIT_RAI) &&
+            key && is_start && pts != AV_NOPTS_VALUE &&
             !is_dvb_teletext /* adaptation+payload forbidden for teletext (ETSI EN 300 472 V1.3.1 4.1) */) {
             // set Random Access for key frames
             if (ts_st->pcr_period)
@@ -1874,6 +1885,7 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
 
     if (st->codecpar->codec_id == AV_CODEC_ID_H264) {
         const uint8_t *p = buf, *buf_end = p + size;
+        const uint8_t *found_aud = NULL, *found_aud_end = NULL;
         uint32_t state = -1;
         int extradd = (pkt->flags & AV_PKT_FLAG_KEY) ? st->codecpar->extradata_size : 0;
         int ret = ff_check_h264_startcode(s, st, pkt);
@@ -1883,27 +1895,58 @@ static int mpegts_write_packet_internal(AVFormatContext *s, AVPacket *pkt)
         if (extradd && AV_RB24(st->codecpar->extradata) > 1)
             extradd = 0;
 
+        /* Ensure that all pictures are prefixed with an AUD, and that
+         * IDR pictures are also prefixed with SPS and PPS. SPS and PPS
+         * are assumed to be available in 'extradata' if not found in-band. */
         do {
             p = avpriv_find_start_code(p, buf_end, &state);
             av_log(s, AV_LOG_TRACE, "nal %"PRId32"\n", state & 0x1f);
-            if ((state & 0x1f) == 7)
+            if ((state & 0x1f) == H264_NAL_SPS)
                 extradd = 0;
-        } while (p < buf_end && (state & 0x1f) != 9 &&
-                 (state & 0x1f) != 5 && (state & 0x1f) != 1);
-
-        if ((state & 0x1f) != 5)
+            if ((state & 0x1f) == H264_NAL_AUD) {
+                found_aud = p - 4;     // start of the 0x000001 start code.
+                found_aud_end = p + 1; // first byte past the AUD.
+                if (found_aud < buf)
+                    found_aud = buf;
+                if (buf_end < found_aud_end)
+                    found_aud_end = buf_end;
+            }
+        } while (p < buf_end
+                 && (state & 0x1f) != H264_NAL_IDR_SLICE
+                 && (state & 0x1f) != H264_NAL_SLICE
+                 && (extradd > 0 || !found_aud));
+        if ((state & 0x1f) != H264_NAL_IDR_SLICE)
             extradd = 0;
-        if ((state & 0x1f) != 9) { // AUD NAL
+
+        if (!found_aud) {
+            /* Prefix 'buf' with the missing AUD, and extradata if needed. */
             data = av_malloc(pkt->size + 6 + extradd);
             if (!data)
                 return AVERROR(ENOMEM);
             memcpy(data + 6, st->codecpar->extradata, extradd);
             memcpy(data + 6 + extradd, pkt->data, pkt->size);
             AV_WB32(data, 0x00000001);
-            data[4] = 0x09;
+            data[4] = H264_NAL_AUD;
             data[5] = 0xf0; // any slice type (0xe) + rbsp stop one bit
             buf     = data;
             size    = pkt->size + 6 + extradd;
+        } else if (extradd != 0) {
+            /* Move the AUD up to the beginning of the frame, where the H.264
+             * spec requires it to appear. Emit the extradata after it. */
+            PutByteContext pb;
+            const int new_pkt_size = pkt->size + 1 + extradd;
+            data = av_malloc(new_pkt_size);
+            if (!data)
+                return AVERROR(ENOMEM);
+            bytestream2_init_writer(&pb, data, new_pkt_size);
+            bytestream2_put_byte(&pb, 0x00);
+            bytestream2_put_buffer(&pb, found_aud, found_aud_end - found_aud);
+            bytestream2_put_buffer(&pb, st->codecpar->extradata, extradd);
+            bytestream2_put_buffer(&pb, pkt->data, found_aud - pkt->data);
+            bytestream2_put_buffer(&pb, found_aud_end, buf_end - found_aud_end);
+            av_assert0(new_pkt_size == bytestream2_tell_p(&pb));
+            buf     = data;
+            size    = new_pkt_size;
         }
     } else if (st->codecpar->codec_id == AV_CODEC_ID_AAC) {
         if (pkt->size < 2) {
@@ -2281,6 +2324,8 @@ static const AVOption options[] = {
       0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_DISCONT }, 0, INT_MAX, ENC, "mpegts_flags" },
     { "nit", "Enable NIT transmission",
       0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_NIT}, 0, INT_MAX, ENC, "mpegts_flags" },
+    { "omit_rai", "Disable writing of random access indicator",
+      0, AV_OPT_TYPE_CONST, { .i64 = MPEGTS_FLAG_OMIT_RAI }, 0, INT_MAX, ENC, "mpegts_flags" },
     { "mpegts_copyts", "don't offset dts/pts", OFFSET(copyts), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, ENC },
     { "tables_version", "set PAT, PMT, SDT and NIT version", OFFSET(tables_version), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 31, ENC },
     { "omit_video_pes_length", "Omit the PES packet length for video packets",
@@ -2303,19 +2348,24 @@ static const AVClass mpegts_muxer_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_mpegts_muxer = {
-    .name           = "mpegts",
-    .long_name      = NULL_IF_CONFIG_SMALL("MPEG-TS (MPEG-2 Transport Stream)"),
-    .mime_type      = "video/MP2T",
-    .extensions     = "ts,m2t,m2ts,mts",
+const FFOutputFormat ff_mpegts_muxer = {
+    .p.name         = "mpegts",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("MPEG-TS (MPEG-2 Transport Stream)"),
+    .p.mime_type    = "video/MP2T",
+    .p.extensions   = "ts,m2t,m2ts,mts",
     .priv_data_size = sizeof(MpegTSWrite),
-    .audio_codec    = AV_CODEC_ID_MP2,
-    .video_codec    = AV_CODEC_ID_MPEG2VIDEO,
+    .p.audio_codec  = AV_CODEC_ID_MP2,
+    .p.video_codec  = AV_CODEC_ID_MPEG2VIDEO,
     .init           = mpegts_init,
     .write_packet   = mpegts_write_packet,
     .write_trailer  = mpegts_write_end,
     .deinit         = mpegts_deinit,
     .check_bitstream = mpegts_check_bitstream,
-    .flags          = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
-    .priv_class     = &mpegts_muxer_class,
+#if FF_API_ALLOW_FLUSH
+    .p.flags        = AVFMT_ALLOW_FLUSH | AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
+#else
+    .p.flags         = AVFMT_VARIABLE_FPS | AVFMT_NODIMENSIONS,
+#endif
+    .flags_internal  = FF_FMT_ALLOW_FLUSH,
+    .p.priv_class   = &mpegts_muxer_class,
 };

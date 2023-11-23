@@ -75,7 +75,11 @@ typedef struct SmoothStreamingContext {
     int nb_fragments;
 } SmoothStreamingContext;
 
+#if FF_API_AVIO_WRITE_NONCONST
 static int ism_write(void *opaque, uint8_t *buf, int buf_size)
+#else
+static int ism_write(void *opaque, const uint8_t *buf, int buf_size)
+#endif
 {
     OutputStream *os = opaque;
     if (os->out)
@@ -340,7 +344,7 @@ static int ism_write_header(AVFormatContext *s)
         }
 
         av_dict_set_int(&opts, "ism_lookahead", c->lookahead_count, 0);
-        av_dict_set(&opts, "movflags", "frag_custom", 0);
+        av_dict_set(&opts, "movflags", "+frag_custom", 0);
         ret = avformat_write_header(ctx, &opts);
         av_dict_free(&opts);
         if (ret < 0) {
@@ -637,16 +641,16 @@ static const AVClass ism_class = {
 };
 
 
-const AVOutputFormat ff_smoothstreaming_muxer = {
-    .name           = "smoothstreaming",
-    .long_name      = NULL_IF_CONFIG_SMALL("Smooth Streaming Muxer"),
+const FFOutputFormat ff_smoothstreaming_muxer = {
+    .p.name         = "smoothstreaming",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Smooth Streaming Muxer"),
+    .p.audio_codec  = AV_CODEC_ID_AAC,
+    .p.video_codec  = AV_CODEC_ID_H264,
+    .p.flags        = AVFMT_GLOBALHEADER | AVFMT_NOFILE,
+    .p.priv_class   = &ism_class,
     .priv_data_size = sizeof(SmoothStreamingContext),
-    .audio_codec    = AV_CODEC_ID_AAC,
-    .video_codec    = AV_CODEC_ID_H264,
-    .flags          = AVFMT_GLOBALHEADER | AVFMT_NOFILE,
     .write_header   = ism_write_header,
     .write_packet   = ism_write_packet,
     .write_trailer  = ism_write_trailer,
     .deinit         = ism_free,
-    .priv_class     = &ism_class,
 };

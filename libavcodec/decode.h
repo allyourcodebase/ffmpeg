@@ -21,7 +21,6 @@
 #ifndef AVCODEC_DECODE_H
 #define AVCODEC_DECODE_H
 
-#include "libavutil/buffer.h"
 #include "libavutil/frame.h"
 #include "libavutil/hwcontext.h"
 
@@ -65,6 +64,12 @@ typedef struct FrameDecodeData {
 int ff_decode_get_packet(AVCodecContext *avctx, AVPacket *pkt);
 
 /**
+ * Set various frame properties from the provided packet.
+ */
+int ff_decode_frame_props_from_pkt(const AVCodecContext *avctx,
+                                   AVFrame *frame, const AVPacket *pkt);
+
+/**
  * Set various frame properties from the codec context / packet data.
  */
 int ff_decode_frame_props(AVCodecContext *avctx, AVFrame *frame);
@@ -89,9 +94,65 @@ int ff_attach_decode_data(AVFrame *frame);
 int ff_copy_palette(void *dst, const AVPacket *src, void *logctx);
 
 /**
- * Perform decoder initialization and validation.
- * Called when opening the decoder, before the FFCodec.init() call.
+ * Check that the provided frame dimensions are valid and set them on the codec
+ * context.
  */
-int ff_decode_preinit(AVCodecContext *avctx);
+int ff_set_dimensions(AVCodecContext *s, int width, int height);
+
+/**
+ * Check that the provided sample aspect ratio is valid and set it on the codec
+ * context.
+ */
+int ff_set_sar(AVCodecContext *avctx, AVRational sar);
+
+/**
+ * Select the (possibly hardware accelerated) pixel format.
+ * This is a wrapper around AVCodecContext.get_format() and should be used
+ * instead of calling get_format() directly.
+ *
+ * The list of pixel formats must contain at least one valid entry, and is
+ * terminated with AV_PIX_FMT_NONE.  If it is possible to decode to software,
+ * the last entry in the list must be the most accurate software format.
+ * If it is not possible to decode to software, AVCodecContext.sw_pix_fmt
+ * must be set before calling this function.
+ */
+int ff_get_format(AVCodecContext *avctx, const enum AVPixelFormat *fmt);
+
+/**
+ * Get a buffer for a frame. This is a wrapper around
+ * AVCodecContext.get_buffer() and should be used instead calling get_buffer()
+ * directly.
+ */
+int ff_get_buffer(AVCodecContext *avctx, AVFrame *frame, int flags);
+
+#define FF_REGET_BUFFER_FLAG_READONLY 1 ///< the returned buffer does not need to be writable
+/**
+ * Identical in function to ff_get_buffer(), except it reuses the existing buffer
+ * if available.
+ */
+int ff_reget_buffer(AVCodecContext *avctx, AVFrame *frame, int flags);
+
+/**
+ * Add or update AV_FRAME_DATA_MATRIXENCODING side data.
+ */
+int ff_side_data_update_matrix_encoding(AVFrame *frame,
+                                        enum AVMatrixEncoding matrix_encoding);
+
+/**
+ * Allocate a hwaccel frame private data if the provided avctx
+ * uses a hwaccel method that needs it. The returned data is
+ * a RefStruct reference (if allocated).
+ *
+ * @param  avctx                   The codec context
+ * @param  hwaccel_picture_private Pointer to return hwaccel_picture_private
+ * @return 0 on success, < 0 on error
+ */
+int ff_hwaccel_frame_priv_alloc(AVCodecContext *avctx, void **hwaccel_picture_private);
+
+/**
+ * Get side data of the given type from a decoding context.
+ */
+const AVPacketSideData *ff_get_coded_side_data(const AVCodecContext *avctx,
+                                               enum AVPacketSideDataType type);
 
 #endif /* AVCODEC_DECODE_H */

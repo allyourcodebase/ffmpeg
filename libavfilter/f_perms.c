@@ -24,6 +24,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/random_seed.h"
 #include "audio.h"
+#include "filters.h"
 #include "video.h"
 
 enum mode {
@@ -96,8 +97,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
            in_perm == out_perm ? " (no-op)" : "");
 
     if (in_perm == RO && out_perm == RW) {
-        if ((ret = av_frame_make_writable(frame)) < 0)
+        if ((ret = ff_inlink_make_frame_writable(inlink, &frame)) < 0)
             return ret;
+        out = frame;
     } else if (in_perm == RW && out_perm == RO) {
         out = av_frame_clone(frame);
         if (!out)
@@ -123,13 +125,6 @@ static const AVFilterPad aperms_inputs[] = {
     },
 };
 
-static const AVFilterPad aperms_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_aperms = {
     .name        = "aperms",
     .description = NULL_IF_CONFIG_SMALL("Set permissions for the output audio frame."),
@@ -137,7 +132,7 @@ const AVFilter ff_af_aperms = {
     .init        = init,
     .priv_size   = sizeof(PermsContext),
     FILTER_INPUTS(aperms_inputs),
-    FILTER_OUTPUTS(aperms_outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
                    AVFILTER_FLAG_METADATA_ONLY,
     .process_command = ff_filter_process_command,
@@ -154,20 +149,13 @@ static const AVFilterPad perms_inputs[] = {
     },
 };
 
-static const AVFilterPad perms_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_perms = {
     .name        = "perms",
     .description = NULL_IF_CONFIG_SMALL("Set permissions for the output video frame."),
     .init        = init,
     .priv_size   = sizeof(PermsContext),
     FILTER_INPUTS(perms_inputs),
-    FILTER_OUTPUTS(perms_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     .priv_class  = &perms_class,
     .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
                    AVFILTER_FLAG_METADATA_ONLY,

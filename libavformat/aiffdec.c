@@ -164,6 +164,7 @@ static int get_aiff_header(AVFormatContext *s, int64_t size,
         case AV_CODEC_ID_ADPCM_IMA_WS:
         case AV_CODEC_ID_ADPCM_G722:
         case AV_CODEC_ID_MACE6:
+        case AV_CODEC_ID_CBD2_DPCM:
         case AV_CODEC_ID_SDX2_DPCM:
             par->block_align = 1 * channels;
             break;
@@ -201,8 +202,8 @@ static int get_aiff_header(AVFormatContext *s, int64_t size,
 static int aiff_probe(const AVProbeData *p)
 {
     /* check file header */
-    if (p->buf[0] == 'F' && p->buf[1] == 'O' &&
-        p->buf[2] == 'R' && p->buf[3] == 'M' &&
+    if (AV_RL32(p->buf) == MKTAG('F', 'O', 'R', 'M') &&
+        AV_RB32(p->buf + 4) >= 4 &&
         p->buf[8] == 'A' && p->buf[9] == 'I' &&
         p->buf[10] == 'F' && (p->buf[11] == 'F' || p->buf[11] == 'C'))
         return AVPROBE_SCORE_MAX;

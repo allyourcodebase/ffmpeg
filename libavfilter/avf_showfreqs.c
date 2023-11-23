@@ -30,6 +30,7 @@
 #include "libavutil/parseutils.h"
 #include "audio.h"
 #include "filters.h"
+#include "formats.h"
 #include "video.h"
 #include "avfilter.h"
 #include "internal.h"
@@ -151,7 +152,7 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
     ShowFreqsContext *s = ctx->priv;
-    float overlap, scale;
+    float overlap, scale = 1.f;
     int i, ret;
 
     s->old_pts = AV_NOPTS_VALUE;
@@ -403,7 +404,7 @@ static int plot_freqs(AVFilterLink *inlink, int64_t pts)
         if (s->bypass[ch])
             continue;
 
-        s->tx_fn(s->fft, s->fft_data[ch], s->fft_input[ch], sizeof(float));
+        s->tx_fn(s->fft, s->fft_data[ch], s->fft_input[ch], sizeof(AVComplexFloat));
     }
 
     s->pts = av_rescale_q(pts, inlink->time_base, outlink->time_base);
@@ -469,6 +470,7 @@ static int plot_freqs(AVFilterLink *inlink, int64_t pts)
 
     av_free(colors);
     out->pts = s->pts;
+    out->duration = 1;
     out->sample_aspect_ratio = (AVRational){1,1};
     return ff_filter_frame(outlink, out);
 }
@@ -546,13 +548,6 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_frame_free(&s->window);
 }
 
-static const AVFilterPad showfreqs_inputs[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 static const AVFilterPad showfreqs_outputs[] = {
     {
         .name          = "default",
@@ -567,7 +562,7 @@ const AVFilter ff_avf_showfreqs = {
     .uninit        = uninit,
     .priv_size     = sizeof(ShowFreqsContext),
     .activate      = activate,
-    FILTER_INPUTS(showfreqs_inputs),
+    FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showfreqs_outputs),
     FILTER_QUERY_FUNC(query_formats),
     .priv_class    = &showfreqs_class,

@@ -23,6 +23,7 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 
 #include <float.h>
@@ -146,10 +147,10 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_free(&in);
         return AVERROR(ENOMEM);
     }
+    av_frame_copy_props(out, in);
 
     vb_stereo(ctx, out, in);
 
-    out->pts = in->pts;
     av_frame_free(&in);
     return ff_filter_frame(outlink, out);
 }
@@ -163,20 +164,13 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-static const AVFilterPad outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_AUDIO,
-    },
-};
-
 const AVFilter ff_af_virtualbass = {
     .name            = "virtualbass",
     .description     = NULL_IF_CONFIG_SMALL("Audio Virtual Bass."),
     .priv_size       = sizeof(AudioVirtualBassContext),
     .priv_class      = &virtualbass_class,
     FILTER_INPUTS(inputs),
-    FILTER_OUTPUTS(outputs),
+    FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_QUERY_FUNC(query_formats),
     .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .process_command = ff_filter_process_command,

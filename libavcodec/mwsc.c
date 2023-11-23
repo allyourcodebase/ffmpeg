@@ -21,13 +21,11 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "zlib_wrapper.h"
 
 #include <zlib.h>
@@ -121,13 +119,15 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     bytestream2_init(&gbp, s->prev_frame->data[0], avctx->height * s->prev_frame->linesize[0]);
     bytestream2_init_writer(&pb, frame->data[0], avctx->height * frame->linesize[0]);
 
-    frame->key_frame = rle_uncompress(&gb, &pb, &gbp, avctx->width, avctx->height, avctx->width * 3,
-                                      frame->linesize[0], s->prev_frame->linesize[0]);
+    if (rle_uncompress(&gb, &pb, &gbp, avctx->width, avctx->height, avctx->width * 3,
+                       frame->linesize[0], s->prev_frame->linesize[0]))
+        frame->flags |= AV_FRAME_FLAG_KEY;
+    else
+        frame->flags &= ~AV_FRAME_FLAG_KEY;
 
-    frame->pict_type = frame->key_frame ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
+    frame->pict_type = (frame->flags & AV_FRAME_FLAG_KEY) ? AV_PICTURE_TYPE_I : AV_PICTURE_TYPE_P;
 
-    av_frame_unref(s->prev_frame);
-    if ((ret = av_frame_ref(s->prev_frame, frame)) < 0)
+    if ((ret = av_frame_replace(s->prev_frame, frame)) < 0)
         return ret;
 
     *got_frame = 1;
@@ -170,7 +170,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_mwsc_decoder = {
     .p.name           = "mwsc",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("MatchWare Screen Capture Codec"),
+    CODEC_LONG_NAME("MatchWare Screen Capture Codec"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_MWSC,
     .priv_data_size   = sizeof(MWSCContext),
@@ -178,6 +178,5 @@ const FFCodec ff_mwsc_decoder = {
     .close            = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE |
-                        FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

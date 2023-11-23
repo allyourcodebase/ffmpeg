@@ -23,13 +23,10 @@
  * MP test source, ported from MPlayer libmpcodecs/vf_test.c
  */
 
-#include "libavutil/avstring.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "internal.h"
-#include "formats.h"
 #include "video.h"
 
 #define WIDTH 512
@@ -308,6 +305,7 @@ static int request_frame(AVFilterLink *outlink)
     if (!picref)
         return AVERROR(ENOMEM);
     picref->pts = test->pts++;
+    picref->duration = 1;
 
     // clean image
     for (i = 0; i < h; i++)

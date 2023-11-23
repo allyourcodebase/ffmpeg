@@ -30,11 +30,12 @@
 #include "libavutil/dovi_meta.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/opt.h"
-#include "libavutil/avstring.h"
 #include "libavutil/replaygain.h"
 #include "libavutil/spherical.h"
 #include "libavutil/stereo3d.h"
 #include "libavutil/timecode.h"
+
+#include "libavcodec/avcodec.h"
 
 #include "avformat.h"
 #include "internal.h"
@@ -139,16 +140,14 @@ static void dump_metadata(void *ctx, const AVDictionary *m, const char *indent)
         const AVDictionaryEntry *tag = NULL;
 
         av_log(ctx, AV_LOG_INFO, "%sMetadata:\n", indent);
-        while ((tag = av_dict_get(m, "", tag, AV_DICT_IGNORE_SUFFIX)))
+        while ((tag = av_dict_iterate(m, tag)))
             if (strcmp("language", tag->key)) {
                 const char *p = tag->value;
                 av_log(ctx, AV_LOG_INFO,
                        "%s  %-16s: ", indent, tag->key);
                 while (*p) {
-                    char tmp[256];
                     size_t len = strcspn(p, "\x8\xa\xb\xc\xd");
-                    av_strlcpy(tmp, p, FFMIN(sizeof(tmp), len+1));
-                    av_log(ctx, AV_LOG_INFO, "%s", tmp);
+                    av_log(ctx, AV_LOG_INFO, "%.*s", (int)(FFMIN(255, len)), p);
                     p += len;
                     if (*p == 0xd) av_log(ctx, AV_LOG_INFO, " ");
                     if (*p == 0xa) av_log(ctx, AV_LOG_INFO, "\n%s  %-16s: ", indent, "");
@@ -432,11 +431,11 @@ static void dump_sidedata(void *ctx, const AVStream *st, const char *indent)
 {
     int i;
 
-    if (st->nb_side_data)
+    if (st->codecpar->nb_coded_side_data)
         av_log(ctx, AV_LOG_INFO, "%sSide data:\n", indent);
 
-    for (i = 0; i < st->nb_side_data; i++) {
-        const AVPacketSideData *sd = &st->side_data[i];
+    for (i = 0; i < st->codecpar->nb_coded_side_data; i++) {
+        const AVPacketSideData *sd = &st->codecpar->coded_side_data[i];
         av_log(ctx, AV_LOG_INFO, "%s  ", indent);
 
         switch (sd->type) {

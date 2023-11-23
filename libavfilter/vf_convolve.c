@@ -22,16 +22,13 @@
 
 #include <float.h>
 
-#include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/tx.h"
 
 #include "avfilter.h"
-#include "formats.h"
 #include "framesync.h"
 #include "internal.h"
-#include "video.h"
 
 #define MAX_THREADS 16
 
@@ -196,7 +193,7 @@ static int fft_horizontal(AVFilterContext *ctx, void *arg, int jobnr, int nb_job
     int y;
 
     for (y = start; y < end; y++) {
-        s->tx_fn[plane](s->fft[plane][jobnr], hdata_out + y * n, hdata_in + y * n, sizeof(float));
+        s->tx_fn[plane](s->fft[plane][jobnr], hdata_out + y * n, hdata_in + y * n, sizeof(AVComplexFloat));
     }
 
     return 0;
@@ -388,7 +385,7 @@ static int fft_vertical(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
             vdata_in[y * n + x].im = hdata[x * n + y].im;
         }
 
-        s->tx_fn[plane](s->fft[plane][jobnr], vdata_out + y * n, vdata_in + y * n, sizeof(float));
+        s->tx_fn[plane](s->fft[plane][jobnr], vdata_out + y * n, vdata_in + y * n, sizeof(AVComplexFloat));
     }
 
     return 0;
@@ -408,7 +405,7 @@ static int ifft_vertical(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs
     int y, x;
 
     for (y = start; y < end; y++) {
-        s->itx_fn[plane](s->ifft[plane][jobnr], vdata_out + y * n, vdata_in + y * n, sizeof(float));
+        s->itx_fn[plane](s->ifft[plane][jobnr], vdata_out + y * n, vdata_in + y * n, sizeof(AVComplexFloat));
 
         for (x = 0; x < n; x++) {
             hdata[x * n + y].re = vdata_out[y * n + x].re;
@@ -432,7 +429,7 @@ static int ifft_horizontal(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
     int y;
 
     for (y = start; y < end; y++) {
-        s->itx_fn[plane](s->ifft[plane][jobnr], hdata_out + y * n, hdata_in + y * n, sizeof(float));
+        s->itx_fn[plane](s->ifft[plane][jobnr], hdata_out + y * n, hdata_in + y * n, sizeof(AVComplexFloat));
     }
 
     return 0;
@@ -778,7 +775,7 @@ static int config_output(AVFilterLink *outlink)
 
     for (i = 0; i < s->nb_planes; i++) {
         for (j = 0; j < MAX_THREADS; j++) {
-            float scale;
+            float scale = 1.f;
 
             ret = av_tx_init(&s->fft[i][j], &s->tx_fn[i], AV_TX_FLOAT_FFT, 0, s->fft_len[i], &scale, 0);
             if (ret < 0)

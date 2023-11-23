@@ -31,7 +31,9 @@
 #include "libavutil/eval.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "formats.h"
 #include "internal.h"
+#include "video.h"
 
 #define MAX_NB_THREADS 32
 #define NB_PLANES 4
@@ -515,13 +517,6 @@ static const AVFilterPad geq_inputs[] = {
     },
 };
 
-static const AVFilterPad geq_outputs[] = {
-    {
-        .name = "default",
-        .type = AVMEDIA_TYPE_VIDEO,
-    },
-};
-
 const AVFilter ff_vf_geq = {
     .name          = "geq",
     .description   = NULL_IF_CONFIG_SMALL("Apply generic equation to each pixel."),
@@ -529,7 +524,7 @@ const AVFilter ff_vf_geq = {
     .init          = geq_init,
     .uninit        = geq_uninit,
     FILTER_INPUTS(geq_inputs),
-    FILTER_OUTPUTS(geq_outputs),
+    FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_QUERY_FUNC(geq_query_formats),
     .priv_class    = &geq_class,
     .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,

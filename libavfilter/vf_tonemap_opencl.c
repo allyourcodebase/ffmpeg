@@ -240,8 +240,8 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
 
     av_log(avctx, AV_LOG_DEBUG, "Generated OpenCL header:\n%s\n", header.str);
     opencl_sources[0] = header.str;
-    opencl_sources[1] = ff_opencl_source_tonemap;
-    opencl_sources[2] = ff_opencl_source_colorspace_common;
+    opencl_sources[1] = ff_source_tonemap_cl;
+    opencl_sources[2] = ff_source_colorspace_common_cl;
     err = ff_opencl_filter_load_program(avctx, opencl_sources, OPENCL_SOURCE_NB);
 
     av_bprint_finalize(&header, NULL);
@@ -547,4 +547,5 @@ const AVFilter ff_vf_tonemap_opencl = {
     FILTER_OUTPUTS(tonemap_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
+    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

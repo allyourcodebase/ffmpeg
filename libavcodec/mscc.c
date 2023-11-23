@@ -21,13 +21,12 @@
  */
 
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 #include "zlib_wrapper.h"
 
 #include <zlib.h>
@@ -151,7 +150,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         const uint8_t *pal = av_packet_get_side_data(avpkt, AV_PKT_DATA_PALETTE, &size);
 
         if (pal && size == AVPALETTE_SIZE) {
+#if FF_API_PALETTE_HAS_CHANGED
+FF_DISABLE_DEPRECATION_WARNINGS
             frame->palette_has_changed = 1;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
             for (j = 0; j < 256; j++)
                 s->pal[j] = 0xFF000000 | AV_RL32(pal + j * 4);
         } else if (pal) {
@@ -201,7 +204,7 @@ inflate_error:
                s->uncomp_buf + s->bpp * j * avctx->width, s->bpp * avctx->width);
     }
 
-    frame->key_frame = 1;
+    frame->flags |= AV_FRAME_FLAG_KEY;
     frame->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;
@@ -253,7 +256,7 @@ static av_cold int decode_close(AVCodecContext *avctx)
 
 const FFCodec ff_mscc_decoder = {
     .p.name           = "mscc",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("Mandsoft Screen Capture Codec"),
+    CODEC_LONG_NAME("Mandsoft Screen Capture Codec"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_MSCC,
     .priv_data_size   = sizeof(MSCCContext),
@@ -261,12 +264,12 @@ const FFCodec ff_mscc_decoder = {
     .close            = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
 const FFCodec ff_srgc_decoder = {
     .p.name           = "srgc",
-    .p.long_name      = NULL_IF_CONFIG_SMALL("Screen Recorder Gold Codec"),
+    CODEC_LONG_NAME("Screen Recorder Gold Codec"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_SRGC,
     .priv_data_size   = sizeof(MSCCContext),
@@ -274,5 +277,5 @@ const FFCodec ff_srgc_decoder = {
     .close            = decode_close,
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities   = AV_CODEC_CAP_DR1,
-    .caps_internal    = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

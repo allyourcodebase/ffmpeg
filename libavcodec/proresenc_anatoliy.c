@@ -31,9 +31,7 @@
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "dct.h"
 #include "encode.h"
-#include "internal.h"
 #include "profiles.h"
 #include "proresdata.h"
 #include "put_bits.h"
@@ -43,13 +41,13 @@
 #define DEFAULT_SLICE_MB_WIDTH 8
 
 static const AVProfile profiles[] = {
-    { FF_PROFILE_PRORES_PROXY,    "apco"},
-    { FF_PROFILE_PRORES_LT,       "apcs"},
-    { FF_PROFILE_PRORES_STANDARD, "apcn"},
-    { FF_PROFILE_PRORES_HQ,       "apch"},
-    { FF_PROFILE_PRORES_4444,     "ap4h"},
-    { FF_PROFILE_PRORES_XQ,       "ap4x"},
-    { FF_PROFILE_UNKNOWN }
+    { AV_PROFILE_PRORES_PROXY,    "apco"},
+    { AV_PROFILE_PRORES_LT,       "apcs"},
+    { AV_PROFILE_PRORES_STANDARD, "apcn"},
+    { AV_PROFILE_PRORES_HQ,       "apch"},
+    { AV_PROFILE_PRORES_4444,     "ap4h"},
+    { AV_PROFILE_PRORES_XQ,       "ap4x"},
+    { AV_PROFILE_UNKNOWN }
 };
 
 static const int qp_start_table[] = {  8, 3, 2, 1, 1, 1};
@@ -199,6 +197,35 @@ typedef struct {
     char *vendor;
 } ProresContext;
 
+/**
+ * Check if a value is in the list. If not, return the default value
+ *
+ * @param ctx                Context for the log msg
+ * @param val_name           Name of the checked value, for log msg
+ * @param array_valid_values Array of valid int, ended with INT_MAX
+ * @param default_value      Value return if checked value is not in the array
+ * @return                   Value or default_value.
+ */
+static int int_from_list_or_default(void *ctx, const char *val_name, int val,
+                                    const int *array_valid_values, int default_value)
+{
+    int i = 0;
+
+    while (1) {
+        int ref_val = array_valid_values[i];
+        if (ref_val == INT_MAX)
+            break;
+        if (val == ref_val)
+            return val;
+        i++;
+    }
+    /* val is not a valid value */
+    av_log(ctx, AV_LOG_DEBUG,
+           "%s %d are not supported. Set to default value : %d\n",
+           val_name, val, default_value);
+    return default_value;
+}
+
 static void encode_codeword(PutBitContext *pb, int val, int codebook)
 {
     unsigned int rice_order, exp_order, switch_bits, first_exp, exp, zeros;
@@ -305,7 +332,7 @@ static void encode_ac_coeffs(PutBitContext *pb,
     }
 }
 
-static void get(uint8_t *pixels, int stride, int16_t* block)
+static void get(const uint8_t *pixels, int stride, int16_t* block)
 {
     int i;
 
@@ -317,13 +344,13 @@ static void get(uint8_t *pixels, int stride, int16_t* block)
     }
 }
 
-static void fdct_get(FDCTDSPContext *fdsp, uint8_t *pixels, int stride, int16_t* block)
+static void fdct_get(FDCTDSPContext *fdsp, const uint8_t *pixels, int stride, int16_t* block)
 {
     get(pixels, stride, block);
     fdsp->fdct(block);
 }
 
-static void calc_plane_dct(FDCTDSPContext *fdsp, uint8_t *src, int16_t * blocks, int src_stride, int mb_count, int chroma, int is_422)
+static void calc_plane_dct(FDCTDSPContext *fdsp, const uint8_t *src, int16_t * blocks, int src_stride, int mb_count, int chroma, int is_422)
 {
     int16_t *block;
     int i;
@@ -473,7 +500,7 @@ static av_always_inline int encode_alpha_slice_data(AVCodecContext *avctx, int8_
     }
 }
 
-static inline void subimage_with_fill_template(uint16_t *src, unsigned x, unsigned y,
+static inline void subimage_with_fill_template(const uint16_t *src, unsigned x, unsigned y,
                                                unsigned stride, unsigned width, unsigned height, uint16_t *dst,
                                                unsigned dst_width, unsigned dst_height, int is_alpha_plane,
                                                int is_interlaced, int is_top_field)
@@ -521,7 +548,7 @@ static inline void subimage_with_fill_template(uint16_t *src, unsigned x, unsign
     }
 }
 
-static void subimage_with_fill(uint16_t *src, unsigned x, unsigned y,
+static void subimage_with_fill(const uint16_t *src, unsigned x, unsigned y,
         unsigned stride, unsigned width, unsigned height, uint16_t *dst,
         unsigned dst_width, unsigned dst_height, int is_interlaced, int is_top_field)
 {
@@ -529,7 +556,7 @@ static void subimage_with_fill(uint16_t *src, unsigned x, unsigned y,
 }
 
 /* reorganize alpha data and convert 10b -> 16b */
-static void subimage_alpha_with_fill(uint16_t *src, unsigned x, unsigned y,
+static void subimage_alpha_with_fill(const uint16_t *src, unsigned x, unsigned y,
                                unsigned stride, unsigned width, unsigned height, uint16_t *dst,
                                unsigned dst_width, unsigned dst_height, int is_interlaced, int is_top_field)
 {
@@ -544,7 +571,7 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic, int mb_x,
     ProresContext* ctx = avctx->priv_data;
     int hdr_size = 6 + (ctx->need_alpha * 2); /* v data size is write when there is alpha */
     int ret = 0, slice_size;
-    uint8_t *dest_y, *dest_u, *dest_v;
+    const uint8_t *dest_y, *dest_u, *dest_v;
     unsigned y_data_size = 0, u_data_size = 0, v_data_size = 0, a_data_size = 0;
     FDCTDSPContext *fdsp = &ctx->fdsp;
     int tgt_bits   = (mb_count * bitrate_table[avctx->profile]) >> 2;
@@ -577,13 +604,13 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic, int mb_x,
     }
 
     if (unsafe) {
-        subimage_with_fill((uint16_t *) pic->data[0], mb_x << 4, mb_y << 4,
+        subimage_with_fill((const uint16_t *) pic->data[0], mb_x << 4, mb_y << 4,
                 luma_stride, avctx->width, avctx->height,
                 (uint16_t *) ctx->fill_y, mb_count << 4, 16, is_interlaced, is_top_field);
-        subimage_with_fill((uint16_t *) pic->data[1], mb_x << (4 - ctx->is_422), mb_y << 4,
+        subimage_with_fill((const uint16_t *) pic->data[1], mb_x << (4 - ctx->is_422), mb_y << 4,
                            chroma_stride, avctx->width >> ctx->is_422, avctx->height,
                            (uint16_t *) ctx->fill_u, mb_count << (4 - ctx->is_422), 16, is_interlaced, is_top_field);
-        subimage_with_fill((uint16_t *) pic->data[2], mb_x << (4 - ctx->is_422), mb_y << 4,
+        subimage_with_fill((const uint16_t *) pic->data[2], mb_x << (4 - ctx->is_422), mb_y << 4,
                            chroma_stride, avctx->width >> ctx->is_422, avctx->height,
                            (uint16_t *) ctx->fill_v, mb_count << (4 - ctx->is_422), 16, is_interlaced, is_top_field);
 
@@ -640,7 +667,7 @@ static int encode_slice(AVCodecContext *avctx, const AVFrame *pic, int mb_x,
     if (ctx->need_alpha) {
         AV_WB16(buf + 6, v_data_size); /* write v data size only if there is alpha */
 
-        subimage_alpha_with_fill((uint16_t *) pic->data[3], mb_x << 4, mb_y << 4,
+        subimage_alpha_with_fill((const uint16_t *) pic->data[3], mb_x << 4, mb_y << 4,
                            alpha_stride, avctx->width, avctx->height,
                            (uint16_t *) ctx->fill_a, mb_count << 4, 16, is_interlaced, is_top_field);
         ret = encode_alpha_slice_data(avctx, ctx->fill_a, mb_count,
@@ -744,10 +771,11 @@ static int prores_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     bytestream_put_be16(&buf, avctx->width);
     bytestream_put_be16(&buf, avctx->height);
     frame_flags = 0x82; /* 422 not interlaced */
-    if (avctx->profile >= FF_PROFILE_PRORES_4444) /* 4444 or 4444 Xq */
+    if (avctx->profile >= AV_PROFILE_PRORES_4444) /* 4444 or 4444 Xq */
         frame_flags |= 0x40; /* 444 chroma */
     if (ctx->is_interlaced) {
-        if (pict->top_field_first || !pict->interlaced_frame) { /* tff frame or progressive frame interpret as tff */
+        if ((pict->flags & AV_FRAME_FLAG_TOP_FIELD_FIRST) || !(pict->flags & AV_FRAME_FLAG_INTERLACED)) {
+            /* tff frame or progressive frame interpret as tff */
             av_log(avctx, AV_LOG_DEBUG, "use interlaced encoding, top field first\n");
             frame_flags |= 0x04; /* interlaced tff */
             is_top_field_first = 1;
@@ -761,10 +789,13 @@ static int prores_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     *buf++ = frame_flags;
     *buf++ = 0; /* reserved */
     /* only write color properties, if valid value. set to unspecified otherwise */
-    *buf++ = ff_int_from_list_or_default(avctx, "frame color primaries", pict->color_primaries, valid_primaries, 0);
-    *buf++ = ff_int_from_list_or_default(avctx, "frame color trc", pict->color_trc, valid_trc, 0);
-    *buf++ = ff_int_from_list_or_default(avctx, "frame colorspace", pict->colorspace, valid_colorspace, 0);
-    if (avctx->profile >= FF_PROFILE_PRORES_4444) {
+    *buf++ = int_from_list_or_default(avctx, "frame color primaries",
+                                      pict->color_primaries, valid_primaries, 0);
+    *buf++ = int_from_list_or_default(avctx, "frame color trc",
+                                      pict->color_trc, valid_trc, 0);
+    *buf++ = int_from_list_or_default(avctx, "frame colorspace",
+                                      pict->colorspace, valid_colorspace, 0);
+    if (avctx->profile >= AV_PROFILE_PRORES_4444) {
         if (avctx->pix_fmt == AV_PIX_FMT_YUV444P10) {
             *buf++ = 0xA0;/* src b64a and no alpha */
         } else {
@@ -840,40 +871,40 @@ static av_cold int prores_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    if (avctx->profile == FF_PROFILE_UNKNOWN) {
+    if (avctx->profile == AV_PROFILE_UNKNOWN) {
         if (avctx->pix_fmt == AV_PIX_FMT_YUV422P10) {
-            avctx->profile = FF_PROFILE_PRORES_STANDARD;
+            avctx->profile = AV_PROFILE_PRORES_STANDARD;
             av_log(avctx, AV_LOG_INFO,
                 "encoding with ProRes standard (apcn) profile\n");
         } else if (avctx->pix_fmt == AV_PIX_FMT_YUV444P10) {
-            avctx->profile = FF_PROFILE_PRORES_4444;
+            avctx->profile = AV_PROFILE_PRORES_4444;
             av_log(avctx, AV_LOG_INFO,
                    "encoding with ProRes 4444 (ap4h) profile\n");
         } else if (avctx->pix_fmt == AV_PIX_FMT_YUVA444P10) {
-            avctx->profile = FF_PROFILE_PRORES_4444;
+            avctx->profile = AV_PROFILE_PRORES_4444;
             av_log(avctx, AV_LOG_INFO,
                    "encoding with ProRes 4444+ (ap4h) profile\n");
         }
-    } else if (avctx->profile < FF_PROFILE_PRORES_PROXY
-            || avctx->profile > FF_PROFILE_PRORES_XQ) {
+    } else if (avctx->profile < AV_PROFILE_PRORES_PROXY
+            || avctx->profile > AV_PROFILE_PRORES_XQ) {
         av_log(
                 avctx,
                 AV_LOG_ERROR,
                 "unknown profile %d, use [0 - apco, 1 - apcs, 2 - apcn (default), 3 - apch, 4 - ap4h, 5 - ap4x]\n",
                 avctx->profile);
         return AVERROR(EINVAL);
-    } else if ((avctx->pix_fmt == AV_PIX_FMT_YUV422P10) && (avctx->profile > FF_PROFILE_PRORES_HQ)){
+    } else if ((avctx->pix_fmt == AV_PIX_FMT_YUV422P10) && (avctx->profile > AV_PROFILE_PRORES_HQ)){
         av_log(avctx, AV_LOG_ERROR,
                "encoding with ProRes 444/Xq (ap4h/ap4x) profile, need YUV444P10 input\n");
         return AVERROR(EINVAL);
     }  else if ((avctx->pix_fmt == AV_PIX_FMT_YUV444P10 || avctx->pix_fmt == AV_PIX_FMT_YUVA444P10)
-                && (avctx->profile < FF_PROFILE_PRORES_4444)){
+                && (avctx->profile < AV_PROFILE_PRORES_4444)){
         av_log(avctx, AV_LOG_ERROR,
                "encoding with ProRes Proxy/LT/422/422 HQ (apco, apcs, apcn, ap4h) profile, need YUV422P10 input\n");
         return AVERROR(EINVAL);
     }
 
-    if (avctx->profile < FF_PROFILE_PRORES_4444) { /* 422 versions */
+    if (avctx->profile < AV_PROFILE_PRORES_4444) { /* 422 versions */
         ctx->is_422 = 1;
         if ((avctx->height & 0xf) || (avctx->width & 0xf)) {
             ctx->fill_y = av_malloc(4 * (DEFAULT_SLICE_MB_WIDTH << 8));
@@ -942,32 +973,34 @@ static const enum AVPixelFormat pix_fmts[] = {
 
 const FFCodec ff_prores_aw_encoder = {
     .p.name         = "prores_aw",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple ProRes"),
+    CODEC_LONG_NAME("Apple ProRes"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_PRORES,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.pix_fmts     = pix_fmts,
     .priv_data_size = sizeof(ProresContext),
     .init           = prores_encode_init,
     .close          = prores_encode_close,
     FF_CODEC_ENCODE_CB(prores_encode_frame),
-    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
     .p.priv_class   = &prores_enc_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
 const FFCodec ff_prores_encoder = {
     .p.name         = "prores",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("Apple ProRes"),
+    CODEC_LONG_NAME("Apple ProRes"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_PRORES,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS |
+                      AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .p.pix_fmts     = pix_fmts,
     .priv_data_size = sizeof(ProresContext),
     .init           = prores_encode_init,
     .close          = prores_encode_close,
     FF_CODEC_ENCODE_CB(prores_encode_frame),
-    .p.capabilities = AV_CODEC_CAP_FRAME_THREADS,
     .p.priv_class   = &prores_enc_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_prores_profiles),
-    .caps_internal  = FF_CODEC_CAP_INIT_THREADSAFE | FF_CODEC_CAP_INIT_CLEANUP,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

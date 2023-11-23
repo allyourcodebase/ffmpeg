@@ -19,10 +19,10 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "libavutil/file_open.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 
-#include "formats.h"
 #include "opencl.h"
 
 static int opencl_filter_set_device(AVFilterContext *avctx,

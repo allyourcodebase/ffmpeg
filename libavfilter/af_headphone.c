@@ -29,6 +29,7 @@
 
 #include "avfilter.h"
 #include "filters.h"
+#include "formats.h"
 #include "internal.h"
 #include "audio.h"
 
@@ -273,7 +274,7 @@ static int headphone_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
             fft_in[j].re = src[j * in_channels + i];
         }
 
-        tx_fn(fft, fft_out, fft_in, sizeof(float));
+        tx_fn(fft, fft_out, fft_in, sizeof(*fft_in));
 
         for (j = 0; j < n_fft; j++) {
             const AVComplexFloat *hcomplex = hrtf_offset + j;
@@ -285,7 +286,7 @@ static int headphone_fast_convolute(AVFilterContext *ctx, void *arg, int jobnr, 
         }
     }
 
-    itx_fn(ifft, fft_out, fft_acc, sizeof(float));
+    itx_fn(ifft, fft_out, fft_acc, sizeof(*fft_acc));
 
     for (j = 0; j < in->nb_samples; j++) {
         dst[2 * j] += fft_out[j].re * fft_scale;
@@ -319,6 +320,16 @@ static int check_ir(AVFilterLink *inlink, int input_number)
     s->hrir_in[input_number].ir_len = ir_len;
     s->ir_len = FFMAX(ir_len, s->ir_len);
 
+    if (ff_inlink_check_available_samples(inlink, ir_len + 1) == 1) {
+        s->hrir_in[input_number].eof = 1;
+        return 1;
+    }
+
+    if (!s->hrir_in[input_number].eof) {
+        ff_inlink_request_frame(inlink);
+        return 0;
+    }
+
     return 0;
 }
 
@@ -348,7 +359,6 @@ static int headphone_frame(HeadphoneContext *s, AVFrame *in, AVFilterLink *outli
     } else {
         ff_filter_execute(ctx, headphone_fast_convolute, &td, NULL, 2);
     }
-    emms_c();
 
     if (n_clippings[0] + n_clippings[1] > 0) {
         av_log(ctx, AV_LOG_WARNING, "%d of %d samples clipped. Please reduce gain.\n",
@@ -379,7 +389,7 @@ static int convert_coeffs(AVFilterContext *ctx, AVFilterLink *inlink)
     s->n_fft = n_fft = 1 << (32 - ff_clz(ir_len + s->size));
 
     if (s->type == FREQUENCY_DOMAIN) {
-        float scale;
+        float scale = 1.f;
 
         ret = av_tx_init(&s->fft[0], &s->tx_fn[0], AV_TX_FLOAT_FFT, 0, s->n_fft, &scale, 0);
         if (ret < 0)
@@ -480,8 +490,8 @@ static int convert_coeffs(AVFilterContext *ctx, AVFilterLink *inlink)
                     fft_in_r[j].re = ptr[j * 2 + 1] * gain_lin;
                 }
 
-                s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(float));
-                s->tx_fn[0](s->fft[0], fft_out_r, fft_in_r, sizeof(float));
+                s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(*fft_in_l));
+                s->tx_fn[0](s->fft[0], fft_out_r, fft_in_r, sizeof(*fft_in_r));
             }
         } else {
             int I, N = ctx->inputs[1]->ch_layout.nb_channels;
@@ -513,8 +523,8 @@ static int convert_coeffs(AVFilterContext *ctx, AVFilterLink *inlink)
                         fft_in_r[j].re = ptr[j * N + I + 1] * gain_lin;
                     }
 
-                    s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(float));
-                    s->tx_fn[0](s->fft[0], fft_out_r, fft_in_r, sizeof(float));
+                    s->tx_fn[0](s->fft[0], fft_out_l, fft_in_l, sizeof(*fft_in_l));
+                    s->tx_fn[0](s->fft[0], fft_out_r, fft_in_r, sizeof(*fft_in_r));
                 }
             }
         }
@@ -534,7 +544,7 @@ static int activate(AVFilterContext *ctx)
     AVFrame *in = NULL;
     int i, ret;
 
-    FF_FILTER_FORWARD_STATUS_BACK_ALL(ctx->outputs[0], ctx);
+    FF_FILTER_FORWARD_STATUS_BACK_ALL(outlink, ctx);
     if (!s->eof_hrirs) {
         int eof = 1;
         for (i = 0; i < s->nb_hrir_inputs; i++) {
@@ -543,24 +553,23 @@ static int activate(AVFilterContext *ctx)
             if (s->hrir_in[i].eof)
                 continue;
 
-            if ((ret = check_ir(input, i)) < 0)
+            if ((ret = check_ir(input, i)) <= 0)
                 return ret;
 
-            if (ff_outlink_get_status(input) == AVERROR_EOF) {
+            if (s->hrir_in[i].eof) {
                 if (!ff_inlink_queued_samples(input)) {
                     av_log(ctx, AV_LOG_ERROR, "No samples provided for "
                            "HRIR stream %d.\n", i);
                     return AVERROR_INVALIDDATA;
                 }
-                s->hrir_in[i].eof = 1;
             } else {
-                if (ff_outlink_frame_wanted(ctx->outputs[0]))
-                    ff_inlink_request_frame(input);
                 eof = 0;
             }
         }
-        if (!eof)
+        if (!eof) {
+            ff_filter_set_ready(ctx, 100);
             return 0;
+        }
         s->eof_hrirs = 1;
 
         ret = convert_coeffs(ctx, inlink);
@@ -569,7 +578,7 @@ static int activate(AVFilterContext *ctx)
     } else if (!s->have_hrirs)
         return AVERROR_EOF;
 
-    if ((ret = ff_inlink_consume_samples(ctx->inputs[0], s->size, s->size, &in)) > 0) {
+    if ((ret = ff_inlink_consume_samples(inlink, s->size, s->size, &in)) > 0) {
         ret = headphone_frame(s, in, outlink);
         if (ret < 0)
             return ret;
@@ -578,9 +587,9 @@ static int activate(AVFilterContext *ctx)
     if (ret < 0)
         return ret;
 
-    FF_FILTER_FORWARD_STATUS(ctx->inputs[0], ctx->outputs[0]);
-    if (ff_outlink_frame_wanted(ctx->outputs[0]))
-        ff_inlink_request_frame(ctx->inputs[0]);
+    FF_FILTER_FORWARD_STATUS(inlink, outlink);
+    if (ff_outlink_frame_wanted(outlink))
+        ff_inlink_request_frame(inlink);
 
     return 0;
 }

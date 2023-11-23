@@ -23,6 +23,7 @@
 #include "avio_internal.h"
 #include "id3v1.h"
 #include "id3v2.h"
+#include "mux.h"
 #include "rawenc.h"
 #include "libavutil/avstring.h"
 #include "libavcodec/mpegaudio.h"
@@ -399,10 +400,10 @@ static int mp3_queue_flush(AVFormatContext *s)
 static void mp3_update_xing(AVFormatContext *s)
 {
     MP3Context  *mp3 = s->priv_data;
+    const AVPacketSideData *sd;
     AVReplayGain *rg;
     uint16_t tag_crc;
     uint8_t *toc;
-    size_t rg_size;
     int i;
     int64_t old_pos = avio_tell(s->pb);
 
@@ -422,11 +423,13 @@ static void mp3_update_xing(AVFormatContext *s)
     }
 
     /* write replaygain */
-    rg = (AVReplayGain*)av_stream_get_side_data(s->streams[0], AV_PKT_DATA_REPLAYGAIN,
-                                                &rg_size);
-    if (rg && rg_size >= sizeof(*rg)) {
+    sd = av_packet_side_data_get(s->streams[0]->codecpar->coded_side_data,
+                                 s->streams[0]->codecpar->nb_coded_side_data,
+                                 AV_PKT_DATA_REPLAYGAIN);
+    if (sd && sd->size >= sizeof(*rg)) {
         uint16_t val;
 
+        rg = (AVReplayGain *)sd->data;
         AV_WB32(mp3->xing_frame + mp3->xing_offset + 131,
                 av_rescale(rg->track_peak, 1 << 23, 100000));
 
@@ -636,20 +639,20 @@ static void mp3_deinit(struct AVFormatContext *s)
     av_freep(&mp3->xing_frame);
 }
 
-const AVOutputFormat ff_mp3_muxer = {
-    .name              = "mp3",
-    .long_name         = NULL_IF_CONFIG_SMALL("MP3 (MPEG audio layer 3)"),
-    .mime_type         = "audio/mpeg",
-    .extensions        = "mp3",
+const FFOutputFormat ff_mp3_muxer = {
+    .p.name            = "mp3",
+    .p.long_name       = NULL_IF_CONFIG_SMALL("MP3 (MPEG audio layer 3)"),
+    .p.mime_type       = "audio/mpeg",
+    .p.extensions      = "mp3",
     .priv_data_size    = sizeof(MP3Context),
-    .audio_codec       = AV_CODEC_ID_MP3,
-    .video_codec       = AV_CODEC_ID_PNG,
+    .p.audio_codec     = AV_CODEC_ID_MP3,
+    .p.video_codec     = AV_CODEC_ID_PNG,
     .init              = mp3_init,
     .write_header      = mp3_write_header,
     .write_packet      = mp3_write_packet,
     .write_trailer     = mp3_write_trailer,
     .deinit            = mp3_deinit,
     .query_codec       = query_codec,
-    .flags             = AVFMT_NOTIMESTAMPS,
-    .priv_class        = &mp3_muxer_class,
+    .p.flags           = AVFMT_NOTIMESTAMPS,
+    .p.priv_class      = &mp3_muxer_class,
 };

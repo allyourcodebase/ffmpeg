@@ -50,9 +50,6 @@ typedef struct BufferSourceContext {
     int               w, h;
     enum AVPixelFormat  pix_fmt;
     AVRational        pixel_aspect;
-#if FF_API_SWS_PARAM_OPTION
-    char              *sws_param;
-#endif
 
     AVBufferRef *hw_frames_ctx;
 
@@ -64,6 +61,7 @@ typedef struct BufferSourceContext {
     AVChannelLayout ch_layout;
 
     int eof;
+    int64_t last_pts;
 } BufferSourceContext;
 
 #define CHECK_VIDEO_PARAM_CHANGE(s, c, width, height, format, pts)\
@@ -194,9 +192,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
     s->nb_failed_requests = 0;
 
     if (!frame)
-        return av_buffersrc_close(ctx, AV_NOPTS_VALUE, flags);
+        return av_buffersrc_close(ctx, s->last_pts, flags);
     if (s->eof)
         return AVERROR(EINVAL);
+
+    s->last_pts = frame->pts + frame->duration;
 
     refcounted = !!frame->buf[0];
 
@@ -230,18 +230,38 @@ FF_ENABLE_DEPRECATION_WARNINGS
 
     }
 
-    if (!(copy = av_frame_alloc()))
-        return AVERROR(ENOMEM);
-
     if (refcounted && !(flags & AV_BUFFERSRC_FLAG_KEEP_REF)) {
+        if (!(copy = av_frame_alloc()))
+            return AVERROR(ENOMEM);
         av_frame_move_ref(copy, frame);
     } else {
-        ret = av_frame_ref(copy, frame);
-        if (ret < 0) {
-            av_frame_free(&copy);
-            return ret;
-        }
+        copy = av_frame_clone(frame);
+        if (!copy)
+            return AVERROR(ENOMEM);
     }
+
+#if FF_API_PKT_DURATION
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (copy->pkt_duration && copy->pkt_duration != copy->duration)
+        copy->duration = copy->pkt_duration;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+#if FF_API_INTERLACED_FRAME
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (copy->interlaced_frame)
+        copy->flags |= AV_FRAME_FLAG_INTERLACED;
+    if (copy->top_field_first)
+        copy->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+
+#if FF_API_FRAME_KEY
+FF_DISABLE_DEPRECATION_WARNINGS
+    if (copy->key_frame)
+        copy->flags |= AV_FRAME_FLAG_KEY;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 
     ret = ff_filter_frame(ctx->outputs[0], copy);
     if (ret < 0)
@@ -269,9 +289,16 @@ static av_cold int init_video(AVFilterContext *ctx)
 {
     BufferSourceContext *c = ctx->priv;
 
-    if (c->pix_fmt == AV_PIX_FMT_NONE || !c->w || !c->h ||
-        av_q2d(c->time_base) <= 0) {
-        av_log(ctx, AV_LOG_ERROR, "Invalid parameters provided.\n");
+    if (c->pix_fmt == AV_PIX_FMT_NONE) {
+        av_log(ctx, AV_LOG_ERROR, "Unspecified pixel format\n");
+        return AVERROR(EINVAL);
+    }
+    if (c->w <= 0 || c->h <= 0) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid size %dx%d\n", c->w, c->h);
+        return AVERROR(EINVAL);
+    }
+    if (av_q2d(c->time_base) <= 0) {
+        av_log(ctx, AV_LOG_ERROR, "Invalid time base %d/%d\n", c->time_base.num, c->time_base.den);
         return AVERROR(EINVAL);
     }
 
@@ -279,11 +306,6 @@ static av_cold int init_video(AVFilterContext *ctx)
            c->w, c->h, av_get_pix_fmt_name(c->pix_fmt),
            c->time_base.num, c->time_base.den, c->frame_rate.num, c->frame_rate.den,
            c->pixel_aspect.num, c->pixel_aspect.den);
-
-#if FF_API_SWS_PARAM_OPTION
-    if (c->sws_param)
-        av_log(ctx, AV_LOG_WARNING, "sws_param option is deprecated and ignored\n");
-#endif
 
     return 0;
 }
@@ -306,9 +328,6 @@ static const AVOption buffer_options[] = {
     { "pixel_aspect",  "sample aspect ratio",    OFFSET(pixel_aspect),     AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
     { "time_base",     NULL,                     OFFSET(time_base),        AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
     { "frame_rate",    NULL,                     OFFSET(frame_rate),       AV_OPT_TYPE_RATIONAL, { .dbl = 0 }, 0, DBL_MAX, V },
-#if FF_API_SWS_PARAM_OPTION
-    { "sws_param",     NULL,                     OFFSET(sws_param),        AV_OPT_TYPE_STRING,                    .flags = V },
-#endif
     { NULL },
 };
 

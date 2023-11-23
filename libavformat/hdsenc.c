@@ -112,7 +112,11 @@ static int parse_header(OutputStream *os, const uint8_t *buf, int buf_size)
     return 0;
 }
 
+#if FF_API_AVIO_WRITE_NONCONST
 static int hds_write(void *opaque, uint8_t *buf, int buf_size)
+#else
+static int hds_write(void *opaque, const uint8_t *buf, int buf_size)
+#endif
 {
     OutputStream *os = opaque;
     if (os->out) {
@@ -564,16 +568,16 @@ static const AVClass hds_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVOutputFormat ff_hds_muxer = {
-    .name           = "hds",
-    .long_name      = NULL_IF_CONFIG_SMALL("HDS Muxer"),
+const FFOutputFormat ff_hds_muxer = {
+    .p.name         = "hds",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("HDS Muxer"),
+    .p.audio_codec  = AV_CODEC_ID_AAC,
+    .p.video_codec  = AV_CODEC_ID_H264,
+    .p.flags        = AVFMT_GLOBALHEADER | AVFMT_NOFILE,
+    .p.priv_class   = &hds_class,
     .priv_data_size = sizeof(HDSContext),
-    .audio_codec    = AV_CODEC_ID_AAC,
-    .video_codec    = AV_CODEC_ID_H264,
-    .flags          = AVFMT_GLOBALHEADER | AVFMT_NOFILE,
     .write_header   = hds_write_header,
     .write_packet   = hds_write_packet,
     .write_trailer  = hds_write_trailer,
     .deinit         = hds_free,
-    .priv_class     = &hds_class,
 };

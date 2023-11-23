@@ -22,11 +22,9 @@
 #include "motion_estimation.h"
 #include "libavcodec/mathops.h"
 #include "libavutil/common.h"
-#include "libavutil/motion_vector.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "formats.h"
 #include "internal.h"
 #include "video.h"
 #include "scene_sad.h"
@@ -827,7 +825,6 @@ static int detect_scene_change(AVFilterContext *ctx)
         double ret = 0, mafd, diff;
         uint64_t sad;
         mi_ctx->sad(p1, linesize1, p2, linesize2, input->w, input->h, &sad);
-        emms_c();
         mafd = (double) sad * 100.0 / (input->h * input->w) / (1 << mi_ctx->bitdepth);
         diff = fabs(mafd - mi_ctx->prev_mafd);
         ret  = av_clipf(FFMIN(mafd, diff), 0, 100.0);
@@ -1189,6 +1186,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *avf_in)
 
         av_frame_copy_props(avf_out, mi_ctx->frames[NB_FRAMES - 1].avf);
         avf_out->pts = mi_ctx->out_pts++;
+        avf_out->duration = 1;
 
         interpolate(inlink, avf_out);
 

@@ -22,7 +22,7 @@
 
 #include "avcodec.h"
 #include "codec_internal.h"
-#include "internal.h"
+#include "decode.h"
 
 static av_cold int yuv4_decode_init(AVCodecContext *avctx)
 {
@@ -46,7 +46,7 @@ static int yuv4_decode_frame(AVCodecContext *avctx, AVFrame *pic,
     if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
         return ret;
 
-    pic->key_frame = 1;
+    pic->flags |= AV_FRAME_FLAG_KEY;
     pic->pict_type = AV_PICTURE_TYPE_I;
 
     y = pic->data[0];
@@ -75,11 +75,10 @@ static int yuv4_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
 const FFCodec ff_yuv4_decoder = {
     .p.name       = "yuv4",
-    .p.long_name  = NULL_IF_CONFIG_SMALL("Uncompressed packed 4:2:0"),
+    CODEC_LONG_NAME("Uncompressed packed 4:2:0"),
     .p.type       = AVMEDIA_TYPE_VIDEO,
     .p.id         = AV_CODEC_ID_YUV4,
     .init         = yuv4_decode_init,
     FF_CODEC_DECODE_CB(yuv4_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
-    .caps_internal = FF_CODEC_CAP_INIT_THREADSAFE,
 };

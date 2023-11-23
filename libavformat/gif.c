@@ -23,6 +23,7 @@
 
 #include "avformat.h"
 #include "internal.h"
+#include "mux.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/log.h"
 #include "libavutil/opt.h"
@@ -87,6 +88,8 @@ static int gif_get_delay(GIFContext *gif, AVPacket *prev, AVPacket *new)
         gif->duration = av_clip_uint16(new->pts - prev->pts);
     else if (!new && gif->last_delay >= 0)
         gif->duration = gif->last_delay;
+    else if (prev->duration)
+        gif->duration = prev->duration;
 
     return gif->duration;
 }
@@ -202,17 +205,17 @@ static const AVClass gif_muxer_class = {
     .option     = options,
 };
 
-const AVOutputFormat ff_gif_muxer = {
-    .name           = "gif",
-    .long_name      = NULL_IF_CONFIG_SMALL("CompuServe Graphics Interchange Format (GIF)"),
-    .mime_type      = "image/gif",
-    .extensions     = "gif",
+const FFOutputFormat ff_gif_muxer = {
+    .p.name         = "gif",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("CompuServe Graphics Interchange Format (GIF)"),
+    .p.mime_type    = "image/gif",
+    .p.extensions   = "gif",
     .priv_data_size = sizeof(GIFContext),
-    .audio_codec    = AV_CODEC_ID_NONE,
-    .video_codec    = AV_CODEC_ID_GIF,
+    .p.audio_codec  = AV_CODEC_ID_NONE,
+    .p.video_codec  = AV_CODEC_ID_GIF,
     .write_header   = gif_write_header,
     .write_packet   = gif_write_packet,
     .write_trailer  = gif_write_trailer,
-    .priv_class     = &gif_muxer_class,
-    .flags          = AVFMT_VARIABLE_FPS,
+    .p.priv_class   = &gif_muxer_class,
+    .p.flags        = AVFMT_VARIABLE_FPS,
 };

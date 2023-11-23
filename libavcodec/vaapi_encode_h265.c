@@ -27,10 +27,12 @@
 #include "libavutil/opt.h"
 #include "libavutil/mastering_display_metadata.h"
 
+#include "atsc_a53.h"
 #include "avcodec.h"
 #include "cbs.h"
 #include "cbs_h265.h"
 #include "codec_internal.h"
+#include "h2645data.h"
 #include "h265_profile_level.h"
 #include "hevc.h"
 #include "hevc_sei.h"
@@ -40,6 +42,7 @@
 enum {
     SEI_MASTERING_DISPLAY       = 0x08,
     SEI_CONTENT_LIGHT_LEVEL     = 0x10,
+    SEI_A53_CC                  = 0x20,
 };
 
 typedef struct VAAPIEncodeH265Picture {
@@ -84,6 +87,8 @@ typedef struct VAAPIEncodeH265Context {
 
     SEIRawMasteringDisplayColourVolume sei_mastering_display;
     SEIRawContentLightLevelInfo        sei_content_light_level;
+    SEIRawUserDataRegistered           sei_a53cc;
+    void                              *sei_a53cc_data;
 
     CodedBitstreamContext *cbc;
     CodedBitstreamFragment current_access_unit;
@@ -226,6 +231,13 @@ static int vaapi_encode_h265_write_extra_header(AVCodecContext *avctx,
             if (err < 0)
                 goto fail;
         }
+        if (priv->sei_needed & SEI_A53_CC) {
+            err = ff_cbs_sei_add_message(priv->cbc, au, 1,
+                                         SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35,
+                                         &priv->sei_a53cc, NULL);
+            if (err < 0)
+                goto fail;
+        }
 
         priv->sei_needed = 0;
 
@@ -334,7 +346,7 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
 
     ptl->general_lower_bit_rate_constraint_flag = 1;
 
-    if (avctx->level != FF_LEVEL_UNKNOWN) {
+    if (avctx->level != AV_LEVEL_UNKNOWN) {
         ptl->general_level_idc = avctx->level;
     } else {
         const H265LevelDescriptor *level;
@@ -496,24 +508,17 @@ static int vaapi_encode_h265_init_sequence_params(AVCodecContext *avctx)
 
     if (avctx->sample_aspect_ratio.num != 0 &&
         avctx->sample_aspect_ratio.den != 0) {
-        static const AVRational sar_idc[] = {
-            {   0,  0 },
-            {   1,  1 }, {  12, 11 }, {  10, 11 }, {  16, 11 },
-            {  40, 33 }, {  24, 11 }, {  20, 11 }, {  32, 11 },
-            {  80, 33 }, {  18, 11 }, {  15, 11 }, {  64, 33 },
-            { 160, 99 }, {   4,  3 }, {   3,  2 }, {   2,  1 },
-        };
         int num, den, i;
         av_reduce(&num, &den, avctx->sample_aspect_ratio.num,
                   avctx->sample_aspect_ratio.den, 65535);
-        for (i = 0; i < FF_ARRAY_ELEMS(sar_idc); i++) {
-            if (num == sar_idc[i].num &&
-                den == sar_idc[i].den) {
+        for (i = 0; i < FF_ARRAY_ELEMS(ff_h2645_pixel_aspect); i++) {
+            if (num == ff_h2645_pixel_aspect[i].num &&
+                den == ff_h2645_pixel_aspect[i].den) {
                 vui->aspect_ratio_idc = i;
                 break;
             }
         }
-        if (i >= FF_ARRAY_ELEMS(sar_idc)) {
+        if (i >= FF_ARRAY_ELEMS(ff_h2645_pixel_aspect)) {
             vui->aspect_ratio_idc = 255;
             vui->sar_width  = num;
             vui->sar_height = den;
@@ -759,7 +764,7 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
     VAAPIEncodePicture              *prev = pic->prev;
     VAAPIEncodeH265Picture         *hprev = prev ? prev->priv_data : NULL;
     VAEncPictureParameterBufferHEVC *vpic = pic->codec_picture_params;
-    int i;
+    int i, j = 0;
 
     if (pic->type == PICTURE_TYPE_IDR) {
         av_assert0(pic->display_order == pic->encode_order);
@@ -784,8 +789,8 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
             hpic->pic_type       = 1;
         } else {
             VAAPIEncodePicture *irap_ref;
-            av_assert0(pic->refs[0] && pic->refs[1]);
-            for (irap_ref = pic; irap_ref; irap_ref = irap_ref->refs[1]) {
+            av_assert0(pic->refs[0][0] && pic->refs[1][0]);
+            for (irap_ref = pic; irap_ref; irap_ref = irap_ref->refs[1][0]) {
                 if (irap_ref->type == PICTURE_TYPE_I)
                     break;
             }
@@ -888,30 +893,49 @@ static int vaapi_encode_h265_init_picture_params(AVCodecContext *avctx,
         }
     }
 
+    if (priv->sei & SEI_A53_CC) {
+        int err;
+        size_t sei_a53cc_len;
+        av_freep(&priv->sei_a53cc_data);
+        err = ff_alloc_a53_sei(pic->input_image, 0, &priv->sei_a53cc_data, &sei_a53cc_len);
+        if (err < 0)
+            return err;
+        if (priv->sei_a53cc_data != NULL) {
+            priv->sei_a53cc.itu_t_t35_country_code = 181;
+            priv->sei_a53cc.data = (uint8_t *)priv->sei_a53cc_data + 1;
+            priv->sei_a53cc.data_length = sei_a53cc_len - 1;
+
+            priv->sei_needed |= SEI_A53_CC;
+        }
+    }
+
     vpic->decoded_curr_pic = (VAPictureHEVC) {
         .picture_id    = pic->recon_surface,
         .pic_order_cnt = hpic->pic_order_cnt,
         .flags         = 0,
     };
 
-    for (i = 0; i < pic->nb_refs; i++) {
-        VAAPIEncodePicture      *ref = pic->refs[i];
-        VAAPIEncodeH265Picture *href;
+    for (int k = 0; k < MAX_REFERENCE_LIST_NUM; k++) {
+        for (i = 0; i < pic->nb_refs[k]; i++) {
+            VAAPIEncodePicture      *ref = pic->refs[k][i];
+            VAAPIEncodeH265Picture *href;
 
-        av_assert0(ref && ref->encode_order < pic->encode_order);
-        href = ref->priv_data;
+            av_assert0(ref && ref->encode_order < pic->encode_order);
+            href = ref->priv_data;
 
-        vpic->reference_frames[i] = (VAPictureHEVC) {
-            .picture_id    = ref->recon_surface,
-            .pic_order_cnt = href->pic_order_cnt,
-            .flags = (ref->display_order < pic->display_order ?
-                      VA_PICTURE_HEVC_RPS_ST_CURR_BEFORE : 0) |
-                     (ref->display_order > pic->display_order ?
-                      VA_PICTURE_HEVC_RPS_ST_CURR_AFTER  : 0),
-        };
+            vpic->reference_frames[j++] = (VAPictureHEVC) {
+                .picture_id    = ref->recon_surface,
+                .pic_order_cnt = href->pic_order_cnt,
+                .flags = (ref->display_order < pic->display_order ?
+                          VA_PICTURE_HEVC_RPS_ST_CURR_BEFORE : 0) |
+                          (ref->display_order > pic->display_order ?
+                          VA_PICTURE_HEVC_RPS_ST_CURR_AFTER  : 0),
+            };
+        }
     }
-    for (; i < FF_ARRAY_ELEMS(vpic->reference_frames); i++) {
-        vpic->reference_frames[i] = (VAPictureHEVC) {
+
+    for (; j < FF_ARRAY_ELEMS(vpic->reference_frames); j++) {
+        vpic->reference_frames[j] = (VAPictureHEVC) {
             .picture_id = VA_INVALID_ID,
             .flags      = VA_PICTURE_HEVC_INVALID,
         };
@@ -995,21 +1019,33 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
         memset(rps, 0, sizeof(*rps));
 
         rps_pics = 0;
-        for (i = 0; i < pic->nb_refs; i++) {
-            strp = pic->refs[i]->priv_data;
-            rps_poc[rps_pics]  = strp->pic_order_cnt;
-            rps_used[rps_pics] = 1;
-            ++rps_pics;
+        for (i = 0; i < MAX_REFERENCE_LIST_NUM; i++) {
+            for (j = 0; j < pic->nb_refs[i]; j++) {
+                strp = pic->refs[i][j]->priv_data;
+                rps_poc[rps_pics]  = strp->pic_order_cnt;
+                rps_used[rps_pics] = 1;
+                ++rps_pics;
+            }
         }
+
         for (i = 0; i < pic->nb_dpb_pics; i++) {
             if (pic->dpb[i] == pic)
                 continue;
-            for (j = 0; j < pic->nb_refs; j++) {
-                if (pic->dpb[i] == pic->refs[j])
+
+            for (j = 0; j < pic->nb_refs[0]; j++) {
+                if (pic->dpb[i] == pic->refs[0][j])
                     break;
             }
-            if (j < pic->nb_refs)
+            if (j < pic->nb_refs[0])
                 continue;
+
+            for (j = 0; j < pic->nb_refs[1]; j++) {
+                if (pic->dpb[i] == pic->refs[1][j])
+                    break;
+            }
+            if (j < pic->nb_refs[1])
+                continue;
+
             strp = pic->dpb[i]->priv_data;
             rps_poc[rps_pics]  = strp->pic_order_cnt;
             rps_used[rps_pics] = 0;
@@ -1134,8 +1170,7 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
         vslice->ref_pic_list1[i].flags      = VA_PICTURE_HEVC_INVALID;
     }
 
-    av_assert0(pic->nb_refs <= 2);
-    if (pic->nb_refs >= 1) {
+    if (pic->nb_refs[0]) {
         // Backward reference for P- or B-frame.
         av_assert0(pic->type == PICTURE_TYPE_P ||
                    pic->type == PICTURE_TYPE_B);
@@ -1144,7 +1179,7 @@ static int vaapi_encode_h265_init_slice_params(AVCodecContext *avctx,
             // Reference for GPB B-frame, L0 == L1
             vslice->ref_pic_list1[0] = vpic->reference_frames[0];
     }
-    if (pic->nb_refs >= 2) {
+    if (pic->nb_refs[1]) {
         // Forward reference for B-frame.
         av_assert0(pic->type == PICTURE_TYPE_B);
         vslice->ref_pic_list1[0] = vpic->reference_frames[1];
@@ -1269,17 +1304,22 @@ static av_cold int vaapi_encode_h265_configure(AVCodecContext *avctx)
 }
 
 static const VAAPIEncodeProfile vaapi_encode_h265_profiles[] = {
-    { FF_PROFILE_HEVC_MAIN,     8, 3, 1, 1, VAProfileHEVCMain       },
-    { FF_PROFILE_HEVC_REXT,     8, 3, 1, 1, VAProfileHEVCMain       },
+    { AV_PROFILE_HEVC_MAIN,     8, 3, 1, 1, VAProfileHEVCMain       },
+    { AV_PROFILE_HEVC_REXT,     8, 3, 1, 1, VAProfileHEVCMain       },
 #if VA_CHECK_VERSION(0, 37, 0)
-    { FF_PROFILE_HEVC_MAIN_10, 10, 3, 1, 1, VAProfileHEVCMain10     },
-    { FF_PROFILE_HEVC_REXT,    10, 3, 1, 1, VAProfileHEVCMain10     },
+    { AV_PROFILE_HEVC_MAIN_10, 10, 3, 1, 1, VAProfileHEVCMain10     },
+    { AV_PROFILE_HEVC_REXT,    10, 3, 1, 1, VAProfileHEVCMain10     },
 #endif
 #if VA_CHECK_VERSION(1, 2, 0)
-    { FF_PROFILE_HEVC_REXT,     8, 3, 1, 0, VAProfileHEVCMain422_10 },
-    { FF_PROFILE_HEVC_REXT,    10, 3, 1, 0, VAProfileHEVCMain422_10 },
+    { AV_PROFILE_HEVC_REXT,    12, 3, 1, 1, VAProfileHEVCMain12 },
+    { AV_PROFILE_HEVC_REXT,     8, 3, 1, 0, VAProfileHEVCMain422_10 },
+    { AV_PROFILE_HEVC_REXT,    10, 3, 1, 0, VAProfileHEVCMain422_10 },
+    { AV_PROFILE_HEVC_REXT,    12, 3, 1, 0, VAProfileHEVCMain422_12 },
+    { AV_PROFILE_HEVC_REXT,     8, 3, 0, 0, VAProfileHEVCMain444 },
+    { AV_PROFILE_HEVC_REXT,    10, 3, 0, 0, VAProfileHEVCMain444_10 },
+    { AV_PROFILE_HEVC_REXT,    12, 3, 0, 0, VAProfileHEVCMain444_12 },
 #endif
-    { FF_PROFILE_UNKNOWN }
+    { AV_PROFILE_UNKNOWN }
 };
 
 static const VAAPIEncodeType vaapi_encode_type_h265 = {
@@ -1322,12 +1362,12 @@ static av_cold int vaapi_encode_h265_init(AVCodecContext *avctx)
 
     ctx->codec = &vaapi_encode_type_h265;
 
-    if (avctx->profile == FF_PROFILE_UNKNOWN)
+    if (avctx->profile == AV_PROFILE_UNKNOWN)
         avctx->profile = priv->profile;
-    if (avctx->level == FF_LEVEL_UNKNOWN)
+    if (avctx->level == AV_LEVEL_UNKNOWN)
         avctx->level = priv->level;
 
-    if (avctx->level != FF_LEVEL_UNKNOWN && avctx->level & ~0xff) {
+    if (avctx->level != AV_LEVEL_UNKNOWN && avctx->level & ~0xff) {
         av_log(avctx, AV_LOG_ERROR, "Invalid level %d: must fit "
                "in 8-bit unsigned integer.\n", avctx->level);
         return AVERROR(EINVAL);
@@ -1350,6 +1390,7 @@ static av_cold int vaapi_encode_h265_close(AVCodecContext *avctx)
 
     ff_cbs_fragment_free(&priv->current_access_unit);
     ff_cbs_close(&priv->cbc);
+    av_freep(&priv->sei_a53cc_data);
 
     return ff_vaapi_encode_close(avctx);
 }
@@ -1368,13 +1409,13 @@ static const AVOption vaapi_encode_h265_options[] = {
 
     { "profile", "Set profile (general_profile_idc)",
       OFFSET(profile), AV_OPT_TYPE_INT,
-      { .i64 = FF_PROFILE_UNKNOWN }, FF_PROFILE_UNKNOWN, 0xff, FLAGS, "profile" },
+      { .i64 = AV_PROFILE_UNKNOWN }, AV_PROFILE_UNKNOWN, 0xff, FLAGS, "profile" },
 
 #define PROFILE(name, value)  name, NULL, 0, AV_OPT_TYPE_CONST, \
       { .i64 = value }, 0, 0, FLAGS, "profile"
-    { PROFILE("main",               FF_PROFILE_HEVC_MAIN) },
-    { PROFILE("main10",             FF_PROFILE_HEVC_MAIN_10) },
-    { PROFILE("rext",               FF_PROFILE_HEVC_REXT) },
+    { PROFILE("main",               AV_PROFILE_HEVC_MAIN) },
+    { PROFILE("main10",             AV_PROFILE_HEVC_MAIN_10) },
+    { PROFILE("rext",               AV_PROFILE_HEVC_REXT) },
 #undef PROFILE
 
     { "tier", "Set tier (general_tier_flag)",
@@ -1387,7 +1428,7 @@ static const AVOption vaapi_encode_h265_options[] = {
 
     { "level", "Set level (general_level_idc)",
       OFFSET(level), AV_OPT_TYPE_INT,
-      { .i64 = FF_LEVEL_UNKNOWN }, FF_LEVEL_UNKNOWN, 0xff, FLAGS, "level" },
+      { .i64 = AV_LEVEL_UNKNOWN }, AV_LEVEL_UNKNOWN, 0xff, FLAGS, "level" },
 
 #define LEVEL(name, value) name, NULL, 0, AV_OPT_TYPE_CONST, \
       { .i64 = value }, 0, 0, FLAGS, "level"
@@ -1408,13 +1449,18 @@ static const AVOption vaapi_encode_h265_options[] = {
 
     { "sei", "Set SEI to include",
       OFFSET(sei), AV_OPT_TYPE_FLAGS,
-      { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL },
+      { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL | SEI_A53_CC },
       0, INT_MAX, FLAGS, "sei" },
     { "hdr",
       "Include HDR metadata for mastering display colour volume "
       "and content light level information",
       0, AV_OPT_TYPE_CONST,
       { .i64 = SEI_MASTERING_DISPLAY | SEI_CONTENT_LIGHT_LEVEL },
+      INT_MIN, INT_MAX, FLAGS, "sei" },
+    { "a53_cc",
+      "Include A/53 caption data",
+      0, AV_OPT_TYPE_CONST,
+      { .i64 = SEI_A53_CC },
       INT_MIN, INT_MAX, FLAGS, "sei" },
 
     { "tiles", "Tile columns x rows",
@@ -1446,7 +1492,7 @@ static const AVClass vaapi_encode_h265_class = {
 
 const FFCodec ff_hevc_vaapi_encoder = {
     .p.name         = "hevc_vaapi",
-    .p.long_name    = NULL_IF_CONFIG_SMALL("H.265/HEVC (VAAPI)"),
+    CODEC_LONG_NAME("H.265/HEVC (VAAPI)"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_HEVC,
     .priv_data_size = sizeof(VAAPIEncodeH265Context),
@@ -1455,8 +1501,9 @@ const FFCodec ff_hevc_vaapi_encoder = {
     .close          = &vaapi_encode_h265_close,
     .p.priv_class   = &vaapi_encode_h265_class,
     .p.capabilities = AV_CODEC_CAP_DELAY | AV_CODEC_CAP_HARDWARE |
-                      AV_CODEC_CAP_DR1,
-    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
+                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
+    .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                      FF_CODEC_CAP_INIT_CLEANUP,
     .defaults       = vaapi_encode_h265_defaults,
     .p.pix_fmts = (const enum AVPixelFormat[]) {
         AV_PIX_FMT_VAAPI,
