@@ -9,8 +9,8 @@
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/2d84b369d71a05e000fac9540b9b3a2d16e03b3c.tar.gz",
-            .hash = "1220ff2550778a1eda13fe45b0902824755903503d7cb6f36836cf3f496d73552de5",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/3.100.1-1.tar.gz",
+            .hash = "12208266f77f17704c4087a88c679e684bbe741aef279e3eefe939f5452224f4f1f1",
         },
         .libvorbis = .{
             .url = "https://github.com/andrewrk/libvorbis/archive/438c71545bf5bb205c30301caca6f16fb252d37d.tar.gz",
