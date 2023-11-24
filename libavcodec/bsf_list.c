@@ -1,4 +1,4 @@
-static const AVBitStreamFilter * const bitstream_filters[] = {
+static const FFBitStreamFilter * const bitstream_filters[] = {
     &ff_aac_adtstoasc_bsf,
     &ff_av1_frame_merge_bsf,
     &ff_av1_frame_split_bsf,
@@ -6,6 +6,8 @@ static const AVBitStreamFilter * const bitstream_filters[] = {
     &ff_chomp_bsf,
     &ff_dump_extradata_bsf,
     &ff_dca_core_bsf,
+    &ff_dts2pts_bsf,
+    &ff_dv_error_marker_bsf,
     &ff_eac3_core_bsf,
     &ff_extract_extradata_bsf,
     &ff_filter_units_bsf,
@@ -16,6 +18,7 @@ static const AVBitStreamFilter * const bitstream_filters[] = {
     &ff_hevc_metadata_bsf,
     &ff_hevc_mp4toannexb_bsf,
     &ff_imx_dump_header_bsf,
+    &ff_media100_to_mjpegb_bsf,
     &ff_mjpeg2jpeg_bsf,
     &ff_mjpega_dump_header_bsf,
     &ff_mp3_header_decompress_bsf,
@@ -26,6 +29,7 @@ static const AVBitStreamFilter * const bitstream_filters[] = {
     &ff_null_bsf,
     &ff_opus_metadata_bsf,
     &ff_pcm_rechunk_bsf,
+    &ff_pgs_frame_merge_bsf,
     &ff_prores_metadata_bsf,
     &ff_remove_extradata_bsf,
     &ff_setts_bsf,
@@ -36,4 +40,7 @@ static const AVBitStreamFilter * const bitstream_filters[] = {
     &ff_vp9_raw_reorder_bsf,
     &ff_vp9_superframe_bsf,
     &ff_vp9_superframe_split_bsf,
+    &ff_vvc_metadata_bsf,
+    &ff_vvc_mp4toannexb_bsf,
+    &ff_evc_frame_merge_bsf,
     NULL };
