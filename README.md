@@ -14,7 +14,7 @@ released upstream.
 1. Merge the new tag into main and resolve all conflicts by replacing the
    conflicting files with the files from upstream.
 2. `find libavcodec/ libavdevice/ libavfilter/ libavformat libavutil/ libswscale/ libswresample/ -type f -name "*.asm" -o -name "*.c" -o -name "*.S"`
-   * Edit to omit files ending in `_template.c`
+   * Edit to omit files ending in `_template.c` or `_tablegen.c`
    * Sort the list
    * Update the `all_sources` list in `build.zig`.
 3. Inspect the git diff to keep some of the source files commented out like
