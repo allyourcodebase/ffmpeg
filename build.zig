@@ -990,7 +990,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target) CategorizedSou
         } else if (std.mem.startsWith(u8, sub_path, "cuda/")) {
             continue;
         } else if (std.mem.startsWith(u8, sub_path, "dnn/")) {
-            continue;
+            // This is a component subdirectory, not a target one.
         } else if (std.mem.startsWith(u8, sub_path, "loongarch/")) {
             switch (target.cpu.arch) {
                 .loongarch32, .loongarch64 => {},
