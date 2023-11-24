@@ -1,6 +1,6 @@
 .{
     .name = "libffmpeg",
-    .version = "6.1.0-dev",
+    .version = "6.1.0",
 
     .dependencies = .{
         .libz = .{
