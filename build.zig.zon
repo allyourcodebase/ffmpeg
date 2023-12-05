@@ -4,13 +4,13 @@
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/andrewrk/libz/archive/6f1bcf921df0a3541a4efb65a5e0120cb0b3bb40.tar.gz",
-            .hash = "12209983b338d5734ac4df5a95cbc6e49e95adc116dba53c4c60db2e5ca80754efa8",
+            .url = "https://github.com/allyourcodebase/zlib/archive/refs/tags/1.3.1-1.tar.gz",
+            .hash = "1220fc4b799253e8d6659825881a3d433bc072c140aaeaab73eeda01076cecea0402",
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/3.100.1-1.tar.gz",
-            .hash = "12208266f77f17704c4087a88c679e684bbe741aef279e3eefe939f5452224f4f1f1",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/fbfeb3c814de9a37cc9c638203f787342f617aab.tar.gz",
+            .hash = "1220a15af8fd1628f0adfeb43782c49cdbe0ea8d45922f8f23772a2a4d0e2df7e072",
         },
         .libvorbis = .{
             .url = "https://github.com/andrewrk/libvorbis/archive/438c71545bf5bb205c30301caca6f16fb252d37d.tar.gz",
@@ -24,8 +24,8 @@
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/7746f12810e80c537b190781f938e627e1eb2871.tar.gz",
-            .hash = "1220201c5be62217b2321525b20d498749ca03bf461d344fa3041a0c54353f4eef61",
+            .url = "https://github.com/andrewrk/nasm/archive/cfccd3eaba0526e360795494a0e4bc39acc4d68c.tar.gz",
+            .hash = "1220f9bd108d1e7097b27d388a7a65effd503598df61e34a2af02be00b22af567fc7",
         },
     },
     .paths = .{
