@@ -1,8 +1,9 @@
 const std = @import("std");
 
-pub fn build(b: *std.build.Builder) void {
+pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const t = target.result;
 
     const libz_dep = b.dependency("libz", .{
         .target = target,
@@ -33,7 +34,6 @@ pub fn build(b: *std.build.Builder) void {
     lib.linkLibC();
     lib.addIncludePath(.{ .path = "." });
 
-    const t = lib.target_info.target;
     const avconfig_h = b.addConfigHeader(.{
         .style = .blank,
         .include_path = "libavutil/avconfig.h",
@@ -657,7 +657,7 @@ pub fn build(b: *std.build.Builder) void {
         .CONFIG_GRAY = 0,
         .CONFIG_HARDCODED_TABLES = 0,
         .CONFIG_OMX_RPI = 0,
-        .CONFIG_RUNTIME_CPUDETECT = @intFromBool(!target.isNativeCpu()),
+        .CONFIG_RUNTIME_CPUDETECT = @intFromBool(!target.query.isNativeCpu()),
         .CONFIG_SAFE_BITSTREAM_READER = 1,
         .CONFIG_SHARED = 0,
         .CONFIG_SMALL = @intFromBool(optimize == .ReleaseSmall),
@@ -907,7 +907,7 @@ pub fn build(b: *std.build.Builder) void {
                 });
 
                 nasm_run.addArgs(&.{"--include"});
-                nasm_run.addFileArg(config_asm.getFileSource());
+                nasm_run.addFileArg(config_asm.getOutput());
 
                 nasm_run.addArgs(&.{"-o"});
                 lib.addObjectFile(nasm_run.addOutputFileArg(output_basename));
