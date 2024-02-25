@@ -1,11 +1,11 @@
 .{
     .name = "libffmpeg",
-    .version = "6.1.1-1",
+    .version = "6.1.1-2",
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/allyourcodebase/zlib/archive/refs/tags/1.3.1-1.tar.gz",
-            .hash = "1220fc4b799253e8d6659825881a3d433bc072c140aaeaab73eeda01076cecea0402",
+            .url = "https://github.com/allyourcodebase/zlib/archive/refs/tags/1.3.1-2.tar.gz",
+            .hash = "1220e19730c2aa0a71d7b297f29df80967bfbd509eab78ee4480e2f0eb5035bc5396",
         },
 
         .libmp3lame = .{
