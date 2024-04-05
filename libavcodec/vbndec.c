@@ -162,7 +162,9 @@ static int vbn_decode_frame(AVCodecContext *avctx,
         ctx->dec.raw_ratio = 16;
         ctx->dec.frame_data.out = frame->data[0] + frame->linesize[0] * (frame->height - 1);
         ctx->dec.stride = -frame->linesize[0];
-        avctx->execute2(avctx, ff_texturedsp_decompress_thread, &ctx->dec, NULL, ctx->dec.slice_count);
+        ctx->dec.width  = avctx->coded_width;
+        ctx->dec.height = avctx->coded_height;
+        ff_texturedsp_exec_decompress_threads(avctx, &ctx->dec);
     }
 
     *got_frame = 1;

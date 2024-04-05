@@ -35,6 +35,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/timecode.h"
 
+#include "aom_film_grain.h"
 #include "bswapdsp.h"
 #include "cabac_functions.h"
 #include "codec_internal.h"
@@ -86,8 +87,8 @@ static void pic_arrays_free(HEVCContext *s)
     av_freep(&s->sh.size);
     av_freep(&s->sh.offset);
 
-    av_buffer_pool_uninit(&s->tab_mvf_pool);
-    av_buffer_pool_uninit(&s->rpl_tab_pool);
+    ff_refstruct_pool_uninit(&s->tab_mvf_pool);
+    ff_refstruct_pool_uninit(&s->rpl_tab_pool);
 }
 
 /* allocate arrays that depend on frame dimensions */
@@ -133,10 +134,8 @@ static int pic_arrays_init(HEVCContext *s, const HEVCSPS *sps)
     if (!s->horizontal_bs || !s->vertical_bs)
         goto fail;
 
-    s->tab_mvf_pool = av_buffer_pool_init(min_pu_size * sizeof(MvField),
-                                          av_buffer_allocz);
-    s->rpl_tab_pool = av_buffer_pool_init(ctb_count * sizeof(RefPicListTab),
-                                          av_buffer_allocz);
+    s->tab_mvf_pool = ff_refstruct_pool_alloc(min_pu_size * sizeof(MvField), 0);
+    s->rpl_tab_pool = ff_refstruct_pool_alloc(ctb_count * sizeof(RefPicListTab), 0);
     if (!s->tab_mvf_pool || !s->rpl_tab_pool)
         goto fail;
 
@@ -390,7 +389,8 @@ static int export_stream_params_from_sei(HEVCContext *s)
         avctx->color_trc = s->sei.common.alternative_transfer.preferred_transfer_characteristics;
     }
 
-    if (s->sei.common.film_grain_characteristics.present)
+    if (s->sei.common.film_grain_characteristics.present ||
+        s->sei.common.aom_film_grain.enable)
         avctx->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
 
     return 0;
@@ -400,6 +400,7 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 {
 #define HWACCEL_MAX (CONFIG_HEVC_DXVA2_HWACCEL + \
                      CONFIG_HEVC_D3D11VA_HWACCEL * 2 + \
+                     CONFIG_HEVC_D3D12VA_HWACCEL + \
                      CONFIG_HEVC_NVDEC_HWACCEL + \
                      CONFIG_HEVC_VAAPI_HWACCEL + \
                      CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL + \
@@ -416,6 +417,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_D3D11VA_HWACCEL
         *fmt++ = AV_PIX_FMT_D3D11VA_VLD;
         *fmt++ = AV_PIX_FMT_D3D11;
+#endif
+#if CONFIG_HEVC_D3D12VA_HWACCEL
+        *fmt++ = AV_PIX_FMT_D3D12;
 #endif
 #if CONFIG_HEVC_VAAPI_HWACCEL
         *fmt++ = AV_PIX_FMT_VAAPI;
@@ -440,6 +444,9 @@ static enum AVPixelFormat get_format(HEVCContext *s, const HEVCSPS *sps)
 #if CONFIG_HEVC_D3D11VA_HWACCEL
         *fmt++ = AV_PIX_FMT_D3D11VA_VLD;
         *fmt++ = AV_PIX_FMT_D3D11;
+#endif
+#if CONFIG_HEVC_D3D12VA_HWACCEL
+        *fmt++ = AV_PIX_FMT_D3D12;
 #endif
 #if CONFIG_HEVC_VAAPI_HWACCEL
         *fmt++ = AV_PIX_FMT_VAAPI;
@@ -2773,7 +2780,7 @@ static int set_side_data(HEVCContext *s)
             s->sei.common.content_light.present--;
     }
 
-    ret = ff_h2645_sei_to_frame(out, &s->sei.common, AV_CODEC_ID_HEVC, NULL,
+    ret = ff_h2645_sei_to_frame(out, &s->sei.common, AV_CODEC_ID_HEVC, s->avctx,
                                 &s->ps.sps->vui.common,
                                 s->ps.sps->bit_depth, s->ps.sps->bit_depth_chroma,
                                 s->ref->poc /* no poc_offset in HEVC */);
@@ -2783,24 +2790,27 @@ static int set_side_data(HEVCContext *s)
     if (s->sei.timecode.present) {
         uint32_t *tc_sd;
         char tcbuf[AV_TIMECODE_STR_SIZE];
-        AVFrameSideData *tcside = av_frame_new_side_data(out, AV_FRAME_DATA_S12M_TIMECODE,
-                                                         sizeof(uint32_t) * 4);
-        if (!tcside)
-            return AVERROR(ENOMEM);
+        AVFrameSideData *tcside;
+        ret = ff_frame_new_side_data(s->avctx, out, AV_FRAME_DATA_S12M_TIMECODE,
+                                     sizeof(uint32_t) * 4, &tcside);
+        if (ret < 0)
+            return ret;
 
-        tc_sd = (uint32_t*)tcside->data;
-        tc_sd[0] = s->sei.timecode.num_clock_ts;
+        if (tcside) {
+            tc_sd = (uint32_t*)tcside->data;
+            tc_sd[0] = s->sei.timecode.num_clock_ts;
 
-        for (int i = 0; i < tc_sd[0]; i++) {
-            int drop = s->sei.timecode.cnt_dropped_flag[i];
-            int   hh = s->sei.timecode.hours_value[i];
-            int   mm = s->sei.timecode.minutes_value[i];
-            int   ss = s->sei.timecode.seconds_value[i];
-            int   ff = s->sei.timecode.n_frames[i];
+            for (int i = 0; i < tc_sd[0]; i++) {
+                int drop = s->sei.timecode.cnt_dropped_flag[i];
+                int   hh = s->sei.timecode.hours_value[i];
+                int   mm = s->sei.timecode.minutes_value[i];
+                int   ss = s->sei.timecode.seconds_value[i];
+                int   ff = s->sei.timecode.n_frames[i];
 
-            tc_sd[i + 1] = av_timecode_get_smpte(s->avctx->framerate, drop, hh, mm, ss, ff);
-            av_timecode_make_smpte_tc_string2(tcbuf, s->avctx->framerate, tc_sd[i + 1], 0, 0);
-            av_dict_set(&out->metadata, "timecode", tcbuf, 0);
+                tc_sd[i + 1] = av_timecode_get_smpte(s->avctx->framerate, drop, hh, mm, ss, ff);
+                av_timecode_make_smpte_tc_string2(tcbuf, s->avctx->framerate, tc_sd[i + 1], 0, 0);
+                av_dict_set(&out->metadata, "timecode", tcbuf, 0);
+            }
         }
 
         s->sei.timecode.num_clock_ts = 0;
@@ -2811,10 +2821,9 @@ static int set_side_data(HEVCContext *s)
         if (!info_ref)
             return AVERROR(ENOMEM);
 
-        if (!av_frame_new_side_data_from_buf(out, AV_FRAME_DATA_DYNAMIC_HDR_PLUS, info_ref)) {
-            av_buffer_unref(&info_ref);
-            return AVERROR(ENOMEM);
-        }
+        ret = ff_frame_new_side_data_from_buf(s->avctx, out, AV_FRAME_DATA_DYNAMIC_HDR_PLUS, &info_ref, NULL);
+        if (ret < 0)
+            return ret;
     }
 
     if (s->rpu_buf) {
@@ -2878,11 +2887,13 @@ static int hevc_frame_start(HEVCContext *s)
     else
         s->ref->frame->flags &= ~AV_FRAME_FLAG_KEY;
 
-    s->ref->needs_fg = s->sei.common.film_grain_characteristics.present &&
+    s->ref->needs_fg = (s->sei.common.film_grain_characteristics.present ||
+                        s->sei.common.aom_film_grain.enable) &&
         !(s->avctx->export_side_data & AV_CODEC_EXPORT_DATA_FILM_GRAIN) &&
         !s->avctx->hwaccel;
 
     if (s->ref->needs_fg &&
+        s->sei.common.film_grain_characteristics.present &&
         !ff_h274_film_grain_params_supported(s->sei.common.film_grain_characteristics.model_id,
                                              s->ref->frame->format)) {
         av_log_once(s->avctx, AV_LOG_WARNING, AV_LOG_DEBUG, &s->film_grain_warning_shown,
@@ -2927,14 +2938,24 @@ fail:
 static int hevc_frame_end(HEVCContext *s)
 {
     HEVCFrame *out = s->ref;
-    const AVFrameSideData *sd;
+    const AVFilmGrainParams *fgp;
     av_unused int ret;
 
     if (out->needs_fg) {
-        sd = av_frame_get_side_data(out->frame, AV_FRAME_DATA_FILM_GRAIN_PARAMS);
-        av_assert0(out->frame_grain->buf[0] && sd);
-        ret = ff_h274_apply_film_grain(out->frame_grain, out->frame, &s->h274db,
-                                       (AVFilmGrainParams *) sd->data);
+        av_assert0(out->frame_grain->buf[0]);
+        fgp = av_film_grain_params_select(out->frame);
+        switch (fgp->type) {
+        case AV_FILM_GRAIN_PARAMS_NONE:
+            av_assert0(0);
+            return AVERROR_BUG;
+        case AV_FILM_GRAIN_PARAMS_H274:
+            ret = ff_h274_apply_film_grain(out->frame_grain, out->frame,
+                                           &s->h274db, fgp);
+            break;
+        case AV_FILM_GRAIN_PARAMS_AV1:
+            ret = ff_aom_apply_film_grain(out->frame_grain, out->frame, fgp);
+            break;
+        }
         av_assert1(ret >= 0);
     }
 
@@ -3404,16 +3425,8 @@ static int hevc_ref_frame(HEVCFrame *dst, HEVCFrame *src)
         dst->needs_fg = 1;
     }
 
-    dst->tab_mvf_buf = av_buffer_ref(src->tab_mvf_buf);
-    if (!dst->tab_mvf_buf)
-        goto fail;
-    dst->tab_mvf = src->tab_mvf;
-
-    dst->rpl_tab_buf = av_buffer_ref(src->rpl_tab_buf);
-    if (!dst->rpl_tab_buf)
-        goto fail;
-    dst->rpl_tab = src->rpl_tab;
-
+    dst->tab_mvf = ff_refstruct_ref(src->tab_mvf);
+    dst->rpl_tab = ff_refstruct_ref(src->rpl_tab);
     dst->rpl = ff_refstruct_ref(src->rpl);
     dst->nb_rpl_elems = src->nb_rpl_elems;
 
@@ -3426,9 +3439,6 @@ static int hevc_ref_frame(HEVCFrame *dst, HEVCFrame *src)
                           src->hwaccel_picture_private);
 
     return 0;
-fail:
-    ff_hevc_unref_frame(dst, ~0);
-    return AVERROR(ENOMEM);
 }
 
 static av_cold int hevc_decode_free(AVCodecContext *avctx)
@@ -3600,6 +3610,7 @@ static int hevc_update_thread_context(AVCodecContext *dst,
     s->sei.common.alternative_transfer = s0->sei.common.alternative_transfer;
     s->sei.common.mastering_display    = s0->sei.common.mastering_display;
     s->sei.common.content_light        = s0->sei.common.content_light;
+    s->sei.common.aom_film_grain       = s0->sei.common.aom_film_grain;
 
     ret = export_stream_params_from_sei(s);
     if (ret < 0)
@@ -3713,6 +3724,9 @@ const FFCodec ff_hevc_decoder = {
 #endif
 #if CONFIG_HEVC_D3D11VA2_HWACCEL
                                HWACCEL_D3D11VA2(hevc),
+#endif
+#if CONFIG_HEVC_D3D12VA_HWACCEL
+                               HWACCEL_D3D12VA(hevc),
 #endif
 #if CONFIG_HEVC_NVDEC_HWACCEL
                                HWACCEL_NVDEC(hevc),

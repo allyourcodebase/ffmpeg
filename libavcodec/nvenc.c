@@ -1255,6 +1255,11 @@ static av_cold int nvenc_setup_h264_config(AVCodecContext *avctx)
 
     h264->level = ctx->level;
 
+#ifdef NVENC_HAVE_NEW_BIT_DEPTH_API
+    h264->inputBitDepth = h264->outputBitDepth =
+        IS_10BIT(ctx->data_pix_fmt) ? NV_ENC_BIT_DEPTH_10 : NV_ENC_BIT_DEPTH_8;
+#endif
+
     if (ctx->coder >= 0)
         h264->entropyCodingMode = ctx->coder;
 
@@ -1370,7 +1375,12 @@ static av_cold int nvenc_setup_hevc_config(AVCodecContext *avctx)
 
     hevc->chromaFormatIDC = IS_YUV444(ctx->data_pix_fmt) ? 3 : 1;
 
+#ifdef NVENC_HAVE_NEW_BIT_DEPTH_API
+    hevc->inputBitDepth = hevc->outputBitDepth =
+        IS_10BIT(ctx->data_pix_fmt) ? NV_ENC_BIT_DEPTH_10 : NV_ENC_BIT_DEPTH_8;
+#else
     hevc->pixelBitDepthMinus8 = IS_10BIT(ctx->data_pix_fmt) ? 2 : 0;
+#endif
 
     hevc->level = ctx->level;
 
@@ -1455,8 +1465,13 @@ static av_cold int nvenc_setup_av1_config(AVCodecContext *avctx)
 
     av1->chromaFormatIDC = IS_YUV444(ctx->data_pix_fmt) ? 3 : 1;
 
+#ifdef NVENC_HAVE_NEW_BIT_DEPTH_API
+    av1->inputBitDepth = IS_10BIT(ctx->data_pix_fmt) ? NV_ENC_BIT_DEPTH_10 : NV_ENC_BIT_DEPTH_8;
+    av1->outputBitDepth = (IS_10BIT(ctx->data_pix_fmt) || ctx->highbitdepth) ? NV_ENC_BIT_DEPTH_10 : NV_ENC_BIT_DEPTH_8;
+#else
     av1->inputPixelBitDepthMinus8 = IS_10BIT(ctx->data_pix_fmt) ? 2 : 0;
     av1->pixelBitDepthMinus8 = (IS_10BIT(ctx->data_pix_fmt) || ctx->highbitdepth) ? 2 : 0;
+#endif
 
     if (ctx->b_ref_mode >= 0)
         av1->useBFramesAsRef = ctx->b_ref_mode;
@@ -1689,15 +1704,15 @@ static NV_ENC_BUFFER_FORMAT nvenc_map_buffer_format(enum AVPixelFormat pix_fmt)
 {
     switch (pix_fmt) {
     case AV_PIX_FMT_YUV420P:
-        return NV_ENC_BUFFER_FORMAT_YV12_PL;
+        return NV_ENC_BUFFER_FORMAT_YV12;
     case AV_PIX_FMT_NV12:
-        return NV_ENC_BUFFER_FORMAT_NV12_PL;
+        return NV_ENC_BUFFER_FORMAT_NV12;
     case AV_PIX_FMT_P010:
     case AV_PIX_FMT_P016:
         return NV_ENC_BUFFER_FORMAT_YUV420_10BIT;
     case AV_PIX_FMT_GBRP:
     case AV_PIX_FMT_YUV444P:
-        return NV_ENC_BUFFER_FORMAT_YUV444_PL;
+        return NV_ENC_BUFFER_FORMAT_YUV444;
     case AV_PIX_FMT_GBRP16:
     case AV_PIX_FMT_YUV444P16:
         return NV_ENC_BUFFER_FORMAT_YUV444_10BIT;
@@ -2282,12 +2297,6 @@ static int nvenc_store_frame_data(AVCodecContext *avctx, NV_ENC_PIC_PARAMS *pic_
     frame_data->duration = frame->duration;
     frame_data->frame_opaque = frame->opaque;
 
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-    frame_data->reordered_opaque = frame->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     ctx->frame_data_array_pos = (ctx->frame_data_array_pos + 1) % ctx->frame_data_array_nb;
     pic_params->inputDuration = idx;
 
@@ -2303,12 +2312,6 @@ static int nvenc_retrieve_frame_data(AVCodecContext *avctx, NV_ENC_LOCK_BITSTREA
     NvencFrameData *frame_data = &ctx->frame_data_array[idx];
 
     pkt->duration = frame_data->duration;
-
-#if FF_API_REORDERED_OPAQUE
-FF_DISABLE_DEPRECATION_WARNINGS
-    avctx->reordered_opaque = frame_data->reordered_opaque;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
     if (avctx->flags & AV_CODEC_FLAG_COPY_OPAQUE) {
         pkt->opaque = frame_data->frame_opaque;

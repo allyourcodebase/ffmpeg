@@ -126,33 +126,35 @@ func ff_deinterleave_bytes_rvv, zve32x
         ret
 endfunc
 
-.macro yuy2_to_i422p y_shift
-        addi    a4, a4, 1
+.macro yuy2_to_i422p luma, chroma
+        srai    t4, a4, 1 // pixel width -> chroma width
         lw      t6, (sp)
-        srai    a4, a4, 1 // pixel width -> chroma width
+        slli    t5, a4, 1 // pixel width -> (source) byte width
+        sub     a6, a6, a4
+        sub     a7, a7, t4
+        sub     t6, t6, t5
+        vsetvli t2, zero, e8, m4, ta, ma
 1:
         mv      t4, a4
-        mv      t3, a3
-        mv      t0, a0
-        mv      t1, a1
-        mv      t2, a2
         addi    a5, a5, -1
 2:
-        vsetvli    t5, t4, e8, m2, ta, ma
-        vlseg2e16.v v16, (t3)
-        sub        t4, t4, t5
-        vnsrl.wi   v24, v16, \y_shift // Y0
-        sh2add     t3, t5, t3
-        vnsrl.wi   v26, v20, \y_shift // Y1
-        vnsrl.wi   v28, v16, 8 - \y_shift // U
-        vnsrl.wi   v30, v20, 8 - \y_shift // V
-        vsseg2e8.v v24, (t0)
-        sh1add     t0, t5, t0
-        vse8.v     v28, (t1)
-        add        t1, t5, t1
-        vse8.v     v30, (t2)
-        add        t2, t5, t2
-        bnez       t4, 2b
+        min     t0, t2, t4 // ensure even VL on penultimate iteration
+        vsetvli t0, t0, e8, m4, ta, ma
+        vlseg2e8.v v16, (a3)
+        srli    t1, t0, 1
+        vsetvli zero, t1, e8, m2, ta, ma
+        vnsrl.wi   v24, \chroma, 0 // U
+        sub     t4, t4, t0
+        vnsrl.wi   v28, \chroma, 8 // V
+        sh1add  a3, t0, a3
+        vse8.v  v24, (a1)
+        add     a1, t1, a1
+        vse8.v  v28, (a2)
+        add     a2, t1, a2
+        vsetvli zero, t0, e8, m4, ta, ma
+        vse8.v  \luma, (a0)
+        add     a0, t0, a0
+        bnez    t4, 2b
 
         add     a3, a3, t6
         add     a0, a0, a6
@@ -164,9 +166,9 @@ endfunc
 .endm
 
 func ff_uyvytoyuv422_rvv, zve32x
-        yuy2_to_i422p 8
+        yuy2_to_i422p v20, v16
 endfunc
 
 func ff_yuyvtoyuv422_rvv, zve32x
-        yuy2_to_i422p 0
+        yuy2_to_i422p v16, v20
 endfunc

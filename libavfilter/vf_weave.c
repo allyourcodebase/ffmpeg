@@ -32,6 +32,7 @@ typedef struct WeaveContext {
     int double_weave;
     int nb_planes;
     int planeheight[4];
+    int outheight[4];
     int linesize[4];
 
     AVFrame *prev;
@@ -41,11 +42,11 @@ typedef struct WeaveContext {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption weave_options[] = {
-    { "first_field", "set first field", OFFSET(first_field), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, "field"},
-        { "top",     "set top field first",               0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "field"},
-        { "t",       "set top field first",               0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, "field"},
-        { "bottom",  "set bottom field first",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "field"},
-        { "b",       "set bottom field first",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, "field"},
+    { "first_field", "set first field", OFFSET(first_field), AV_OPT_TYPE_INT,   {.i64=0}, 0, 1, FLAGS, .unit = "field"},
+        { "top",     "set top field first",               0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "field"},
+        { "t",       "set top field first",               0, AV_OPT_TYPE_CONST, {.i64=0}, 0, 0, FLAGS, .unit = "field"},
+        { "bottom",  "set bottom field first",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "field"},
+        { "b",       "set bottom field first",            0, AV_OPT_TYPE_CONST, {.i64=1}, 0, 0, FLAGS, .unit = "field"},
     { NULL }
 };
 
@@ -81,6 +82,9 @@ static int config_props_output(AVFilterLink *outlink)
     s->planeheight[1] = s->planeheight[2] = AV_CEIL_RSHIFT(inlink->h, desc->log2_chroma_h);
     s->planeheight[0] = s->planeheight[3] = inlink->h;
 
+    s->outheight[1] = s->outheight[2] = AV_CEIL_RSHIFT(2*inlink->h, desc->log2_chroma_h);
+    s->outheight[0] = s->outheight[3] = 2*inlink->h;
+
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
 
     return 0;
@@ -106,19 +110,20 @@ static int weave_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
         const int height = s->planeheight[i];
         const int start = (height * jobnr) / nb_jobs;
         const int end = (height * (jobnr+1)) / nb_jobs;
+        const int compensation = 2*end > s->outheight[i];
 
         av_image_copy_plane(out->data[i] + out->linesize[i] * field1 +
                             out->linesize[i] * start * 2,
                             out->linesize[i] * 2,
                             in->data[i] + start * in->linesize[i],
                             in->linesize[i],
-                            s->linesize[i], end - start);
+                            s->linesize[i], end - start - compensation * field1);
         av_image_copy_plane(out->data[i] + out->linesize[i] * field2 +
                             out->linesize[i] * start * 2,
                             out->linesize[i] * 2,
                             s->prev->data[i] + start * s->prev->linesize[i],
                             s->prev->linesize[i],
-                            s->linesize[i], end - start);
+                            s->linesize[i], end - start - compensation * field2);
     }
 
     return 0;

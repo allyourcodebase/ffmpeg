@@ -34,6 +34,7 @@
 #include "libavutil/opt.h"
 
 #include "avformat.h"
+#include "demux.h"
 #include "internal.h"
 
 typedef struct JXLAnimDemuxContext {
@@ -170,6 +171,8 @@ static int jpegxl_anim_read_packet(AVFormatContext *s, AVPacket *pkt)
         av_buffer_unref(&ctx->initial);
     }
 
+    pkt->pos = avio_tell(pb) - offset;
+
     ret = avio_read(pb, pkt->data + offset, size - offset);
     if (ret < 0)
         return ret;
@@ -188,16 +191,16 @@ static int jpegxl_anim_close(AVFormatContext *s)
     return 0;
 }
 
-const AVInputFormat ff_jpegxl_anim_demuxer = {
-    .name           = "jpegxl_anim",
-    .long_name      = NULL_IF_CONFIG_SMALL("Animated JPEG XL"),
+const FFInputFormat ff_jpegxl_anim_demuxer = {
+    .p.name         = "jpegxl_anim",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("Animated JPEG XL"),
+    .p.flags        = AVFMT_GENERIC_INDEX | AVFMT_NOTIMESTAMPS,
+    .p.mime_type    = "image/jxl",
+    .p.extensions   = "jxl",
     .priv_data_size = sizeof(JXLAnimDemuxContext),
     .read_probe     = jpegxl_anim_probe,
     .read_header    = jpegxl_anim_read_header,
     .read_packet    = jpegxl_anim_read_packet,
     .read_close     = jpegxl_anim_close,
-    .flags_internal = FF_FMT_INIT_CLEANUP,
-    .flags          = AVFMT_GENERIC_INDEX | AVFMT_NOTIMESTAMPS,
-    .mime_type      = "image/jxl",
-    .extensions     = "jxl",
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
 };

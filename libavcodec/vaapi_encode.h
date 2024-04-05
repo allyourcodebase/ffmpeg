@@ -103,7 +103,8 @@ typedef struct VAAPIEncodePicture {
     int          nb_param_buffers;
     VABufferID     *param_buffers;
 
-    AVBufferRef    *output_buffer_ref;
+    /* Refcounted via the refstruct-API */
+    VABufferID     *output_buffer_ref;
     VABufferID      output_buffer;
 
     void           *priv_data;
@@ -215,6 +216,9 @@ typedef struct VAAPIEncodeContext {
     // available modes).
     int             explicit_rc_mode;
 
+    // Block Level based bitrate control.
+    int             blbrc;
+
     // Explicitly-set QP, for use with the "qp" options.
     // (Forces CQP mode when set, overriding everything else.)
     int             explicit_qp;
@@ -275,7 +279,7 @@ typedef struct VAAPIEncodeContext {
     AVHWFramesContext *recon_frames;
 
     // Pool of (reusable) bitstream output buffers.
-    AVBufferPool   *output_buffer_pool;
+    struct FFRefStructPool *output_buffer_pool;
 
     // Global parameters which will be applied at the start of the
     // sequence (includes rate control parameters below).
@@ -383,8 +387,11 @@ typedef struct VAAPIEncodeContext {
     //void  *header_data;
     //size_t header_data_size;
 
-    /** Buffered coded data of a pic if it is an non-independent frame. */
-    AVBufferRef     *coded_buffer_ref;
+    /**
+     * Buffered coded data of a pic if it is an non-independent frame.
+     * This is a RefStruct reference.
+     */
+    VABufferID     *coded_buffer_ref;
 
     /** Tail data of a pic, now only used for av1 repeat frame header. */
     AVPacket        *tail_pkt;
@@ -521,20 +528,24 @@ int ff_vaapi_encode_close(AVCodecContext *avctx);
 
 #define VAAPI_ENCODE_RC_MODE(name, desc) \
     { #name, desc, 0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_ ## name }, \
-      0, 0, FLAGS, "rc_mode" }
+      0, 0, FLAGS, .unit = "rc_mode" }
 #define VAAPI_ENCODE_RC_OPTIONS \
     { "rc_mode",\
       "Set rate control mode", \
       OFFSET(common.explicit_rc_mode), AV_OPT_TYPE_INT, \
-      { .i64 = RC_MODE_AUTO }, RC_MODE_AUTO, RC_MODE_MAX, FLAGS, "rc_mode" }, \
+      { .i64 = RC_MODE_AUTO }, RC_MODE_AUTO, RC_MODE_MAX, FLAGS, .unit = "rc_mode" }, \
     { "auto", "Choose mode automatically based on other parameters", \
-      0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_AUTO }, 0, 0, FLAGS, "rc_mode" }, \
+      0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_AUTO }, 0, 0, FLAGS, .unit = "rc_mode" }, \
     VAAPI_ENCODE_RC_MODE(CQP,  "Constant-quality"), \
     VAAPI_ENCODE_RC_MODE(CBR,  "Constant-bitrate"), \
     VAAPI_ENCODE_RC_MODE(VBR,  "Variable-bitrate"), \
     VAAPI_ENCODE_RC_MODE(ICQ,  "Intelligent constant-quality"), \
     VAAPI_ENCODE_RC_MODE(QVBR, "Quality-defined variable-bitrate"), \
-    VAAPI_ENCODE_RC_MODE(AVBR, "Average variable-bitrate")
+    VAAPI_ENCODE_RC_MODE(AVBR, "Average variable-bitrate"), \
+    { "blbrc", \
+      "Block level based bitrate control",\
+      OFFSET(common.blbrc), AV_OPT_TYPE_BOOL, \
+      { .i64 = 0 }, 0, 1, FLAGS }
 
 
 #endif /* AVCODEC_VAAPI_ENCODE_H */

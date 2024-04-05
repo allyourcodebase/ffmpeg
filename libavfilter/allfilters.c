@@ -21,6 +21,7 @@
 
 #include "avfilter.h"
 
+extern const AVFilter ff_af_aap;
 extern const AVFilter ff_af_abench;
 extern const AVFilter ff_af_acompressor;
 extern const AVFilter ff_af_acontrast;
@@ -298,6 +299,7 @@ extern const AVFilter ff_vf_freezedetect;
 extern const AVFilter ff_vf_freezeframes;
 extern const AVFilter ff_vf_frei0r;
 extern const AVFilter ff_vf_fspp;
+extern const AVFilter ff_vf_fsync;
 extern const AVFilter ff_vf_gblur;
 extern const AVFilter ff_vf_gblur_vulkan;
 extern const AVFilter ff_vf_geq;
@@ -410,6 +412,8 @@ extern const AVFilter ff_vf_pseudocolor;
 extern const AVFilter ff_vf_psnr;
 extern const AVFilter ff_vf_pullup;
 extern const AVFilter ff_vf_qp;
+extern const AVFilter ff_vf_qrencode;
+extern const AVFilter ff_vf_quirc;
 extern const AVFilter ff_vf_random;
 extern const AVFilter ff_vf_readeia608;
 extern const AVFilter ff_vf_readvitc;
@@ -482,6 +486,7 @@ extern const AVFilter ff_vf_threshold;
 extern const AVFilter ff_vf_thumbnail;
 extern const AVFilter ff_vf_thumbnail_cuda;
 extern const AVFilter ff_vf_tile;
+extern const AVFilter ff_vf_tiltandshift;
 extern const AVFilter ff_vf_tinterlace;
 extern const AVFilter ff_vf_tlut2;
 extern const AVFilter ff_vf_tmedian;
@@ -559,6 +564,7 @@ extern const AVFilter ff_vsrc_mandelbrot;
 extern const AVFilter ff_vsrc_mptestsrc;
 extern const AVFilter ff_vsrc_nullsrc;
 extern const AVFilter ff_vsrc_openclsrc;
+extern const AVFilter ff_vsrc_qrencodesrc;
 extern const AVFilter ff_vsrc_pal75bars;
 extern const AVFilter ff_vsrc_pal100bars;
 extern const AVFilter ff_vsrc_rgbtestsrc;
@@ -605,8 +611,6 @@ extern  const AVFilter ff_asrc_abuffer;
 extern  const AVFilter ff_vsrc_buffer;
 extern  const AVFilter ff_asink_abuffer;
 extern  const AVFilter ff_vsink_buffer;
-extern const AVFilter ff_af_afifo;
-extern const AVFilter ff_vf_fifo;
 
 #include "libavfilter/filter_list.c"
 

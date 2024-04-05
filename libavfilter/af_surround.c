@@ -61,8 +61,8 @@ static const int sc_map[16] = {
 typedef struct AudioSurroundContext {
     const AVClass *class;
 
-    char *out_channel_layout_str;
-    char *in_channel_layout_str;
+    AVChannelLayout out_ch_layout;
+    AVChannelLayout in_ch_layout;
 
     float level_in;
     float level_out;
@@ -93,8 +93,6 @@ typedef struct AudioSurroundContext {
     float lowcut;
     float highcut;
 
-    AVChannelLayout out_ch_layout;
-    AVChannelLayout in_ch_layout;
     int nb_in_channels;
     int nb_out_channels;
 
@@ -1107,20 +1105,8 @@ static av_cold int init(AVFilterContext *ctx)
 {
     AudioSurroundContext *s = ctx->priv;
     int64_t in_channel_layout, out_channel_layout;
+    char in_name[128], out_name[128];
     float overlap;
-    int ret;
-
-    if ((ret = av_channel_layout_from_string(&s->out_ch_layout, s->out_channel_layout_str)) < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Error parsing output channel layout '%s'.\n",
-               s->out_channel_layout_str);
-        return ret;
-    }
-
-    if ((ret = av_channel_layout_from_string(&s->in_ch_layout, s->in_channel_layout_str)) < 0) {
-        av_log(ctx, AV_LOG_ERROR, "Error parsing input channel layout '%s'.\n",
-               s->in_channel_layout_str);
-        return AVERROR(EINVAL);
-    }
 
     if (s->lowcutf >= s->highcutf) {
         av_log(ctx, AV_LOG_ERROR, "Low cut-off '%d' should be less than high cut-off '%d'.\n",
@@ -1181,8 +1167,10 @@ static av_cold int init(AVFilterContext *ctx)
         break;
     default:
 fail:
+        av_channel_layout_describe(&s->out_ch_layout, out_name, sizeof(out_name));
+        av_channel_layout_describe(&s->in_ch_layout, in_name, sizeof(in_name));
         av_log(ctx, AV_LOG_ERROR, "Unsupported upmix: '%s' -> '%s'.\n",
-               s->in_channel_layout_str, s->out_channel_layout_str);
+               in_name, out_name);
         return AVERROR(EINVAL);
     }
 
@@ -1225,15 +1213,17 @@ static int fft_channel(AVFilterContext *ctx, AVFrame *in, int ch)
     AudioSurroundContext *s = ctx->priv;
     float *src = (float *)s->input_in->extended_data[ch];
     float *win = (float *)s->window->extended_data[ch];
+    const float *window_func_lut = s->window_func_lut;
     const int offset = s->win_size - s->hop_size;
     const float level_in = s->input_levels[ch];
+    const int win_size = s->win_size;
 
     memmove(src, &src[s->hop_size], offset * sizeof(float));
     memcpy(&src[offset], in->extended_data[ch], in->nb_samples * sizeof(float));
     memset(&src[offset + in->nb_samples], 0, (s->hop_size - in->nb_samples) * sizeof(float));
 
-    for (int n = 0; n < s->win_size; n++)
-        win[n] = src[n] * s->window_func_lut[n] * level_in;
+    for (int n = 0; n < win_size; n++)
+        win[n] = src[n] * window_func_lut[n] * level_in;
 
     s->tx_fn(s->rdft[ch], (float *)s->input->extended_data[ch], win, sizeof(float));
 
@@ -1256,6 +1246,8 @@ static int ifft_channel(AVFilterContext *ctx, AVFrame *out, int ch)
 {
     AudioSurroundContext *s = ctx->priv;
     const float level_out = s->output_levels[ch] * s->win_gain;
+    const float *window_func_lut = s->window_func_lut;
+    const int win_size = s->win_size;
     float *dst, *ptr;
 
     dst = (float *)s->output_out->extended_data[ch];
@@ -1268,8 +1260,8 @@ static int ifft_channel(AVFilterContext *ctx, AVFrame *out, int ch)
     memset(s->overlap_buffer->extended_data[ch] + s->win_size * sizeof(float),
            0, s->hop_size * sizeof(float));
 
-    for (int n = 0; n < s->win_size; n++)
-        ptr[n] += dst[n] * s->window_func_lut[n] * level_out;
+    for (int n = 0; n < win_size; n++)
+        ptr[n] += dst[n] * window_func_lut[n] * level_out;
 
     ptr = (float *)s->overlap_buffer->extended_data[ch];
     dst = (float *)out->extended_data[ch];
@@ -1417,16 +1409,16 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 #define TFLAGS AV_OPT_FLAG_AUDIO_PARAM|AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_RUNTIME_PARAM
 
 static const AVOption surround_options[] = {
-    { "chl_out",   "set output channel layout", OFFSET(out_channel_layout_str), AV_OPT_TYPE_STRING, {.str="5.1"}, 0,   0, FLAGS },
-    { "chl_in",    "set input channel layout",  OFFSET(in_channel_layout_str),  AV_OPT_TYPE_STRING, {.str="stereo"},0, 0, FLAGS },
+    { "chl_out",   "set output channel layout", OFFSET(out_ch_layout),          AV_OPT_TYPE_CHLAYOUT, {.str="5.1"}, 0,   0, FLAGS },
+    { "chl_in",    "set input channel layout",  OFFSET(in_ch_layout),           AV_OPT_TYPE_CHLAYOUT, {.str="stereo"},0, 0, FLAGS },
     { "level_in",  "set input level",           OFFSET(level_in),               AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  10, TFLAGS },
     { "level_out", "set output level",          OFFSET(level_out),              AV_OPT_TYPE_FLOAT,  {.dbl=1},     0,  10, TFLAGS },
     { "lfe",       "output LFE",                OFFSET(output_lfe),             AV_OPT_TYPE_BOOL,   {.i64=1},     0,   1, TFLAGS },
     { "lfe_low",   "LFE low cut off",           OFFSET(lowcutf),                AV_OPT_TYPE_INT,    {.i64=128},   0, 256, FLAGS },
     { "lfe_high",  "LFE high cut off",          OFFSET(highcutf),               AV_OPT_TYPE_INT,    {.i64=256},   0, 512, FLAGS },
-    { "lfe_mode",  "set LFE channel mode",      OFFSET(lfe_mode),               AV_OPT_TYPE_INT,    {.i64=0},     0,   1, TFLAGS, "lfe_mode" },
-    {  "add",      "just add LFE channel",                  0,                  AV_OPT_TYPE_CONST,  {.i64=0},     0,   1, TFLAGS, "lfe_mode" },
-    {  "sub",      "substract LFE channel with others",     0,                  AV_OPT_TYPE_CONST,  {.i64=1},     0,   1, TFLAGS, "lfe_mode" },
+    { "lfe_mode",  "set LFE channel mode",      OFFSET(lfe_mode),               AV_OPT_TYPE_INT,    {.i64=0},     0,   1, TFLAGS, .unit = "lfe_mode" },
+    {  "add",      "just add LFE channel",                  0,                  AV_OPT_TYPE_CONST,  {.i64=0},     0,   1, TFLAGS, .unit = "lfe_mode" },
+    {  "sub",      "subtract LFE channel with others",      0,                  AV_OPT_TYPE_CONST,  {.i64=1},     0,   1, TFLAGS, .unit = "lfe_mode" },
     { "smooth",    "set temporal smoothness strength",      OFFSET(smooth),     AV_OPT_TYPE_FLOAT,  {.dbl=0},     0,   1, TFLAGS },
     { "angle",     "set soundfield transform angle",        OFFSET(angle),      AV_OPT_TYPE_FLOAT,  {.dbl=90},    0, 360, TFLAGS },
     { "focus",     "set soundfield transform focus",        OFFSET(focus),      AV_OPT_TYPE_FLOAT,  {.dbl=0},    -1,   1, TFLAGS },

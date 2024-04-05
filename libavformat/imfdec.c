@@ -379,11 +379,6 @@ static int open_track_resource_context(AVFormatContext *s,
         return AVERROR(ENOMEM);
 
     track_resource->ctx->io_open = s->io_open;
-#if FF_API_AVFORMAT_IO_CLOSE
-FF_DISABLE_DEPRECATION_WARNINGS
-    track_resource->ctx->io_close = s->io_close;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     track_resource->ctx->io_close2 = s->io_close2;
     track_resource->ctx->flags |= s->flags & ~AVFMT_FLAG_CUSTOM_IO;
 
@@ -1019,12 +1014,12 @@ static const AVClass imf_class = {
     .version    = LIBAVUTIL_VERSION_INT,
 };
 
-const AVInputFormat ff_imf_demuxer = {
-    .name           = "imf",
-    .long_name      = NULL_IF_CONFIG_SMALL("IMF (Interoperable Master Format)"),
-    .flags          = AVFMT_NO_BYTE_SEEK,
-    .flags_internal = FF_FMT_INIT_CLEANUP,
-    .priv_class     = &imf_class,
+const FFInputFormat ff_imf_demuxer = {
+    .p.name         = "imf",
+    .p.long_name    = NULL_IF_CONFIG_SMALL("IMF (Interoperable Master Format)"),
+    .p.flags        = AVFMT_NO_BYTE_SEEK,
+    .p.priv_class   = &imf_class,
+    .flags_internal = FF_INFMT_FLAG_INIT_CLEANUP,
     .priv_data_size = sizeof(IMFContext),
     .read_probe     = imf_probe,
     .read_header    = imf_read_header,

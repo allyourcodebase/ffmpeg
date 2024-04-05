@@ -1468,6 +1468,9 @@ static av_always_inline int vorbis_residue_decode_internal(vorbis_context *vc,
                             unsigned step = FASTDIV(vr->partition_size << 1, dim << 1);
                             vorbis_codebook codebook = vc->codebooks[vqbook];
 
+                            if (get_bits_left(gb) <= 0)
+                                return AVERROR_INVALIDDATA;
+
                             if (vr_type == 0) {
 
                                 voffs = voffset+j*vlen;
@@ -1890,7 +1893,6 @@ const FFCodec ff_vorbis_decoder = {
     .flush           = vorbis_decode_flush,
     .p.capabilities  = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal   = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(ff_vorbis_channel_layouts)
     .p.ch_layouts    = ff_vorbis_ch_layouts,
     .p.sample_fmts   = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
                                                        AV_SAMPLE_FMT_NONE },

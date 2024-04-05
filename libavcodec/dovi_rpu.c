@@ -68,7 +68,7 @@ void ff_dovi_ctx_replace(DOVIContext *s, const DOVIContext *s0)
     s->mapping = s0->mapping;
     s->color = s0->color;
     s->dv_profile = s0->dv_profile;
-    for (int i = 0; i < DOVI_MAX_DM_ID; i++)
+    for (int i = 0; i <= DOVI_MAX_DM_ID; i++)
         ff_refstruct_replace(&s->vdr[i], s0->vdr[i]);
 }
 
@@ -145,7 +145,7 @@ static inline uint64_t get_ue_coef(GetBitContext *gb, const AVDOVIRpuDataHeader 
     case RPU_COEFF_FIXED:
         ipart = get_ue_golomb_long(gb);
         fpart.u32 = get_bits_long(gb, hdr->coef_log2_denom);
-        return (ipart << hdr->coef_log2_denom) + fpart.u32;
+        return (ipart << hdr->coef_log2_denom) | fpart.u32;
 
     case RPU_COEFF_FLOAT:
         fpart.u32 = get_bits_long(gb, 32);
@@ -164,7 +164,7 @@ static inline int64_t get_se_coef(GetBitContext *gb, const AVDOVIRpuDataHeader *
     case RPU_COEFF_FIXED:
         ipart = get_se_golomb_long(gb);
         fpart.u32 = get_bits_long(gb, hdr->coef_log2_denom);
-        return ipart * (1LL << hdr->coef_log2_denom) + fpart.u32;
+        return ipart * (1LL << hdr->coef_log2_denom) | fpart.u32;
 
     case RPU_COEFF_FLOAT:
         fpart.u32 = get_bits_long(gb, 32);
@@ -172,6 +172,18 @@ static inline int64_t get_se_coef(GetBitContext *gb, const AVDOVIRpuDataHeader *
     }
 
     return 0; /* unreachable */
+}
+
+static inline unsigned get_variable_bits(GetBitContext *gb, int n)
+{
+    unsigned int value = get_bits(gb, n);
+    int read_more = get_bits1(gb);
+    while (read_more) {
+        value = (value + 1) << n;
+        value |= get_bits(gb, n);
+        read_more = get_bits1(gb);
+    }
+    return value;
 }
 
 #define VALIDATE(VAR, MIN, MAX)                                                 \
@@ -200,9 +212,36 @@ int ff_dovi_rpu_parse(DOVIContext *s, const uint8_t *rpu, size_t rpu_size)
     if ((ret = init_get_bits8(gb, rpu, rpu_size)) < 0)
         return ret;
 
-    /* RPU header, common values */
-    nal_prefix = get_bits(gb, 8);
-    VALIDATE(nal_prefix, 25, 25);
+    /* Container header */
+    if (s->dv_profile == 10 /* dav1.10 */) {
+        /* DV inside AV1 re-uses an EMDF container skeleton, but with fixed
+         * values - so we can effectively treat this as a magic byte sequence.
+         *
+         * The exact fields are, as follows:
+         *   emdf_version            : f(2) = 0
+         *   key_id                  : f(3) = 6
+         *   emdf_payload_id         : f(5) = 31
+         *   emdf_payload_id_ext     : var(5) = 225
+         *   smploffste              : f(1) = 0
+         *   duratione               : f(1) = 0
+         *   groupide                : f(1) = 0
+         *   codecdatae              : f(1) = 0
+         *   discard_unknown_payload : f(1) = 1
+         */
+        const unsigned header_magic = 0x01be6841u;
+        unsigned header, emdf_payload_size;
+        header = get_bits_long(gb, 27);
+        VALIDATE(header, header_magic, header_magic);
+        emdf_payload_size = get_variable_bits(gb, 8);
+        VALIDATE(emdf_payload_size, 6, 512);
+        if (emdf_payload_size * 8 > get_bits_left(gb))
+            return AVERROR_INVALIDDATA;
+    } else {
+        nal_prefix = get_bits(gb, 8);
+        VALIDATE(nal_prefix, 25, 25);
+    }
+
+    /* RPU header */
     rpu_type = get_bits(gb, 6);
     if (rpu_type != 2) {
         av_log(s->logctx, AV_LOG_WARNING, "Unrecognized RPU type "

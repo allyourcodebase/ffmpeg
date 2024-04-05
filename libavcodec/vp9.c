@@ -100,7 +100,7 @@ static void vp9_tile_data_free(VP9TileData *td)
 static void vp9_frame_unref(VP9Frame *f)
 {
     ff_thread_release_ext_buffer(&f->tf);
-    av_buffer_unref(&f->extradata);
+    ff_refstruct_unref(&f->extradata);
     ff_refstruct_unref(&f->hwaccel_picture_private);
     f->segmentation_map = NULL;
 }
@@ -116,8 +116,9 @@ static int vp9_frame_alloc(AVCodecContext *avctx, VP9Frame *f)
 
     sz = 64 * s->sb_cols * s->sb_rows;
     if (sz != s->frame_extradata_pool_size) {
-        av_buffer_pool_uninit(&s->frame_extradata_pool);
-        s->frame_extradata_pool = av_buffer_pool_init(sz * (1 + sizeof(VP9mvrefPair)), NULL);
+        ff_refstruct_pool_uninit(&s->frame_extradata_pool);
+        s->frame_extradata_pool = ff_refstruct_pool_alloc(sz * (1 + sizeof(VP9mvrefPair)),
+                                                          FF_REFSTRUCT_POOL_FLAG_ZERO_EVERY_TIME);
         if (!s->frame_extradata_pool) {
             s->frame_extradata_pool_size = 0;
             ret = AVERROR(ENOMEM);
@@ -125,15 +126,14 @@ static int vp9_frame_alloc(AVCodecContext *avctx, VP9Frame *f)
         }
         s->frame_extradata_pool_size = sz;
     }
-    f->extradata = av_buffer_pool_get(s->frame_extradata_pool);
+    f->extradata = ff_refstruct_pool_get(s->frame_extradata_pool);
     if (!f->extradata) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
-    memset(f->extradata->data, 0, f->extradata->size);
 
-    f->segmentation_map = f->extradata->data;
-    f->mv = (VP9mvrefPair *) (f->extradata->data + sz);
+    f->segmentation_map = f->extradata;
+    f->mv = (VP9mvrefPair *) ((char*)f->extradata + sz);
 
     ret = ff_hwaccel_frame_priv_alloc(avctx, &f->hwaccel_picture_private);
     if (ret < 0)
@@ -154,9 +154,7 @@ static int vp9_frame_ref(VP9Frame *dst, VP9Frame *src)
     if (ret < 0)
         return ret;
 
-    dst->extradata = av_buffer_ref(src->extradata);
-    if (!dst->extradata)
-        goto fail;
+    dst->extradata = ff_refstruct_ref(src->extradata);
 
     dst->segmentation_map = src->segmentation_map;
     dst->mv = src->mv;
@@ -166,16 +164,13 @@ static int vp9_frame_ref(VP9Frame *dst, VP9Frame *src)
                           src->hwaccel_picture_private);
 
     return 0;
-
-fail:
-    vp9_frame_unref(dst);
-    return AVERROR(ENOMEM);
 }
 
 static int update_size(AVCodecContext *avctx, int w, int h)
 {
 #define HWACCEL_MAX (CONFIG_VP9_DXVA2_HWACCEL + \
                      CONFIG_VP9_D3D11VA_HWACCEL * 2 + \
+                     CONFIG_VP9_D3D12VA_HWACCEL + \
                      CONFIG_VP9_NVDEC_HWACCEL + \
                      CONFIG_VP9_VAAPI_HWACCEL + \
                      CONFIG_VP9_VDPAU_HWACCEL + \
@@ -201,6 +196,9 @@ static int update_size(AVCodecContext *avctx, int w, int h)
 #if CONFIG_VP9_D3D11VA_HWACCEL
             *fmtp++ = AV_PIX_FMT_D3D11VA_VLD;
             *fmtp++ = AV_PIX_FMT_D3D11;
+#endif
+#if CONFIG_VP9_D3D12VA_HWACCEL
+            *fmtp++ = AV_PIX_FMT_D3D12;
 #endif
 #if CONFIG_VP9_NVDEC_HWACCEL
             *fmtp++ = AV_PIX_FMT_CUDA;
@@ -1245,7 +1243,7 @@ static av_cold int vp9_decode_free(AVCodecContext *avctx)
         vp9_frame_unref(&s->s.frames[i]);
         av_frame_free(&s->s.frames[i].tf.f);
     }
-    av_buffer_pool_uninit(&s->frame_extradata_pool);
+    ff_refstruct_pool_uninit(&s->frame_extradata_pool);
     for (i = 0; i < 8; i++) {
         ff_thread_release_ext_buffer(&s->s.refs[i]);
         av_frame_free(&s->s.refs[i].f);
@@ -1851,6 +1849,8 @@ static int vp9_decode_update_thread_context(AVCodecContext *dst, const AVCodecCo
                 return ret;
         }
     }
+    ff_refstruct_replace(&s->frame_extradata_pool, ssrc->frame_extradata_pool);
+    s->frame_extradata_pool_size = ssrc->frame_extradata_pool_size;
 
     s->s.h.invisible = ssrc->s.h.invisible;
     s->s.h.keyframe = ssrc->s.h.keyframe;
@@ -1902,6 +1902,9 @@ const FFCodec ff_vp9_decoder = {
 #endif
 #if CONFIG_VP9_D3D11VA2_HWACCEL
                                HWACCEL_D3D11VA2(vp9),
+#endif
+#if CONFIG_VP9_D3D12VA_HWACCEL
+                               HWACCEL_D3D12VA(vp9),
 #endif
 #if CONFIG_VP9_NVDEC_HWACCEL
                                HWACCEL_NVDEC(vp9),

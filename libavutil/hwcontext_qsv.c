@@ -55,6 +55,10 @@
     (MFX_VERSION_MAJOR > (MAJOR) ||         \
      MFX_VERSION_MAJOR == (MAJOR) && MFX_VERSION_MINOR >= (MINOR))
 
+#define QSV_RUNTIME_VERSION_ATLEAST(MFX_VERSION, MAJOR, MINOR)          \
+    ((MFX_VERSION.Major > (MAJOR)) ||                                   \
+     (MFX_VERSION.Major == (MAJOR) && MFX_VERSION.Minor >= (MINOR)))
+
 #define MFX_IMPL_VIA_MASK(impl) (0x0f00 & (impl))
 #define QSV_ONEVPL       QSV_VERSION_ATLEAST(2, 0)
 #define QSV_HAVE_OPAQUE  !QSV_ONEVPL
@@ -70,6 +74,11 @@ typedef struct QSVDevicePriv {
 } QSVDevicePriv;
 
 typedef struct QSVDeviceContext {
+    /**
+     * The public AVQSVDeviceContext. See hwcontext_qsv.h for it.
+     */
+    AVQSVDeviceContext p;
+
     mfxHDL              handle;
     mfxHandleType       handle_type;
     mfxVersion          ver;
@@ -80,6 +89,11 @@ typedef struct QSVDeviceContext {
 } QSVDeviceContext;
 
 typedef struct QSVFramesContext {
+    /**
+     * The public AVQSVFramesContext. See hwcontext_qsv.h for it.
+     */
+    AVQSVFramesContext p;
+
     mfxSession session_download;
     atomic_int session_download_init;
     mfxSession session_upload;
@@ -268,8 +282,8 @@ static int qsv_fill_border(AVFrame *dst, const AVFrame *src)
 
 static int qsv_device_init(AVHWDeviceContext *ctx)
 {
-    AVQSVDeviceContext *hwctx = ctx->hwctx;
-    QSVDeviceContext       *s = ctx->internal->priv;
+    QSVDeviceContext       *s = ctx->hwctx;
+    AVQSVDeviceContext *hwctx = &s->p;
     int   hw_handle_supported = 0;
     mfxHandleType handle_type;
     enum AVHWDeviceType device_type;
@@ -324,7 +338,7 @@ static int qsv_device_init(AVHWDeviceContext *ctx)
 
 static void qsv_frames_uninit(AVHWFramesContext *ctx)
 {
-    QSVFramesContext *s = ctx->internal->priv;
+    QSVFramesContext *s = ctx->hwctx;
 
     if (s->session_download) {
         MFXVideoVPP_Close(s->session_download);
@@ -362,8 +376,8 @@ static void qsv_pool_release_dummy(void *opaque, uint8_t *data)
 static AVBufferRef *qsv_pool_alloc(void *opaque, size_t size)
 {
     AVHWFramesContext    *ctx = (AVHWFramesContext*)opaque;
-    QSVFramesContext       *s = ctx->internal->priv;
-    AVQSVFramesContext *hwctx = ctx->hwctx;
+    QSVFramesContext       *s = ctx->hwctx;
+    AVQSVFramesContext *hwctx = &s->p;
 
     if (s->nb_surfaces_used < hwctx->nb_surfaces) {
         s->nb_surfaces_used++;
@@ -376,9 +390,9 @@ static AVBufferRef *qsv_pool_alloc(void *opaque, size_t size)
 
 static int qsv_init_child_ctx(AVHWFramesContext *ctx)
 {
-    AVQSVFramesContext     *hwctx = ctx->hwctx;
-    QSVFramesContext           *s = ctx->internal->priv;
-    QSVDeviceContext *device_priv = ctx->device_ctx->internal->priv;
+    QSVDeviceContext *device_priv = ctx->device_ctx->hwctx;
+    QSVFramesContext           *s = ctx->hwctx;
+    AVQSVFramesContext     *hwctx = &s->p;
 
     AVBufferRef *child_device_ref = NULL;
     AVBufferRef *child_frames_ref = NULL;
@@ -557,8 +571,8 @@ static int qsv_init_surface(AVHWFramesContext *ctx, mfxFrameSurface1 *surf)
 
 static int qsv_init_pool(AVHWFramesContext *ctx, uint32_t fourcc)
 {
-    QSVFramesContext              *s = ctx->internal->priv;
-    AVQSVFramesContext *frames_hwctx = ctx->hwctx;
+    QSVFramesContext              *s = ctx->hwctx;
+    AVQSVFramesContext *frames_hwctx = &s->p;
 
     int i, ret = 0;
 
@@ -595,9 +609,9 @@ static int qsv_init_pool(AVHWFramesContext *ctx, uint32_t fourcc)
         return ret;
 #endif
 
-    ctx->internal->pool_internal = av_buffer_pool_init2(sizeof(mfxFrameSurface1),
-                                                        ctx, qsv_pool_alloc, NULL);
-    if (!ctx->internal->pool_internal)
+    ffhwframesctx(ctx)->pool_internal = av_buffer_pool_init2(sizeof(mfxFrameSurface1),
+                                                             ctx, qsv_pool_alloc, NULL);
+    if (!ffhwframesctx(ctx)->pool_internal)
         return AVERROR(ENOMEM);
 
     frames_hwctx->surfaces    = s->surfaces_internal;
@@ -610,8 +624,8 @@ static mfxStatus frame_alloc(mfxHDL pthis, mfxFrameAllocRequest *req,
                              mfxFrameAllocResponse *resp)
 {
     AVHWFramesContext    *ctx = pthis;
-    QSVFramesContext       *s = ctx->internal->priv;
-    AVQSVFramesContext *hwctx = ctx->hwctx;
+    QSVFramesContext       *s = ctx->hwctx;
+    AVQSVFramesContext *hwctx = &s->p;
     mfxFrameInfo *i  = &req->Info;
     mfxFrameInfo *i1 = &hwctx->surfaces[0].Info;
 
@@ -821,7 +835,7 @@ static int qsv_va_update_config(void *ctx, mfxHDL handle, mfxConfig cfg)
         impl_value.Type = MFX_VARIANT_TYPE_U16;
         impl_value.Data.U16 = (attr.value & 0xFFFF);
         sts = MFXSetConfigFilterProperty(cfg,
-                                         (const mfxU8 *)"mfxExtendedDeviceId.DeviceID", impl_value);
+                                         (const mfxU8 *)"mfxImplDescription.mfxDeviceDescription.DeviceID", impl_value);
         if (sts != MFX_ERR_NONE) {
             av_log(ctx, AV_LOG_ERROR, "Error adding a MFX configuration"
                    "DeviceID property: %d.\n", sts);
@@ -893,10 +907,10 @@ static int qsv_new_mfx_loader(void *ctx,
         goto fail;
     }
 
-    impl_value.Type = MFX_VARIANT_TYPE_U16;
-    impl_value.Data.U16 = 0x8086; // Intel device only
+    impl_value.Type = MFX_VARIANT_TYPE_U32;
+    impl_value.Data.U32 = 0x8086; // Intel device only
     sts = MFXSetConfigFilterProperty(cfg,
-                                     (const mfxU8 *)"mfxExtendedDeviceId.VendorID", impl_value);
+                                     (const mfxU8 *)"mfxImplDescription.VendorID", impl_value);
     if (sts != MFX_ERR_NONE) {
         av_log(ctx, AV_LOG_ERROR, "Error adding a MFX configuration"
                "VendorID property: %d.\n", sts);
@@ -1107,8 +1121,10 @@ fail:
 static int qsv_init_internal_session(AVHWFramesContext *ctx,
                                      mfxSession *session, int upload)
 {
-    AVQSVFramesContext *frames_hwctx = ctx->hwctx;
-    QSVDeviceContext   *device_priv  = ctx->device_ctx->internal->priv;
+    QSVFramesContext              *s = ctx->hwctx;
+    AVQSVFramesContext *frames_hwctx = &s->p;
+    QSVDeviceContext   *device_priv  = ctx->device_ctx->hwctx;
+    AVQSVDeviceContext *hwctx        = &device_priv->p;
     int opaque = 0;
 
     mfxFrameAllocator frame_allocator = {
@@ -1123,12 +1139,21 @@ static int qsv_init_internal_session(AVHWFramesContext *ctx,
     mfxVideoParam par;
     mfxStatus err;
     int                   ret = AVERROR_UNKNOWN;
-    AVQSVDeviceContext *hwctx = ctx->device_ctx->hwctx;
     /* hwctx->loader is non-NULL for oneVPL user and NULL for non-oneVPL user */
     void             **loader = &hwctx->loader;
+    mfxSession parent_session = hwctx->session;
+    mfxIMPL impl;
+    mfxVersion ver;
+
+    err = MFXQueryIMPL(parent_session, &impl);
+    if (err == MFX_ERR_NONE)
+        err = MFXQueryVersion(parent_session, &ver);
+    if (err != MFX_ERR_NONE) {
+        av_log(ctx, AV_LOG_ERROR, "Error querying the session attributes.\n");
+        return AVERROR_UNKNOWN;
+    }
 
 #if QSV_HAVE_OPAQUE
-    QSVFramesContext              *s = ctx->internal->priv;
     opaque = !!(frames_hwctx->frame_type & MFX_MEMTYPE_OPAQUE_FRAME);
 #endif
 
@@ -1141,6 +1166,15 @@ static int qsv_init_internal_session(AVHWFramesContext *ctx,
         err = MFXVideoCORE_SetHandle(*session, device_priv->handle_type,
                                      device_priv->handle);
         if (err != MFX_ERR_NONE) {
+            ret = AVERROR_UNKNOWN;
+            goto fail;
+        }
+    }
+
+    if (QSV_RUNTIME_VERSION_ATLEAST(ver, 1, 25)) {
+        err = MFXJoinSession(parent_session, *session);
+        if (err != MFX_ERR_NONE) {
+            av_log(ctx, AV_LOG_ERROR, "Error joining session.\n");
             ret = AVERROR_UNKNOWN;
             goto fail;
         }
@@ -1205,8 +1239,8 @@ fail:
 
 static int qsv_frames_init(AVHWFramesContext *ctx)
 {
-    QSVFramesContext              *s = ctx->internal->priv;
-    AVQSVFramesContext *frames_hwctx = ctx->hwctx;
+    QSVFramesContext              *s = ctx->hwctx;
+    AVQSVFramesContext *frames_hwctx = &s->p;
 
     int opaque = 0;
 
@@ -1382,7 +1416,7 @@ static int qsv_frames_derive_from(AVHWFramesContext *dst_ctx,
 static int qsv_map_from(AVHWFramesContext *ctx,
                         AVFrame *dst, const AVFrame *src, int flags)
 {
-    QSVFramesContext *s = ctx->internal->priv;
+    QSVFramesContext *s = ctx->hwctx;
     mfxFrameSurface1 *surf = (mfxFrameSurface1*)src->data[3];
     AVHWFramesContext *child_frames_ctx;
     const AVPixFmtDescriptor *desc;
@@ -1485,7 +1519,7 @@ fail:
 static int qsv_transfer_data_child(AVHWFramesContext *ctx, AVFrame *dst,
                                    const AVFrame *src)
 {
-    QSVFramesContext *s = ctx->internal->priv;
+    QSVFramesContext *s = ctx->hwctx;
     AVHWFramesContext *child_frames_ctx = (AVHWFramesContext*)s->child_frames_ref->data;
     int download = !!src->hw_frames_ctx;
     mfxFrameSurface1 *surf = (mfxFrameSurface1*)(download ? src->data[3] : dst->data[3]);
@@ -1587,7 +1621,7 @@ static int map_frame_to_surface(const AVFrame *frame, mfxFrameSurface1 *surface)
 
 static int qsv_internal_session_check_init(AVHWFramesContext *ctx, int upload)
 {
-    QSVFramesContext *s = ctx->internal->priv;
+    QSVFramesContext *s = ctx->hwctx;
     atomic_int *inited  = upload ? &s->session_upload_init : &s->session_download_init;
     mfxSession *session = upload ? &s->session_upload      : &s->session_download;
     int ret = 0;
@@ -1614,7 +1648,7 @@ static int qsv_internal_session_check_init(AVHWFramesContext *ctx, int upload)
 static int qsv_transfer_data_from(AVHWFramesContext *ctx, AVFrame *dst,
                                   const AVFrame *src)
 {
-    QSVFramesContext  *s = ctx->internal->priv;
+    QSVFramesContext  *s = ctx->hwctx;
     mfxFrameSurface1 out = {{ 0 }};
     mfxFrameSurface1 *in = (mfxFrameSurface1*)src->data[3];
 
@@ -1697,7 +1731,7 @@ static int qsv_transfer_data_from(AVHWFramesContext *ctx, AVFrame *dst,
 static int qsv_transfer_data_to(AVHWFramesContext *ctx, AVFrame *dst,
                                 const AVFrame *src)
 {
-    QSVFramesContext   *s = ctx->internal->priv;
+    QSVFramesContext   *s = ctx->hwctx;
     mfxFrameSurface1   in = {{ 0 }};
     mfxFrameSurface1 *out = (mfxFrameSurface1*)dst->data[3];
     mfxFrameInfo tmp_info;
@@ -1790,8 +1824,8 @@ static int qsv_transfer_data_to(AVHWFramesContext *ctx, AVFrame *dst,
 static int qsv_frames_derive_to(AVHWFramesContext *dst_ctx,
                                 AVHWFramesContext *src_ctx, int flags)
 {
-    QSVFramesContext *s = dst_ctx->internal->priv;
-    AVQSVFramesContext *dst_hwctx = dst_ctx->hwctx;
+    QSVFramesContext *s = dst_ctx->hwctx;
+    AVQSVFramesContext *dst_hwctx = &s->p;
     int i;
 
     if (src_ctx->initial_pool_size == 0) {
@@ -2200,6 +2234,12 @@ static int qsv_device_create(AVHWDeviceContext *ctx, const char *device,
 #endif
 #if CONFIG_D3D11VA
     case AV_HWDEVICE_TYPE_D3D11VA:
+        {
+            // Make sure the hardware vendor is Intel when multiple devices are
+            // available, it will be ignored if user specifies the child device
+            // explicitly
+            av_dict_set(&child_device_opts, "vendor_id",        "0x8086",  0);
+        }
         break;
 #endif
 #if CONFIG_DXVA2
@@ -2240,10 +2280,8 @@ const HWContextType ff_hwcontext_type_qsv = {
     .type                   = AV_HWDEVICE_TYPE_QSV,
     .name                   = "QSV",
 
-    .device_hwctx_size      = sizeof(AVQSVDeviceContext),
-    .device_priv_size       = sizeof(QSVDeviceContext),
-    .frames_hwctx_size      = sizeof(AVQSVFramesContext),
-    .frames_priv_size       = sizeof(QSVFramesContext),
+    .device_hwctx_size      = sizeof(QSVDeviceContext),
+    .frames_hwctx_size      = sizeof(QSVFramesContext),
 
     .device_create          = qsv_device_create,
     .device_derive          = qsv_device_derive,

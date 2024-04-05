@@ -2275,14 +2275,14 @@ static av_cold int mlp_encode_close(AVCodecContext *avctx)
 static const AVOption mlp_options[] = {
 { "max_interval", "Max number of frames between each new header", OFFSET(max_restart_interval),  AV_OPT_TYPE_INT, {.i64 = 16 }, MIN_HEADER_INTERVAL, MAX_HEADER_INTERVAL, FLAGS },
 { "lpc_coeff_precision", "LPC coefficient precision", OFFSET(lpc_coeff_precision), AV_OPT_TYPE_INT, {.i64 = 15 }, 0, 15, FLAGS },
-{ "lpc_type", "LPC algorithm", OFFSET(lpc_type), AV_OPT_TYPE_INT, {.i64 = FF_LPC_TYPE_LEVINSON }, FF_LPC_TYPE_LEVINSON, FF_LPC_TYPE_CHOLESKY, FLAGS, "lpc_type" },
-{ "levinson", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_LPC_TYPE_LEVINSON }, 0, 0, FLAGS, "lpc_type" },
-{ "cholesky", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_LPC_TYPE_CHOLESKY }, 0, 0, FLAGS, "lpc_type" },
+{ "lpc_type", "LPC algorithm", OFFSET(lpc_type), AV_OPT_TYPE_INT, {.i64 = FF_LPC_TYPE_LEVINSON }, FF_LPC_TYPE_LEVINSON, FF_LPC_TYPE_CHOLESKY, FLAGS, .unit = "lpc_type" },
+{ "levinson", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_LPC_TYPE_LEVINSON }, 0, 0, FLAGS, .unit = "lpc_type" },
+{ "cholesky", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_LPC_TYPE_CHOLESKY }, 0, 0, FLAGS, .unit = "lpc_type" },
 { "lpc_passes", "Number of passes to use for Cholesky factorization during LPC analysis", OFFSET(lpc_passes),  AV_OPT_TYPE_INT, {.i64 = 2 }, 1, INT_MAX, FLAGS },
 { "codebook_search", "Max number of codebook searches", OFFSET(max_codebook_search),  AV_OPT_TYPE_INT, {.i64 = 3 }, 1, 100, FLAGS },
-{ "prediction_order", "Search method for selecting prediction order", OFFSET(prediction_order), AV_OPT_TYPE_INT, {.i64 = ORDER_METHOD_EST }, ORDER_METHOD_EST, ORDER_METHOD_SEARCH, FLAGS, "predm" },
-{ "estimation", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = ORDER_METHOD_EST },    0, 0, FLAGS, "predm" },
-{ "search",     NULL, 0, AV_OPT_TYPE_CONST, {.i64 = ORDER_METHOD_SEARCH }, 0, 0, FLAGS, "predm" },
+{ "prediction_order", "Search method for selecting prediction order", OFFSET(prediction_order), AV_OPT_TYPE_INT, {.i64 = ORDER_METHOD_EST }, ORDER_METHOD_EST, ORDER_METHOD_SEARCH, FLAGS, .unit = "predm" },
+{ "estimation", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = ORDER_METHOD_EST },    0, 0, FLAGS, .unit = "predm" },
+{ "search",     NULL, 0, AV_OPT_TYPE_CONST, {.i64 = ORDER_METHOD_SEARCH }, 0, 0, FLAGS, .unit = "predm" },
 { "rematrix_precision", "Rematrix coefficient precision", OFFSET(rematrix_precision), AV_OPT_TYPE_INT, {.i64 = 1 }, 0, 14, FLAGS },
 { NULL },
 };
@@ -2309,7 +2309,6 @@ const FFCodec ff_mlp_encoder = {
     .p.priv_class           = &mlp_class,
     .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE},
     .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    CODEC_OLD_CHANNEL_LAYOUTS_ARRAY(ff_mlp_channel_layouts)
     .p.ch_layouts           = ff_mlp_ch_layouts,
     .caps_internal          = FF_CODEC_CAP_INIT_CLEANUP,
 };
@@ -2330,7 +2329,6 @@ const FFCodec ff_truehd_encoder = {
     .p.priv_class           = &mlp_class,
     .p.sample_fmts          = (const enum AVSampleFormat[]) {AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_NONE},
     .p.supported_samplerates = (const int[]) {44100, 48000, 88200, 96000, 176400, 192000, 0},
-    CODEC_OLD_CHANNEL_LAYOUTS(AV_CH_LAYOUT_MONO, AV_CH_LAYOUT_STEREO, AV_CH_LAYOUT_2POINT1, AV_CH_LAYOUT_SURROUND, AV_CH_LAYOUT_3POINT1, AV_CH_LAYOUT_4POINT0, AV_CH_LAYOUT_4POINT1, AV_CH_LAYOUT_5POINT0, AV_CH_LAYOUT_5POINT1)
     .p.ch_layouts           = (const AVChannelLayout[]) {
                                   AV_CHANNEL_LAYOUT_MONO,
                                   AV_CHANNEL_LAYOUT_STEREO,

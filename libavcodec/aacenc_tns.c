@@ -30,6 +30,7 @@
 #include "aacenc_tns.h"
 #include "aactab.h"
 #include "aacenc_utils.h"
+#include "lpc_functions.h"
 
 /* Could be set to 3 to save an additional bit at the cost of little quality */
 #define TNS_Q_BITS 4
@@ -147,7 +148,7 @@ static inline void quantize_coefs(double *coef, int *idx, float *lpc, int order,
                                   int c_bits)
 {
     int i;
-    const float *quant_arr = tns_tmp2_map[c_bits];
+    const float *quant_arr = ff_tns_tmp2_map[c_bits];
     for (i = 0; i < order; i++) {
         idx[i] = quant_array_idx(coef[i], quant_arr, c_bits ? 16 : 8);
         lpc[i] = quant_arr[idx[i]];

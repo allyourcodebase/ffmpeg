@@ -45,9 +45,9 @@ typedef struct DnnClassifyContext {
 #define OFFSET2(x) offsetof(DnnClassifyContext, x)
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM | AV_OPT_FLAG_VIDEO_PARAM
 static const AVOption dnn_classify_options[] = {
-    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, "backend" },
+    { "dnn_backend", "DNN backend",                OFFSET(backend_type),     AV_OPT_TYPE_INT,       { .i64 = DNN_OV },    INT_MIN, INT_MAX, FLAGS, .unit = "backend" },
 #if (CONFIG_LIBOPENVINO == 1)
-    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, "backend" },
+    { "openvino",    "openvino backend flag",      0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_OV },    0, 0, FLAGS, .unit = "backend" },
 #endif
     DNN_COMMON_OPTIONS
     { "confidence",  "threshold of confidence",    OFFSET2(confidence),      AV_OPT_TYPE_FLOAT,     { .dbl = 0.5 },  0, 1, FLAGS},
@@ -68,8 +68,8 @@ static int dnn_classify_post_proc(AVFrame *frame, DNNData *output, uint32_t bbox
     uint32_t label_id;
     float confidence;
     AVFrameSideData *sd;
-
-    if (output->channels <= 0) {
+    int output_size = output->dims[3] * output->dims[2] * output->dims[1];
+    if (output_size <= 0) {
         return -1;
     }
 
@@ -88,7 +88,7 @@ static int dnn_classify_post_proc(AVFrame *frame, DNNData *output, uint32_t bbox
     classifications = output->data;
     label_id = 0;
     confidence= classifications[0];
-    for (int i = 1; i < output->channels; i++) {
+    for (int i = 1; i < output_size; i++) {
         if (classifications[i] > confidence) {
             label_id = i;
             confidence= classifications[i];

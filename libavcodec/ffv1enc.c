@@ -1104,7 +1104,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     uint8_t keystate    = 128;
     uint8_t *buf_p;
     int i, ret;
-    int64_t maxsize =   AV_INPUT_BUFFER_MIN_SIZE
+    int64_t maxsize =   FF_INPUT_BUFFER_MIN_SIZE
                       + avctx->width*avctx->height*37LL*4;
 
     if(!pict) {
@@ -1154,7 +1154,7 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     }
 
     if (f->version > 3)
-        maxsize = AV_INPUT_BUFFER_MIN_SIZE + avctx->width*avctx->height*3LL*4;
+        maxsize = FF_INPUT_BUFFER_MIN_SIZE + avctx->width*avctx->height*3LL*4;
 
     if (maxsize > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE - 32) {
         av_log(avctx, AV_LOG_WARNING, "Cannot allocate worst case packet size, the encoding could fail\n");
@@ -1246,15 +1246,15 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 static const AVOption options[] = {
     { "slicecrc", "Protect slices with CRCs", OFFSET(ec), AV_OPT_TYPE_BOOL, { .i64 = -1 }, -1, 1, VE },
     { "coder", "Coder type", OFFSET(ac), AV_OPT_TYPE_INT,
-            { .i64 = 0 }, -2, 2, VE, "coder" },
+            { .i64 = 0 }, -2, 2, VE, .unit = "coder" },
         { "rice", "Golomb rice", 0, AV_OPT_TYPE_CONST,
-            { .i64 = AC_GOLOMB_RICE }, INT_MIN, INT_MAX, VE, "coder" },
+            { .i64 = AC_GOLOMB_RICE }, INT_MIN, INT_MAX, VE, .unit = "coder" },
         { "range_def", "Range with default table", 0, AV_OPT_TYPE_CONST,
-            { .i64 = AC_RANGE_DEFAULT_TAB_FORCE }, INT_MIN, INT_MAX, VE, "coder" },
+            { .i64 = AC_RANGE_DEFAULT_TAB_FORCE }, INT_MIN, INT_MAX, VE, .unit = "coder" },
         { "range_tab", "Range with custom table", 0, AV_OPT_TYPE_CONST,
-            { .i64 = AC_RANGE_CUSTOM_TAB }, INT_MIN, INT_MAX, VE, "coder" },
+            { .i64 = AC_RANGE_CUSTOM_TAB }, INT_MIN, INT_MAX, VE, .unit = "coder" },
         { "ac", "Range with custom table (the ac option exists for compatibility and is deprecated)", 0, AV_OPT_TYPE_CONST,
-            { .i64 = 1 }, INT_MIN, INT_MAX, VE, "coder" },
+            { .i64 = 1 }, INT_MIN, INT_MAX, VE, .unit = "coder" },
     { "context", "Context model", OFFSET(context_model), AV_OPT_TYPE_INT,
             { .i64 = 0 }, 0, 1, VE },
 

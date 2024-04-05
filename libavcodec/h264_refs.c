@@ -410,6 +410,17 @@ int ff_h264_build_ref_list(H264Context *h, H264SliceContext *sl)
                 else
                     return -1;
             }
+            if (h->noref_gray>0 && sl->ref_list[list][index].parent->gray && h->non_gray) {
+                for (int j=0; j<sl->list_count; j++) {
+                    int list2 = (list+j)&1;
+                    if (h->default_ref[list2].parent && !h->default_ref[list2].parent->gray
+                        && !(!FIELD_PICTURE(h) && (h->default_ref[list2].reference&3) != 3)) {
+                        sl->ref_list[list][index] = h->default_ref[list2];
+                        av_log(h, AV_LOG_DEBUG, "replacement of gray gap frame\n");
+                        break;
+                    }
+                }
+            }
             av_assert0(av_buffer_get_ref_count(sl->ref_list[list][index].parent->f->buf[0]) > 0);
         }
     }
@@ -822,9 +833,9 @@ int ff_h264_execute_ref_pic_marking(H264Context *h)
             || pps_ref_count[0] <= 1 + (h->picture_structure != PICT_FRAME) && pps_ref_count[1] <= 1)
         && pps_ref_count[0]<=2 + (h->picture_structure != PICT_FRAME) + (2*!h->has_recovery_point)
         && h->cur_pic_ptr->f->pict_type == AV_PICTURE_TYPE_I){
-        h->cur_pic_ptr->recovered |= 1;
+        h->cur_pic_ptr->recovered |= FRAME_RECOVERED_HEURISTIC;
         if(!h->avctx->has_b_frames)
-            h->frame_recovered |= FRAME_RECOVERED_SEI;
+            h->frame_recovered |= FRAME_RECOVERED_HEURISTIC;
     }
 
 out:
