@@ -508,8 +508,6 @@ static int parse_keyframes_index(AVFormatContext *s, AVIOContext *ioc, int64_t m
                 goto invalid;
             if (avio_feof(ioc))
                 goto invalid;
-            if (avio_feof(ioc))
-                goto invalid;
             current_array[0][i] = d;
         }
         if (times && filepositions) {
