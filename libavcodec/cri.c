@@ -70,7 +70,6 @@ static av_cold int cri_decode_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
     s->jpeg_avctx->flags = avctx->flags;
     s->jpeg_avctx->flags2 = avctx->flags2;
-    s->jpeg_avctx->dct_algo = avctx->dct_algo;
     s->jpeg_avctx->idct_algo = avctx->idct_algo;
     ret = avcodec_open2(s->jpeg_avctx, codec, NULL);
     if (ret < 0)
@@ -399,8 +398,8 @@ skip:
     }
 
     if (hflip || vflip) {
-        rotation = av_frame_new_side_data(p, AV_FRAME_DATA_DISPLAYMATRIX,
-                                          sizeof(int32_t) * 9);
+        ff_frame_new_side_data(avctx, p, AV_FRAME_DATA_DISPLAYMATRIX,
+                               sizeof(int32_t) * 9, &rotation);
         if (rotation) {
             av_display_rotation_set((int32_t *)rotation->data, 0.f);
             av_display_matrix_flip((int32_t *)rotation->data, hflip, vflip);

@@ -39,18 +39,19 @@ typedef struct HEVCSublayerHdrParams {
     uint32_t cbr_flag;
 } HEVCSublayerHdrParams;
 
+// flags in bitmask form
 typedef struct HEVCHdrFlagParams {
-    uint32_t nal_hrd_parameters_present_flag;
-    uint32_t vcl_hrd_parameters_present_flag;
-    uint32_t sub_pic_hrd_params_present_flag;
-    uint32_t sub_pic_cpb_params_in_pic_timing_sei_flag;
-    uint32_t fixed_pic_rate_general_flag;
-    uint32_t fixed_pic_rate_within_cvs_flag;
-    uint32_t low_delay_hrd_flag;
+    uint8_t fixed_pic_rate_general_flag;
+    uint8_t fixed_pic_rate_within_cvs_flag;
+    uint8_t low_delay_hrd_flag;
 } HEVCHdrFlagParams;
 
 typedef struct HEVCHdrParams {
     HEVCHdrFlagParams flags;
+    uint8_t nal_hrd_parameters_present_flag;
+    uint8_t vcl_hrd_parameters_present_flag;
+    uint8_t sub_pic_hrd_params_present_flag;
+    uint8_t sub_pic_cpb_params_in_pic_timing_sei_flag;
 
     uint8_t tick_divisor_minus2;
     uint8_t du_cpb_removal_delay_increment_length_minus1;
@@ -152,7 +153,6 @@ typedef struct PTL {
 
 typedef struct HEVCVPS {
     unsigned int vps_id;
-    HEVCHdrParams hdr[HEVC_MAX_LAYER_SETS];
 
     uint8_t vps_temporal_id_nesting_flag;
     int vps_max_layers;
@@ -174,6 +174,9 @@ typedef struct HEVCVPS {
 
     uint8_t data[4096];
     int data_size;
+    /* Put this at the end of the structure to make it easier to calculate the
+     * size before this pointer, which is used for memcmp */
+    HEVCHdrParams *hdr;
 } HEVCVPS;
 
 typedef struct ScalingList {

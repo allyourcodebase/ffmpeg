@@ -63,6 +63,7 @@
 #include "libavcodec/codec_desc.h"
 #include "libavcodec/codec_par.h"
 #include "libavcodec/defs.h"
+#include "libavcodec/itut35.h"
 #include "libavcodec/xiph.h"
 #include "libavcodec/mpeg4audio.h"
 
@@ -2824,8 +2825,8 @@ static int mkv_write_block(void *logctx, MatroskaMuxContext *mkv,
             uint8_t *payload = t35_buf;
             size_t payload_size = sizeof(t35_buf) - 6;
 
-            bytestream_put_byte(&payload, 0xB5); // country_code
-            bytestream_put_be16(&payload, 0x3C); // provider_code
+            bytestream_put_byte(&payload, ITU_T_T35_COUNTRY_CODE_US);
+            bytestream_put_be16(&payload, ITU_T_T35_PROVIDER_CODE_SMTPE);
             bytestream_put_be16(&payload, 0x01); // provider_oriented_code
             bytestream_put_byte(&payload, 0x04); // application_identifier
 
@@ -3474,6 +3475,7 @@ static int mkv_check_bitstream(AVFormatContext *s, AVStream *st,
 
 static const AVCodecTag additional_audio_tags[] = {
     { AV_CODEC_ID_ALAC,      0XFFFFFFFF },
+    { AV_CODEC_ID_ATRAC1,    0xFFFFFFFF },
     { AV_CODEC_ID_MLP,       0xFFFFFFFF },
     { AV_CODEC_ID_OPUS,      0xFFFFFFFF },
     { AV_CODEC_ID_PCM_S16BE, 0xFFFFFFFF },
@@ -3507,10 +3509,10 @@ static const AVOption options[] = {
     { "allow_raw_vfw", "allow RAW VFW mode", OFFSET(allow_raw_vfw), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { "flipped_raw_rgb", "Raw RGB bitmaps in VFW mode are stored bottom-up", OFFSET(flipped_raw_rgb), AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, FLAGS },
     { "write_crc32", "write a CRC32 element inside every Level 1 element", OFFSET(write_crc), AV_OPT_TYPE_BOOL, { .i64 = 1 }, 0, 1, FLAGS },
-    { "default_mode", "Controls how a track's FlagDefault is inferred", OFFSET(default_mode), AV_OPT_TYPE_INT, { .i64 = DEFAULT_MODE_PASSTHROUGH }, DEFAULT_MODE_INFER, DEFAULT_MODE_PASSTHROUGH, FLAGS, "default_mode" },
-    { "infer", "For each track type, mark each track of disposition default as default; if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER }, 0, 0, FLAGS, "default_mode" },
-    { "infer_no_subs", "For each track type, mark each track of disposition default as default; for audio and video: if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER_NO_SUBS }, 0, 0, FLAGS, "default_mode" },
-    { "passthrough", "Use the disposition flag as-is", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_PASSTHROUGH }, 0, 0, FLAGS, "default_mode" },
+    { "default_mode", "Controls how a track's FlagDefault is inferred", OFFSET(default_mode), AV_OPT_TYPE_INT, { .i64 = DEFAULT_MODE_PASSTHROUGH }, DEFAULT_MODE_INFER, DEFAULT_MODE_PASSTHROUGH, FLAGS, .unit = "default_mode" },
+    { "infer", "For each track type, mark each track of disposition default as default; if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER }, 0, 0, FLAGS, .unit = "default_mode" },
+    { "infer_no_subs", "For each track type, mark each track of disposition default as default; for audio and video: if none exists, mark the first track as default.", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_INFER_NO_SUBS }, 0, 0, FLAGS, .unit = "default_mode" },
+    { "passthrough", "Use the disposition flag as-is", 0, AV_OPT_TYPE_CONST, { .i64 = DEFAULT_MODE_PASSTHROUGH }, 0, 0, FLAGS, .unit = "default_mode" },
     { NULL },
 };
 
@@ -3567,7 +3569,7 @@ const FFOutputFormat ff_matroska_muxer = {
     .query_codec       = mkv_query_codec,
     .check_bitstream   = mkv_check_bitstream,
     .p.priv_class      = &matroska_webm_class,
-    .flags_internal    = FF_FMT_ALLOW_FLUSH,
+    .flags_internal    = FF_OFMT_FLAG_ALLOW_FLUSH,
 };
 #endif
 
@@ -3604,7 +3606,7 @@ const FFOutputFormat ff_webm_muxer = {
                          AVFMT_TS_NONSTRICT,
 #endif
     .p.priv_class      = &matroska_webm_class,
-    .flags_internal    = FF_FMT_ALLOW_FLUSH,
+    .flags_internal    = FF_OFMT_FLAG_ALLOW_FLUSH,
 };
 #endif
 
@@ -3634,6 +3636,6 @@ const FFOutputFormat ff_matroska_audio_muxer = {
         ff_codec_wav_tags, additional_audio_tags, 0
     },
     .p.priv_class      = &matroska_webm_class,
-    .flags_internal    = FF_FMT_ALLOW_FLUSH,
+    .flags_internal    = FF_OFMT_FLAG_ALLOW_FLUSH,
 };
 #endif

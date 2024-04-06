@@ -21,7 +21,6 @@
 #include "avassert.h"
 
 #include "vulkan.h"
-#include "vulkan_loader.h"
 
 const VkComponentMapping ff_comp_identity_map = {
     .r = VK_COMPONENT_SWIZZLE_IDENTITY,
@@ -1309,13 +1308,15 @@ void ff_vk_frame_barrier(FFVulkanContext *s, FFVkExecContext *e,
                          VkImageLayout        new_layout,
                          uint32_t             new_qf)
 {
-    int i, found;
+    int found = -1;
     AVVkFrame *vkf = (AVVkFrame *)pic->data[0];
     const int nb_images = ff_vk_count_images(vkf);
-    for (i = 0; i < e->nb_frame_deps; i++)
-        if (e->frame_deps[i]->data[0] == pic->data[0])
+    for (int i = 0; i < e->nb_frame_deps; i++)
+        if (e->frame_deps[i]->data[0] == pic->data[0]) {
+            if (e->frame_update[i])
+                found = i;
             break;
-    found = (i < e->nb_frame_deps) && (e->frame_update[i]) ? i : -1;
+        }
 
     for (int i = 0; i < nb_images; i++) {
         bar[*nb_bar] = (VkImageMemoryBarrier2) {
@@ -1631,36 +1632,10 @@ static inline void update_set_descriptor(FFVulkanContext *s, FFVkExecContext *e,
     vk->GetDescriptorEXT(s->hwctx->act_dev, desc_get_info, desc_size, desc);
 }
 
-int ff_vk_set_descriptor_sampler(FFVulkanContext *s, FFVulkanPipeline *pl,
-                                 FFVkExecContext *e, int set, int bind, int offs,
-                                 VkSampler *sampler)
-{
-    FFVulkanDescriptorSet *desc_set = &pl->desc_set[set];
-    VkDescriptorGetInfoEXT desc_get_info = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_GET_INFO_EXT,
-        .type = desc_set->binding[bind].descriptorType,
-    };
-
-    switch (desc_get_info.type) {
-    case VK_DESCRIPTOR_TYPE_SAMPLER:
-        desc_get_info.data.pSampler = sampler;
-        break;
-    default:
-        av_log(s, AV_LOG_ERROR, "Invalid descriptor type at set %i binding %i: %i!\n",
-               set, bind, desc_get_info.type);
-        return AVERROR(EINVAL);
-        break;
-    };
-
-    update_set_descriptor(s, e, desc_set, bind, offs, &desc_get_info,
-                          s->desc_buf_props.samplerDescriptorSize);
-
-    return 0;
-}
-
-int ff_vk_set_descriptor_image(FFVulkanContext *s, FFVulkanPipeline *pl,
-                               FFVkExecContext *e, int set, int bind, int offs,
-                               VkImageView view, VkImageLayout layout, VkSampler sampler)
+static int vk_set_descriptor_image(FFVulkanContext *s, FFVulkanPipeline *pl,
+                                   FFVkExecContext *e, int set, int bind, int offs,
+                                   VkImageView view, VkImageLayout layout,
+                                   VkSampler sampler)
 {
     FFVulkanDescriptorSet *desc_set = &pl->desc_set[set];
     VkDescriptorGetInfoEXT desc_get_info = {
@@ -1757,8 +1732,8 @@ void ff_vk_update_descriptor_img_array(FFVulkanContext *s, FFVulkanPipeline *pl,
     const int nb_planes = av_pix_fmt_count_planes(hwfc->sw_format);
 
     for (int i = 0; i < nb_planes; i++)
-        ff_vk_set_descriptor_image(s, pl, e, set, binding, i,
-                                   views[i], layout, sampler);
+        vk_set_descriptor_image(s, pl, e, set, binding, i,
+                                views[i], layout, sampler);
 }
 
 void ff_vk_update_push_exec(FFVulkanContext *s, FFVkExecContext *e,

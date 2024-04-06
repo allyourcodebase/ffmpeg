@@ -36,7 +36,6 @@
 struct buffer_data {
     uint8_t *ptr;
     size_t size; ///< size left in the buffer
-    size_t original_size;
 };
 
 static int read_packet(void *opaque, uint8_t *buf, int buf_size)
@@ -54,39 +53,6 @@ static int read_packet(void *opaque, uint8_t *buf, int buf_size)
     bd->size -= buf_size;
 
     return buf_size;
-}
-
-static int64_t seek_packet(void *opaque, int64_t offset, int whence)
-{
-    struct buffer_data *bd = (struct buffer_data *)opaque;
-
-    if (whence & AVSEEK_FORCE) {
-        // doesn't matter
-        whence -= AVSEEK_FORCE;
-    }
-
-    if (whence & AVSEEK_SIZE) {
-        return bd->original_size;
-    }
-
-    switch (whence) {
-        case SEEK_SET:
-        {
-            uint8_t *base_ptr = (bd->ptr + bd->size) - bd->original_size;
-            bd->ptr = base_ptr + offset;
-            bd->size = bd->original_size - offset;
-            return 0;
-        }
-        case SEEK_CUR:
-            bd->ptr += offset;
-            bd->size -= offset;
-            return 0;
-        case SEEK_END:
-            bd->ptr += bd->size;
-            bd->size = 0;
-            return 0;
-    }
-    return -1;
 }
 
 int main(int argc, char *argv[])
@@ -115,7 +81,6 @@ int main(int argc, char *argv[])
     /* fill opaque structure used by the AVIOContext read callback */
     bd.ptr  = buffer;
     bd.size = buffer_size;
-    bd.original_size = buffer_size;
 
     if (!(fmt_ctx = avformat_alloc_context())) {
         ret = AVERROR(ENOMEM);
@@ -128,12 +93,11 @@ int main(int argc, char *argv[])
         goto end;
     }
     avio_ctx = avio_alloc_context(avio_ctx_buffer, avio_ctx_buffer_size,
-                                  0, &bd, &read_packet, NULL, &seek_packet);
+                                  0, &bd, &read_packet, NULL, NULL);
     if (!avio_ctx) {
         ret = AVERROR(ENOMEM);
         goto end;
     }
-    avio_ctx->direct = AVIO_FLAG_DIRECT;
     fmt_ctx->pb = avio_ctx;
 
     ret = avformat_open_input(&fmt_ctx, NULL, NULL, NULL);

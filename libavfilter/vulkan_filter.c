@@ -19,6 +19,7 @@
  */
 
 #include "vulkan_filter.h"
+#include "libavutil/vulkan_loader.h"
 
 int ff_vk_filter_init_context(AVFilterContext *avctx, FFVulkanContext *s,
                               AVBufferRef *frames_ref,
@@ -186,6 +187,7 @@ int ff_vk_filter_config_input(AVFilterLink *inlink)
     s->input_frames_ref = inlink->hw_frames_ctx;
 
     /* Defaults */
+    s->input_format = input_frames->sw_format;
     s->output_format = input_frames->sw_format;
     s->output_width = inlink->w;
     s->output_height = inlink->h;

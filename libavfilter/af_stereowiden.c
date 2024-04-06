@@ -72,8 +72,10 @@ static int config_input(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->dst;
     StereoWidenContext *s = ctx->priv;
 
-    s->length = s->delay * inlink->sample_rate / 1000;
+    s->length = lrintf(s->delay * inlink->sample_rate / 1000);
     s->length *= 2;
+    if (s->length == 0)
+        return AVERROR(EINVAL);
     s->buffer = av_calloc(s->length, sizeof(*s->buffer));
     if (!s->buffer)
         return AVERROR(ENOMEM);

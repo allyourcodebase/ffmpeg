@@ -19,16 +19,25 @@
 #ifndef AVCODEC_VULKAN_DECODE_H
 #define AVCODEC_VULKAN_DECODE_H
 
+#include "codec_id.h"
 #include "decode.h"
 #include "hwaccel_internal.h"
 #include "internal.h"
 
 #include "vulkan_video.h"
 
+typedef struct FFVulkanDecodeDescriptor {
+    enum AVCodecID                   codec_id;
+    FFVulkanExtensions               decode_extension;
+    VkVideoCodecOperationFlagBitsKHR decode_op;
+
+    VkExtensionProperties ext_props;
+} FFVulkanDecodeDescriptor;
+
 typedef struct FFVulkanDecodeProfileData {
     VkVideoDecodeH264ProfileInfoKHR h264_profile;
     VkVideoDecodeH265ProfileInfoKHR h265_profile;
-    VkVideoDecodeAV1ProfileInfoMESA av1_profile;
+    VkVideoDecodeAV1ProfileInfoKHR av1_profile;
     VkVideoDecodeUsageInfoKHR usage;
     VkVideoProfileInfoKHR profile;
     VkVideoProfileListInfoKHR profile_list;

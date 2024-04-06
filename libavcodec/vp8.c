@@ -458,7 +458,7 @@ static void vp78_update_probability_tables(VP8Context *s)
         for (j = 0; j < 8; j++)
             for (k = 0; k < 3; k++)
                 for (l = 0; l < NUM_DCT_TOKENS-1; l++)
-                    if (vpx_rac_get_prob_branchy(c, vp8_token_update_probs[i][j][k][l])) {
+                    if (vpx_rac_get_prob_branchy(c, ff_vp8_token_update_probs[i][j][k][l])) {
                         int prob = vp89_rac_get_uint(c, 8);
                         for (m = 0; vp8_coeff_band_indexes[j][m] >= 0; m++)
                             s->prob->token[i][vp8_coeff_band_indexes[j][m]][k][l] = prob;
@@ -2665,7 +2665,11 @@ int vp78_decode_frame(AVCodecContext *avctx, AVFrame *rframe, int *got_frame,
     if (ret < 0)
         goto err;
 
-    if (s->actually_webp) {
+    if (!is_vp7 && s->actually_webp) {
+        // VP8 in WebP is supposed to be intra-only. Enforce this here
+        // to ensure that output is reproducible with frame-threading.
+        if (!s->keyframe)
+            return AVERROR_INVALIDDATA;
         // avctx->pix_fmt already set in caller.
     } else if (!is_vp7 && s->pix_fmt == AV_PIX_FMT_NONE) {
         s->pix_fmt = get_pixel_format(s);
@@ -2750,7 +2754,7 @@ int vp78_decode_frame(AVCodecContext *avctx, AVFrame *rframe, int *got_frame,
 
     s->next_framep[VP8_FRAME_CURRENT] = curframe;
 
-    if (ffcodec(avctx->codec)->update_thread_context)
+    if (!is_vp7 && !s->actually_webp)
         ff_thread_finish_setup(avctx);
 
     if (avctx->hwaccel) {
@@ -2883,7 +2887,6 @@ int vp78_decode_init(AVCodecContext *avctx, int is_vp7)
     int ret;
 
     s->avctx = avctx;
-    s->vp7   = avctx->codec->id == AV_CODEC_ID_VP7;
     s->pix_fmt = AV_PIX_FMT_NONE;
     avctx->pix_fmt = AV_PIX_FMT_YUV420P;
 

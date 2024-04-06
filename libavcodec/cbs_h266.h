@@ -832,6 +832,7 @@ typedef struct  H266RawSliceHeader {
     uint32_t sh_entry_point_offset_minus1[VVC_MAX_ENTRY_POINTS];
 
     // derived values
+    uint16_t curr_subpic_idx;               ///< CurrSubpicIdx
     uint32_t num_entry_points;              ///< NumEntryPoints
     uint8_t  num_ref_idx_active[2];         ///< NumRefIdxActive[]
 
@@ -842,6 +843,7 @@ typedef struct H266RawSlice {
 
     uint8_t     *data;
     AVBufferRef *data_ref;
+    size_t       header_size;
     size_t       data_size;
     int          data_bit_start;
 } H266RawSlice;

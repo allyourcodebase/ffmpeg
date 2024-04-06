@@ -32,6 +32,7 @@
 #include "libavutil/crc.h"
 #include "libavutil/csp.h"
 #include "libavutil/libm.h"
+#include "libavutil/mastering_display_metadata.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
 #include "libavutil/stereo3d.h"
@@ -294,8 +295,9 @@ static int png_write_row(AVCodecContext *avctx, const uint8_t *data, int size)
     return 0;
 }
 
-#define AV_WB32_PNG(buf, n) AV_WB32(buf, lrint((n) * 100000))
-#define AV_WB32_PNG_D(buf, d) AV_WB32_PNG(buf, av_q2d(d))
+#define PNG_LRINT(d, divisor) lrint((d) * (divisor))
+#define PNG_Q2D(q, divisor) PNG_LRINT(av_q2d(q), (divisor))
+#define AV_WB32_PNG_D(buf, q) AV_WB32(buf, PNG_Q2D(q, 100000))
 static int png_get_chrm(enum AVColorPrimaries prim,  uint8_t *buf)
 {
     const AVColorPrimariesDesc *desc = av_csp_primaries_desc_from_id(prim);
@@ -320,7 +322,7 @@ static int png_get_gama(enum AVColorTransferCharacteristic trc, uint8_t *buf)
     if (gamma <= 1e-6)
         return 0;
 
-    AV_WB32_PNG(buf, 1.0 / gamma);
+    AV_WB32(buf, PNG_LRINT(1.0 / gamma, 100000));
     return 1;
 }
 
@@ -435,6 +437,30 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
         s->buf[2] = 0; /* colorspace = RGB */
         s->buf[3] = pict->color_range == AVCOL_RANGE_MPEG ? 0 : 1;
         png_write_chunk(&s->bytestream, MKTAG('c', 'I', 'C', 'P'), s->buf, 4);
+    }
+
+    side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    if (side_data) {
+        AVContentLightMetadata *clli = (AVContentLightMetadata *) side_data->data;
+        AV_WB32(s->buf, clli->MaxCLL * 10000);
+        AV_WB32(s->buf + 4, clli->MaxFALL * 10000);
+        png_write_chunk(&s->bytestream, MKTAG('c', 'L', 'L', 'i'), s->buf, 8);
+    }
+
+    side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (side_data) {
+        AVMasteringDisplayMetadata *mdvc = (AVMasteringDisplayMetadata *) side_data->data;
+        if (mdvc->has_luminance && mdvc->has_primaries) {
+            for (int i = 0; i < 3; i++) {
+                AV_WB16(s->buf + 2*i, PNG_Q2D(mdvc->display_primaries[i][0], 50000));
+                AV_WB16(s->buf + 2*i + 2, PNG_Q2D(mdvc->display_primaries[i][1], 50000));
+            }
+            AV_WB16(s->buf + 12, PNG_Q2D(mdvc->white_point[0], 50000));
+            AV_WB16(s->buf + 14, PNG_Q2D(mdvc->white_point[1], 50000));
+            AV_WB32(s->buf + 16, PNG_Q2D(mdvc->max_luminance, 10000));
+            AV_WB32(s->buf + 20, PNG_Q2D(mdvc->min_luminance, 10000));
+            png_write_chunk(&s->bytestream, MKTAG('m', 'D', 'V', 'c'), s->buf, 24);
+        }
     }
 
     if (png_get_chrm(pict->color_primaries, s->buf))
@@ -611,7 +637,7 @@ static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
     enc_row_size    = deflateBound(&s->zstream.zstream,
                                    (avctx->width * s->bits_per_pixel + 7) >> 3);
     max_packet_size =
-        AV_INPUT_BUFFER_MIN_SIZE + // headers
+        FF_INPUT_BUFFER_MIN_SIZE + // headers
         avctx->height * (
             enc_row_size +
             12 * (((int64_t)enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) // IDAT * ceil(enc_row_size / IOBUF_SIZE)
@@ -942,7 +968,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
     enc_row_size    = deflateBound(&s->zstream.zstream,
                                    (avctx->width * s->bits_per_pixel + 7) >> 3);
     max_packet_size =
-        AV_INPUT_BUFFER_MIN_SIZE + // headers
+        FF_INPUT_BUFFER_MIN_SIZE + // headers
         avctx->height * (
             enc_row_size +
             (4 + 12) * (((int64_t)enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) // fdAT * ceil(enc_row_size / IOBUF_SIZE)
@@ -956,7 +982,7 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
         if (!pict)
             return AVERROR(EINVAL);
 
-        s->bytestream = s->extra_data = av_malloc(AV_INPUT_BUFFER_MIN_SIZE);
+        s->bytestream = s->extra_data = av_malloc(FF_INPUT_BUFFER_MIN_SIZE);
         if (!s->extra_data)
             return AVERROR(ENOMEM);
 
@@ -1177,13 +1203,13 @@ static av_cold int png_enc_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     {"dpi", "Set image resolution (in dots per inch)",  OFFSET(dpi), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 0x10000, VE},
     {"dpm", "Set image resolution (in dots per meter)", OFFSET(dpm), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 0x10000, VE},
-    { "pred", "Prediction method", OFFSET(filter_type), AV_OPT_TYPE_INT, { .i64 = PNG_FILTER_VALUE_NONE }, PNG_FILTER_VALUE_NONE, PNG_FILTER_VALUE_MIXED, VE, "pred" },
-        { "none",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_NONE },  INT_MIN, INT_MAX, VE, "pred" },
-        { "sub",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_SUB },   INT_MIN, INT_MAX, VE, "pred" },
-        { "up",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_UP },    INT_MIN, INT_MAX, VE, "pred" },
-        { "avg",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_AVG },   INT_MIN, INT_MAX, VE, "pred" },
-        { "paeth", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_PAETH }, INT_MIN, INT_MAX, VE, "pred" },
-        { "mixed", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_MIXED }, INT_MIN, INT_MAX, VE, "pred" },
+    { "pred", "Prediction method", OFFSET(filter_type), AV_OPT_TYPE_INT, { .i64 = PNG_FILTER_VALUE_NONE }, PNG_FILTER_VALUE_NONE, PNG_FILTER_VALUE_MIXED, VE, .unit = "pred" },
+        { "none",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_NONE },  INT_MIN, INT_MAX, VE, .unit = "pred" },
+        { "sub",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_SUB },   INT_MIN, INT_MAX, VE, .unit = "pred" },
+        { "up",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_UP },    INT_MIN, INT_MAX, VE, .unit = "pred" },
+        { "avg",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_AVG },   INT_MIN, INT_MAX, VE, .unit = "pred" },
+        { "paeth", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_PAETH }, INT_MIN, INT_MAX, VE, .unit = "pred" },
+        { "mixed", NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_MIXED }, INT_MIN, INT_MAX, VE, .unit = "pred" },
     { NULL},
 };
 

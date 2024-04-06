@@ -1,4 +1,4 @@
-static const AVInputFormat * const demuxer_list[] = {
+static const FFInputFormat * const demuxer_list[] = {
     &ff_aa_demuxer,
     &ff_aac_demuxer,
     &ff_aax_demuxer,
@@ -115,6 +115,7 @@ static const AVInputFormat * const demuxer_list[] = {
     &ff_hevc_demuxer,
     &ff_hls_demuxer,
     &ff_hnm_demuxer,
+    &ff_iamf_demuxer,
     &ff_ico_demuxer,
     &ff_idcin_demuxer,
     &ff_idf_demuxer,
@@ -219,6 +220,7 @@ static const AVInputFormat * const demuxer_list[] = {
     &ff_pva_demuxer,
     &ff_pvf_demuxer,
     &ff_qcp_demuxer,
+    &ff_qoa_demuxer,
     &ff_r3d_demuxer,
     &ff_rawvideo_demuxer,
     &ff_realtext_demuxer,
