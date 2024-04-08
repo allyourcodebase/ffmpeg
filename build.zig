@@ -938,8 +938,8 @@ pub fn build(b: *std.Build) void {
     }
 
     b.installArtifact(lib);
-    lib.installConfigHeader(avconfig_h, .{});
-    for (headers) |h| lib.installHeader(h, h);
+    lib.installConfigHeader(avconfig_h);
+    for (headers) |h| lib.installHeader(.{ .path = h }, h);
 
     const show_metadata = b.addExecutable(.{
         .name = "show_metadata",
