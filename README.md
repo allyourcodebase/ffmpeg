@@ -7,6 +7,9 @@ files have been deleted, and the build system has been replaced with
 There are no system dependencies; the only thing required to build this package
 is [Zig](https://ziglang.org/download/).
 
+Zig API bindings are also provided via the "av" module. See `doc/examples` for
+API usage examples.
+
 ## Differences from Upstream
 
 * Only a single static library is produced. There is no option to create a

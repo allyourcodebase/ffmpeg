@@ -941,16 +941,32 @@ pub fn build(b: *std.Build) void {
     lib.installConfigHeader(avconfig_h);
     for (headers) |h| lib.installHeader(.{ .path = h }, h);
 
-    const show_metadata = b.addExecutable(.{
-        .name = "show_metadata",
+    const bindings = b.addModule("av", .{
+        .root_source_file = .{ .path = "av.zig" },
         .target = target,
         .optimize = optimize,
     });
-    show_metadata.addCSourceFiles(.{
+    bindings.linkLibrary(lib);
+
+    const show_metadata_c = b.addExecutable(.{
+        .name = "show_metadata_c",
+        .target = target,
+        .optimize = optimize,
+    });
+    show_metadata_c.addCSourceFiles(.{
         .files = &.{"doc/examples/show_metadata.c"},
     });
-    show_metadata.linkLibrary(lib);
-    b.installArtifact(show_metadata);
+    show_metadata_c.linkLibrary(lib);
+    b.installArtifact(show_metadata_c);
+
+    const show_metadata_zig = b.addExecutable(.{
+        .name = "show_metadata_zig",
+        .root_source_file = .{ .path = "doc/examples/show_metadata.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    show_metadata_zig.root_module.addImport("av", bindings);
+    b.installArtifact(show_metadata_zig);
 }
 
 const CategorizedSources = struct {
