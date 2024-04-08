@@ -25,18 +25,10 @@ pub fn main() !void {
     const fc = try av.FormatContext.open_input(args[1], null, null, null);
     defer fc.close_input();
 
-    //AVFormatContext *fmt_ctx = NULL;
-    //const AVDictionaryEntry *tag = NULL;
-    //int ret;
+    try fc.find_stream_info(null);
 
-    //if ((ret = avformat_open_input(&fmt_ctx, argv[1], NULL, NULL)))
-    //    return ret;
-
-    //if ((ret = avformat_find_stream_info(fmt_ctx, NULL)) < 0) {
-    //    av_log(NULL, AV_LOG_ERROR, "Cannot find stream information\n");
-    //    return ret;
-    //}
-
-    //while ((tag = av_dict_iterate(fmt_ctx->metadata, tag)))
-    //    printf("%s=%s\n", tag->key, tag->value);
+    var it: ?*const av.Dictionary.Entry = null;
+    while (av.Dictionary.iterate(fc.metadata, it)) |tag| : (it = tag) {
+        try std.io.getStdOut().writer().print("{s}={s}\n", .{ tag.key, tag.value });
+    }
 }

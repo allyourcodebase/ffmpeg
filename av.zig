@@ -40,6 +40,9 @@ pub extern fn avio_context_free(s: *?*IOContext) void;
 pub extern fn av_log_set_level(level: LOG) void;
 /// Prefer `malloc`.
 pub extern fn av_malloc(size: usize) ?[*]u8;
+/// Prefer `Dictionary.iterate`.
+pub extern fn av_dict_iterate(m: ?*const Dictionary, prev: ?*const Dictionary.Entry) ?*const Dictionary.Entry;
+
 /// Prefer `FilterContext.opt_set`.
 pub extern fn av_opt_set(obj: *anyopaque, name: [*:0]const u8, val: [*:0]const u8, search_flags: OPT_SEARCH) c_int;
 /// Prefer `FilterContext.opt_set_int`.
@@ -392,6 +395,35 @@ pub const FormatContext = extern struct {
     /// Freed by libavformat in avformat_free_context().
     streams: [*]*Stream,
 
+    /// Number of elements in `stream_groups`.
+    ///
+    /// Set by avformat_stream_group_create(); must not be modified by any other code.
+    nb_stream_groups: c_uint,
+    /// A list of all stream groups in the file.
+    ///
+    /// New groups are created with avformat_stream_group_create(), and filled
+    /// with avformat_stream_group_add_stream().
+    ///
+    /// - demuxing: groups may be created by libavformat in avformat_open_input().
+    ///             If AVFMTCTX_NOHEADER is set in ctx_flags, then new groups may also
+    ///             appear in av_read_frame().
+    /// - muxing: groups may be created by the user before avformat_write_header().
+    ///
+    /// Freed by libavformat in `free`.
+    stream_groups: [*]*StreamGroup,
+
+    /// Number of chapters in `Chapter` array.
+    /// When muxing, chapters are normally written in the file header,
+    /// so nb_chapters should normally be initialized before write_header
+    /// is called. Some muxers (e.g. mov and mkv) can also write chapters
+    /// in the trailer.  To write chapters in the trailer, nb_chapters
+    /// must be zero when write_header is called and non-zero when
+    /// write_trailer is called.
+    /// - muxing: set by user
+    /// - demuxing: set by libavformat
+    nb_chapters: c_uint,
+    chapters: [*]*Chapter,
+
     /// input or output URL. Unlike the old filename field, this field has no
     /// length restriction.
     ///
@@ -459,29 +491,9 @@ pub const FormatContext = extern struct {
     /// Forced subtitle codec_id.
     /// Demuxing: Set by user.
     subtitle_codec_id: CodecID,
-    /// Maximum amount of memory in bytes to use for the index of each stream.
-    /// If the index exceeds this size, entries will be discarded as
-    /// needed to maintain a smaller size. This can lead to slower or less
-    /// accurate seeking (depends on demuxer).
-    /// Demuxers for which a full in-memory index is mandatory will ignore
-    /// this.
-    /// - muxing: unused
-    /// - demuxing: set by user
-    max_index_size: c_uint,
-    /// Maximum amount of memory in bytes to use for buffering frames
-    /// obtained from realtime capture devices.
-    max_picture_buffer: c_uint,
-    /// Number of chapters in `Chapter` array.
-    /// When muxing, chapters are normally written in the file header,
-    /// so nb_chapters should normally be initialized before write_header
-    /// is called. Some muxers (e.g. mov and mkv) can also write chapters
-    /// in the trailer.  To write chapters in the trailer, nb_chapters
-    /// must be zero when write_header is called and non-zero when
-    /// write_trailer is called.
-    /// - muxing: set by user
-    /// - demuxing: set by libavformat
-    nb_chapters: c_uint,
-    chapters: [*]*Chapter,
+    /// Forced Data codec_id.
+    /// Demuxing: Set by user.
+    data_codec_id: CodecID,
     /// Metadata that applies to the whole file.
     ///
     /// - demuxing: set by libavformat in `open_input`
@@ -517,6 +529,22 @@ pub const FormatContext = extern struct {
     interrupt_callback: IOInterruptCB,
     /// Flags to enable debugging.
     debug: c_int,
+    /// The maximum number of streams.
+    /// - encoding: unused
+    /// - decoding: set by user
+    max_streams: c_int,
+    /// Maximum amount of memory in bytes to use for the index of each stream.
+    /// If the index exceeds this size, entries will be discarded as
+    /// needed to maintain a smaller size. This can lead to slower or less
+    /// accurate seeking (depends on demuxer).
+    /// Demuxers for which a full in-memory index is mandatory will ignore
+    /// this.
+    /// - muxing: unused
+    /// - demuxing: set by user
+    max_index_size: c_uint,
+    /// Maximum amount of memory in bytes to use for buffering frames
+    /// obtained from realtime capture devices.
+    max_picture_buffer: c_uint,
     /// Maximum buffering duration for interleaving.
     ///
     /// To ensure all the streams are interleaved correctly,
@@ -532,6 +560,23 @@ pub const FormatContext = extern struct {
     ///
     /// Muxing only, set by the caller before avformat_write_header().
     max_interleave_delta: i64,
+    /// Maximum number of packets to read while waiting for the first timestamp.
+    /// Decoding only.
+    max_ts_probe: c_int,
+    /// Max chunk time in microseconds.
+    /// Note, not all formats support this and unpredictable things may happen if it is used when not supported.
+    /// - encoding: Set by user
+    /// - decoding: unused
+    max_chunk_duration: c_int,
+    /// Max chunk size in bytes
+    /// Note, not all formats support this and unpredictable things may happen if it is used when not supported.
+    /// - encoding: Set by user
+    /// - decoding: unused
+    max_chunk_size: c_int,
+    /// Maximum number of packets that can be probed
+    /// - encoding: unused
+    /// - decoding: set by user
+    max_probe_packets: c_int,
     /// Allow non-standard and experimental extension
     /// See `CodecContext.strict_std_compliance`
     strict_std_compliance: c_int,
@@ -545,38 +590,26 @@ pub const FormatContext = extern struct {
     ///   indicate a user-triggered event.  The muxer will clear the flags for
     ///   events it has handled in av_[interleaved]_write_frame().
     event_flags: c_int,
-    /// Maximum number of packets to read while waiting for the first timestamp.
-    /// Decoding only.
-    max_ts_probe: c_int,
     /// Avoid negative timestamps during muxing.
     /// Any value of the AVFMT_AVOID_NEG_TS_* constants.
     /// Note, this works better when using av_interleaved_write_frame().
     /// - muxing: Set by user
     /// - demuxing: unused
     avoid_negative_ts: c_int,
-    /// Transport stream id.
-    /// This will be moved into demuxer private options. Thus no API/ABI compatibility
-    ts_id: c_int,
     /// Audio preload in microseconds.
     /// Note, not all formats support this and unpredictable things may happen if it is used when not supported.
     /// - encoding: Set by user
     /// - decoding: unused
     audio_preload: c_int,
-    /// Max chunk time in microseconds.
-    /// Note, not all formats support this and unpredictable things may happen if it is used when not supported.
-    /// - encoding: Set by user
-    /// - decoding: unused
-    max_chunk_duration: c_int,
-    /// Max chunk size in bytes
-    /// Note, not all formats support this and unpredictable things may happen if it is used when not supported.
-    /// - encoding: Set by user
-    /// - decoding: unused
-    max_chunk_size: c_int,
     /// forces the use of wallclock timestamps as pts/dts of packets
     /// This has undefined results in the presence of B frames.
     /// - encoding: unused
     /// - decoding: Set by user
     use_wallclock_as_timestamps: c_int,
+    /// Skip duration calcuation in estimate_timings_from_pts.
+    /// - encoding: unused
+    /// - decoding: set by user
+    skip_estimate_duration_from_pts: c_int,
     /// used to force AVIO_FLAG_DIRECT.
     /// - encoding: unused
     /// - decoding: Set by user
@@ -627,6 +660,14 @@ pub const FormatContext = extern struct {
     /// - encoding: unused
     /// - decoding: set by user
     format_whitelist: [*:0]u8,
+    /// ',' separated list of allowed protocols.
+    /// - encoding: unused
+    /// - decoding: set by user
+    protocol_whitelist: [*:0]u8,
+    /// ',' separated list of disallowed protocols.
+    /// - encoding: unused
+    /// - decoding: set by user
+    protocol_blacklist: [*:0]u8,
     /// IO repositioned flag.
     /// This is set by avformat when the underlaying IO context read pointer
     /// is repositioned, for example when doing byte based seeking.
@@ -674,13 +715,6 @@ pub const FormatContext = extern struct {
     /// - muxing: Set by user.
     /// - demuxing: Set by user.
     dump_separator: *u8,
-    /// Forced Data codec_id.
-    /// Demuxing: Set by user.
-    data_codec_id: CodecID,
-    /// ',' separated list of allowed protocols.
-    /// - encoding: unused
-    /// - decoding: set by user
-    protocol_whitelist: [*:0]u8,
     /// A callback for opening new IO streams.
     ///
     /// Whenever a muxer or a demuxer needs to open an IO stream (typically from
@@ -700,24 +734,6 @@ pub const FormatContext = extern struct {
     /// passed to this callback may be different from the one facing the caller.
     /// It will, however, have the same 'opaque' field.
     io_open: ?*const fn (*FormatContext, **IOContext, [*]const u8, c_int, *?*Dictionary) callconv(.C) c_int,
-    /// Deprecated. Use `io_close2`.
-    io_close: ?*const fn (*FormatContext, *IOContext) callconv(.C) void,
-    /// ',' separated list of disallowed protocols.
-    /// - encoding: unused
-    /// - decoding: set by user
-    protocol_blacklist: [*:0]u8,
-    /// The maximum number of streams.
-    /// - encoding: unused
-    /// - decoding: set by user
-    max_streams: c_int,
-    /// Skip duration calcuation in estimate_timings_from_pts.
-    /// - encoding: unused
-    /// - decoding: set by user
-    skip_estimate_duration_from_pts: c_int,
-    /// Maximum number of packets that can be probed
-    /// - encoding: unused
-    /// - decoding: set by user
-    max_probe_packets: c_int,
     /// A callback for closing the streams opened with AVFormatContext.io_open().
     ///
     /// Using this is preferred over io_close, because this can return an error.
@@ -912,7 +928,7 @@ pub const IOContext = extern struct {
     buf_end: [*c]u8,
     @"opaque": ?*anyopaque,
     read_packet: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
-    write_packet: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
+    write_packet: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
     seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.C) i64,
     pos: i64,
     eof_reached: c_int,
@@ -929,7 +945,7 @@ pub const IOContext = extern struct {
     direct: c_int,
     protocol_whitelist: [*c]const u8,
     protocol_blacklist: [*c]const u8,
-    write_data_type: ?*const fn (?*anyopaque, [*c]u8, c_int, IODataMarkerType, i64) callconv(.C) c_int,
+    write_data_type: ?*const fn (?*anyopaque, [*c]const u8, c_int, IODataMarkerType, i64) callconv(.C) c_int,
     ignore_boundary_point: c_int,
     buf_ptr_max: [*c]u8,
     bytes_read: i64,
@@ -1025,7 +1041,7 @@ pub const Program = extern struct {
     pts_wrap_behavior: c_int,
 };
 
-pub const CodecID = enum(c_int) {
+pub const CodecID = enum(c_uint) {
     NONE = 0,
     MPEG1VIDEO = 1,
     MPEG2VIDEO = 2,
@@ -1227,75 +1243,75 @@ pub const CodecID = enum(c_int) {
     AVRP = 198,
     @"012V" = 199,
     AVUI = 200,
-    AYUV = 201,
-    TARGA_Y216 = 202,
-    V308 = 203,
-    V408 = 204,
-    YUV4 = 205,
-    AVRN = 206,
-    CPIA = 207,
-    XFACE = 208,
-    SNOW = 209,
-    SMVJPEG = 210,
-    APNG = 211,
-    DAALA = 212,
-    CFHD = 213,
-    TRUEMOTION2RT = 214,
-    M101 = 215,
-    MAGICYUV = 216,
-    SHEERVIDEO = 217,
-    YLC = 218,
-    PSD = 219,
-    PIXLET = 220,
-    SPEEDHQ = 221,
-    FMVC = 222,
-    SCPR = 223,
-    CLEARVIDEO = 224,
-    XPM = 225,
-    AV1 = 226,
-    BITPACKED = 227,
-    MSCC = 228,
-    SRGC = 229,
-    SVG = 230,
-    GDV = 231,
-    FITS = 232,
-    IMM4 = 233,
-    PROSUMER = 234,
-    MWSC = 235,
-    WCMV = 236,
-    RASC = 237,
-    HYMT = 238,
-    ARBC = 239,
-    AGM = 240,
-    LSCR = 241,
-    VP4 = 242,
-    IMM5 = 243,
-    MVDV = 244,
-    MVHA = 245,
-    CDTOONS = 246,
-    MV30 = 247,
-    NOTCHLC = 248,
-    PFM = 249,
-    MOBICLIP = 250,
-    PHOTOCD = 251,
-    IPU = 252,
-    ARGO = 253,
-    CRI = 254,
-    SIMBIOSIS_IMX = 255,
-    SGA_VIDEO = 256,
-    GEM = 257,
-    VBN = 258,
-    JPEGXL = 259,
-    QOI = 260,
-    PHM = 261,
-    RADIANCE_HDR = 262,
-    WBMP = 263,
-    MEDIA100 = 264,
-    VQC = 265,
-    PDV = 266,
-    EVC = 267,
-    RTV1 = 268,
-    VMIX = 269,
+    TARGA_Y216 = 201,
+    V308 = 202,
+    V408 = 203,
+    YUV4 = 204,
+    AVRN = 205,
+    CPIA = 206,
+    XFACE = 207,
+    SNOW = 208,
+    SMVJPEG = 209,
+    APNG = 210,
+    DAALA = 211,
+    CFHD = 212,
+    TRUEMOTION2RT = 213,
+    M101 = 214,
+    MAGICYUV = 215,
+    SHEERVIDEO = 216,
+    YLC = 217,
+    PSD = 218,
+    PIXLET = 219,
+    SPEEDHQ = 220,
+    FMVC = 221,
+    SCPR = 222,
+    CLEARVIDEO = 223,
+    XPM = 224,
+    AV1 = 225,
+    BITPACKED = 226,
+    MSCC = 227,
+    SRGC = 228,
+    SVG = 229,
+    GDV = 230,
+    FITS = 231,
+    IMM4 = 232,
+    PROSUMER = 233,
+    MWSC = 234,
+    WCMV = 235,
+    RASC = 236,
+    HYMT = 237,
+    ARBC = 238,
+    AGM = 239,
+    LSCR = 240,
+    VP4 = 241,
+    IMM5 = 242,
+    MVDV = 243,
+    MVHA = 244,
+    CDTOONS = 245,
+    MV30 = 246,
+    NOTCHLC = 247,
+    PFM = 248,
+    MOBICLIP = 249,
+    PHOTOCD = 250,
+    IPU = 251,
+    ARGO = 252,
+    CRI = 253,
+    SIMBIOSIS_IMX = 254,
+    SGA_VIDEO = 255,
+    GEM = 256,
+    VBN = 257,
+    JPEGXL = 258,
+    QOI = 259,
+    PHM = 260,
+    RADIANCE_HDR = 261,
+    WBMP = 262,
+    MEDIA100 = 263,
+    VQC = 264,
+    PDV = 265,
+    EVC = 266,
+    RTV1 = 267,
+    VMIX = 268,
+    LEAD = 269,
     PCM_S16LE = 65536,
     PCM_S16BE = 65537,
     PCM_U16LE = 65538,
@@ -1503,6 +1519,7 @@ pub const CodecID = enum(c_int) {
     RKA = 86118,
     AC4 = 86119,
     OSQ = 86120,
+    QOA = 86121,
     DVD_SUBTITLE = 94208,
     DVB_SUBTITLE = 94209,
     TEXT = 94210,
@@ -1562,7 +1579,20 @@ pub const Chapter = extern struct {
     metadata: ?*Dictionary,
 };
 
-pub const Dictionary = opaque {};
+pub const Dictionary = opaque {
+    pub const Entry = extern struct {
+        key: [*:0]u8,
+        value: [*:0]u8,
+    };
+
+    /// Iterates through all entries in the dictionary.
+    ///
+    /// The returned `Entry` key/value must not be changed.
+    ///
+    /// As av_dict_set() invalidates all previous entries returned by this
+    /// function, it must not be called while iterating over the dict.
+    pub const iterate = av_dict_iterate;
+};
 
 pub const IOInterruptCB = extern struct {
     callback: ?*const fn (?*anyopaque) callconv(.C) c_int,
@@ -1676,6 +1706,8 @@ pub const CodecParameters = extern struct {
     codec_tag: u32,
     extradata: [*c]u8,
     extradata_size: c_int,
+    coded_side_data: [*c]PacketSideData,
+    nb_coded_side_data: c_int,
     format: c_int,
     bit_rate: i64,
     bits_per_coded_sample: c_int,
@@ -1685,6 +1717,7 @@ pub const CodecParameters = extern struct {
     width: c_int,
     height: c_int,
     sample_aspect_ratio: Rational,
+    framerate: Rational,
     field_order: FieldOrder,
     color_range: ColorRange,
     color_primaries: ColorPrimaries,
@@ -1692,18 +1725,13 @@ pub const CodecParameters = extern struct {
     color_space: ColorSpace,
     chroma_location: ChromaLocation,
     video_delay: c_int,
-    channel_layout: u64,
-    channels: c_int,
+    ch_layout: ChannelLayout,
     sample_rate: c_int,
     block_align: c_int,
     frame_size: c_int,
     initial_padding: c_int,
     trailing_padding: c_int,
     seek_preroll: c_int,
-    ch_layout: ChannelLayout,
-    framerate: Rational,
-    coded_side_data: [*c]PacketSideData,
-    nb_coded_side_data: c_int,
 };
 
 pub const Rational = extern struct {
@@ -2344,28 +2372,36 @@ pub const CodecContext = extern struct {
     internal: ?*opaque {},
     @"opaque": ?*anyopaque,
     bit_rate: i64,
-    bit_rate_tolerance: c_int,
-    global_quality: c_int,
-    compression_level: c_int,
     flags: c_int,
     flags2: c_int,
     extradata: [*c]u8,
     extradata_size: c_int,
     time_base: Rational,
+    pkt_timebase: Rational,
+    framerate: Rational,
     ticks_per_frame: c_int,
     delay: c_int,
     width: c_int,
     height: c_int,
     coded_width: c_int,
     coded_height: c_int,
-    gop_size: c_int,
+    sample_aspect_ratio: Rational,
     pix_fmt: PixelFormat,
+    sw_pix_fmt: PixelFormat,
+    color_primaries: ColorPrimaries,
+    color_trc: ColorTransferCharacteristic,
+    colorspace: ColorSpace,
+    color_range: ColorRange,
+    chroma_sample_location: ChromaLocation,
+    field_order: FieldOrder,
+    refs: c_int,
+    has_b_frames: c_int,
+    slice_flags: c_int,
     draw_horiz_band: ?*const fn ([*c]CodecContext, [*c]const Frame, [*c]c_int, c_int, c_int, c_int) callconv(.C) void,
     get_format: ?*const fn ([*c]CodecContext, [*c]const PixelFormat) callconv(.C) PixelFormat,
     max_b_frames: c_int,
     b_quant_factor: f32,
     b_quant_offset: f32,
-    has_b_frames: c_int,
     i_quant_factor: f32,
     i_quant_offset: f32,
     lumi_masking: f32,
@@ -2373,9 +2409,7 @@ pub const CodecContext = extern struct {
     spatial_cplx_masking: f32,
     p_masking: f32,
     dark_masking: f32,
-    slice_count: c_int,
-    slice_offset: [*c]c_int,
-    sample_aspect_ratio: Rational,
+    nsse_weight: c_int,
     me_cmp: c_int,
     me_sub_cmp: c_int,
     mb_cmp: c_int,
@@ -2386,38 +2420,33 @@ pub const CodecContext = extern struct {
     pre_dia_size: c_int,
     me_subpel_quality: c_int,
     me_range: c_int,
-    slice_flags: c_int,
     mb_decision: c_int,
     intra_matrix: [*c]u16,
     inter_matrix: [*c]u16,
+    chroma_intra_matrix: [*c]u16,
     intra_dc_precision: c_int,
-    skip_top: c_int,
-    skip_bottom: c_int,
     mb_lmin: c_int,
     mb_lmax: c_int,
     bidir_refine: c_int,
     keyint_min: c_int,
-    refs: c_int,
+    gop_size: c_int,
     mv0_threshold: c_int,
-    color_primaries: ColorPrimaries,
-    color_trc: ColorTransferCharacteristic,
-    colorspace: ColorSpace,
-    color_range: ColorRange,
-    chroma_sample_location: ChromaLocation,
     slices: c_int,
-    field_order: FieldOrder,
     sample_rate: c_int,
-    channels: c_int,
     sample_fmt: SampleFormat,
+    ch_layout: ChannelLayout,
     frame_size: c_int,
-    frame_number: c_int,
     block_align: c_int,
     cutoff: c_int,
-    channel_layout: u64,
-    request_channel_layout: u64,
     audio_service_type: AudioServiceType,
     request_sample_fmt: SampleFormat,
+    initial_padding: c_int,
+    trailing_padding: c_int,
+    seek_preroll: c_int,
     get_buffer2: ?*const fn ([*c]CodecContext, [*c]Frame, c_int) callconv(.C) c_int,
+    bit_rate_tolerance: c_int,
+    global_quality: c_int,
+    compression_level: c_int,
     qcompress: f32,
     qblur: f32,
     qmin: c_int,
@@ -2439,60 +2468,52 @@ pub const CodecContext = extern struct {
     error_concealment: c_int,
     debug: c_int,
     err_recognition: c_int,
-    reordered_opaque: i64,
     hwaccel: [*c]const HWAccel,
     hwaccel_context: ?*anyopaque,
+    hw_frames_ctx: [*c]BufferRef,
+    hw_device_ctx: [*c]BufferRef,
+    hwaccel_flags: c_int,
+    extra_hw_frames: c_int,
     @"error": [8]u64,
     dct_algo: c_int,
     idct_algo: c_int,
     bits_per_coded_sample: c_int,
     bits_per_raw_sample: c_int,
-    lowres: c_int,
     thread_count: c_int,
     thread_type: c_int,
     active_thread_type: c_int,
     execute: ?*const fn ([*c]CodecContext, ?*const fn ([*c]CodecContext, ?*anyopaque) callconv(.C) c_int, ?*anyopaque, [*c]c_int, c_int, c_int) callconv(.C) c_int,
     execute2: ?*const fn ([*c]CodecContext, ?*const fn ([*c]CodecContext, ?*anyopaque, c_int, c_int) callconv(.C) c_int, ?*anyopaque, [*c]c_int, c_int) callconv(.C) c_int,
-    nsse_weight: c_int,
     profile: c_int,
     level: c_int,
+    properties: c_uint,
     skip_loop_filter: Discard,
     skip_idct: Discard,
     skip_frame: Discard,
-    subtitle_header: [*c]u8,
-    subtitle_header_size: c_int,
-    initial_padding: c_int,
-    framerate: Rational,
-    sw_pix_fmt: PixelFormat,
-    pkt_timebase: Rational,
+    skip_alpha: c_int,
+    skip_top: c_int,
+    skip_bottom: c_int,
+    lowres: c_int,
     codec_descriptor: [*c]const CodecDescriptor,
-    pts_correction_num_faulty_pts: i64,
-    pts_correction_num_faulty_dts: i64,
-    pts_correction_last_pts: i64,
-    pts_correction_last_dts: i64,
     sub_charenc: [*c]u8,
     sub_charenc_mode: c_int,
-    skip_alpha: c_int,
-    seek_preroll: c_int,
-    chroma_intra_matrix: [*c]u16,
+    subtitle_header_size: c_int,
+    subtitle_header: [*c]u8,
     dump_separator: [*c]u8,
     codec_whitelist: [*c]u8,
-    properties: c_uint,
     coded_side_data: [*c]PacketSideData,
     nb_coded_side_data: c_int,
-    hw_frames_ctx: [*c]BufferRef,
-    trailing_padding: c_int,
+    export_side_data: c_int,
     max_pixels: i64,
-    hw_device_ctx: [*c]BufferRef,
-    hwaccel_flags: c_int,
     apply_cropping: c_int,
-    extra_hw_frames: c_int,
     discard_damaged_percentage: c_int,
     max_samples: i64,
-    export_side_data: c_int,
     get_encode_buffer: ?*const fn ([*c]CodecContext, [*c]Packet, c_int) callconv(.C) c_int,
-    ch_layout: ChannelLayout,
     frame_num: i64,
+    side_data_prefer_packet: [*c]c_int,
+    nb_side_data_prefer_packet: c_uint,
+    decoded_side_data: [*c][*c]FrameSideData,
+    nb_decoded_side_data: c_int,
 
     pub fn alloc(codec: *const Codec) error{OutOfMemory}!*CodecContext {
         return avcodec_alloc_context3(codec) orelse return error.OutOfMemory;
@@ -2647,18 +2668,14 @@ pub const Frame = extern struct {
     /// filters, but its value will be by default ignored on input to encoders
     /// or filters.
     time_base: Rational,
-    coded_picture_number: c_int,
-    display_picture_number: c_int,
     quality: c_int,
     @"opaque": ?*anyopaque,
     repeat_pict: c_int,
     interlaced_frame: c_int,
     top_field_first: c_int,
     palette_has_changed: c_int,
-    reordered_opaque: i64,
     /// Sample rate of the audio data.
     sample_rate: c_int,
-    channel_layout: u64,
     buf: [8]*BufferRef,
     extended_buf: [*]*BufferRef,
     nb_extended_buf: c_int,
@@ -2672,10 +2689,8 @@ pub const Frame = extern struct {
     chroma_location: ChromaLocation,
     best_effort_timestamp: i64,
     pkt_pos: i64,
-    pkt_duration: i64,
     metadata: ?*Dictionary,
     decode_error_flags: c_int,
-    channels: c_int,
     pkt_size: c_int,
     hw_frames_ctx: *BufferRef,
     opaque_ref: *BufferRef,
@@ -2824,13 +2839,9 @@ pub const FilterGraph = extern struct {
     scale_sws_opts: [*:0]u8,
     thread_type: c_int,
     nb_threads: c_int,
-    internal: ?*FilterGraphInternal,
     @"opaque": ?*anyopaque,
     execute: ?*const filter_execute_func,
     aresample_swr_opts: [*:0]u8,
-    sink_links: [*]*FilterLink,
-    sink_links_count: c_int,
-    disable_auto_convert: c_uint,
 
     pub fn alloc() error{OutOfMemory}!*FilterGraph {
         return avfilter_graph_alloc() orelse return error.OutOfMemory;
@@ -2880,14 +2891,13 @@ pub const FilterContext = extern struct {
     priv: ?*anyopaque,
     graph: *FilterGraph,
     thread_type: c_int,
-    internal: ?*FilterInternal,
-    command_queue: ?*FilterCommand_11,
+    nb_threads: c_int,
+    command_queue: ?*opaque {},
     enable_str: [*:0]u8,
     enable: ?*anyopaque,
     var_values: [*]f64,
     is_disabled: c_int,
     hw_device_ctx: *BufferRef,
-    nb_threads: c_int,
     ready: c_uint,
     extra_hw_frames: c_int,
 
@@ -3086,7 +3096,6 @@ pub const BUFFERSINK_FLAG = packed struct(c_uint) {
     _: u30 = 0,
 };
 
-pub const FilterGraphInternal = opaque {};
 pub const filter_execute_func = fn ([*c]FilterContext, ?*const filter_action_func, ?*anyopaque, [*c]c_int, c_int) callconv(.C) c_int;
 pub const filter_action_func = fn ([*c]FilterContext, ?*anyopaque, c_int, c_int) callconv(.C) c_int;
 pub const FilterLink = extern struct {
@@ -3095,25 +3104,20 @@ pub const FilterLink = extern struct {
     dst: [*c]FilterContext,
     dstpad: ?*FilterPad,
     type: MediaType,
+    format: c_int,
     w: c_int,
     h: c_int,
     sample_aspect_ratio: Rational,
-    channel_layout: u64,
+    colorspace: ColorSpace,
+    color_range: ColorRange,
     sample_rate: c_int,
-    format: c_int,
-    time_base: Rational,
     ch_layout: ChannelLayout,
+    time_base: Rational,
     incfg: FilterFormatsConfig,
     outcfg: FilterFormatsConfig,
-    init_state: enum(c_uint) {
-        UNINIT,
-        STARTINIT,
-        INIT,
-    },
     graph: [*c]FilterGraph,
     current_pts: i64,
     current_pts_us: i64,
-    age_index: c_int,
     frame_rate: Rational,
     min_samples: c_int,
     max_samples: c_int,
@@ -3121,10 +3125,8 @@ pub const FilterLink = extern struct {
     frame_count_out: i64,
     sample_count_in: i64,
     sample_count_out: i64,
-    frame_pool: ?*anyopaque,
     frame_wanted_out: c_int,
     hw_frames_ctx: [*c]BufferRef,
-    reserved: [61440]u8,
 };
 
 pub const Filter = extern struct {
@@ -3160,8 +3162,6 @@ pub const Filter = extern struct {
 };
 
 pub const FilterPad = opaque {};
-pub const FilterInternal = opaque {};
-pub const FilterCommand_11 = opaque {};
 
 pub const FilterFormatsConfig = extern struct {
     formats: ?*FilterFormats,
@@ -3356,3 +3356,32 @@ pub const ComplexFloat = extern struct {
     re: f32,
     im: f32,
 };
+
+pub const StreamGroup = extern struct {
+    av_class: *const Class,
+    priv_data: ?*anyopaque,
+    index: c_uint,
+    id: i64,
+    type: ParamsType,
+    params: extern union {
+        iamf_audio_element: ?*IAMFAudioElement,
+        iamf_mix_presentation: ?*IAMFMixPresentation,
+        tile_grid: *TileGrid,
+    },
+    metadata: ?*Dictionary,
+    nb_streams: c_uint,
+    streams: [*]*Stream,
+    disposition: c_int,
+
+    pub const ParamsType = enum(c_uint) {
+        NONE = 0,
+        IAMF_AUDIO_ELEMENT = 1,
+        IAMF_MIX_PRESENTATION = 2,
+        TILE_GRID = 3,
+    };
+
+    pub const TileGrid = opaque {};
+};
+
+pub const IAMFAudioElement = opaque {};
+pub const IAMFMixPresentation = opaque {};
