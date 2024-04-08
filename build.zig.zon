@@ -35,6 +35,7 @@
         "COPYING.LGPLv3",
         "LICENSE.md",
         "README.md",
+        "av.zig",
         "build.zig",
         "build.zig.zon",
         "compat",
