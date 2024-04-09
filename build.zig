@@ -868,11 +868,6 @@ pub fn build(b: *std.Build) void {
 
     const sources = categorizeSources(b.allocator, t);
 
-    // Unfortunately needed due to the files in bsf/ doing `#include "bsf.h"`.
-    // Upstream devs didn't seem interested in the simple fix of
-    // `#include <libavcodec/bsf.h>` instead.
-    lib.addIncludePath(.{ .path = "libavcodec" });
-
     lib.addCSourceFiles(.{
         .files = sources.avcodec,
         .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
