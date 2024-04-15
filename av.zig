@@ -1758,6 +1758,12 @@ pub const CodecParameters = extern struct {
 pub const Rational = extern struct {
     num: c_int,
     den: c_int,
+
+    pub fn q2d(a: Rational) f64 {
+        const num: f64 = @floatFromInt(a.num);
+        const den: f64 = @floatFromInt(a.den);
+        return num / den;
+    }
 };
 
 pub const Discard = enum(c_int) {
