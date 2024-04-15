@@ -35,11 +35,15 @@ pub extern fn avio_alloc_context(
 ) [*c]IOContext;
 /// Prefer `IOContext.free`.
 pub extern fn avio_context_free(s: *?*IOContext) void;
+/// Prefer `IOContext.close`.
+pub extern fn avio_close(s: ?*IOContext) c_int;
 
 /// Prefer `LOG.set`.
 pub extern fn av_log_set_level(level: LOG) void;
 /// Prefer `malloc`.
 pub extern fn av_malloc(size: usize) ?[*]u8;
+/// Prefer `free`.
+pub extern fn av_free(ptr: ?*anyopaque) void;
 /// Prefer `Dictionary.iterate`.
 pub extern fn av_dict_iterate(m: ?*const Dictionary, prev: ?*const Dictionary.Entry) ?*const Dictionary.Entry;
 
@@ -167,6 +171,8 @@ pub fn malloc(size: usize) error{OutOfMemory}![]u8 {
     const ptr = av_malloc(size) orelse return error.OutOfMemory;
     return ptr[0..size];
 }
+
+pub const free = av_free;
 
 pub const OPT_SEARCH = packed struct(c_int) {
     CHILDREN: bool = false,
@@ -926,11 +932,11 @@ pub const OutputFormat = extern struct {
 };
 
 pub const IOContext = extern struct {
-    av_class: [*c]const Class,
-    buffer: [*c]u8,
+    av_class: *const Class,
+    buffer: [*]u8,
     buffer_size: c_int,
-    buf_ptr: [*c]u8,
-    buf_end: [*c]u8,
+    buf_ptr: [*]u8,
+    buf_end: [*]u8,
     @"opaque": ?*anyopaque,
     read_packet: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
     write_packet: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
@@ -963,15 +969,6 @@ pub const IOContext = extern struct {
 
     /// Allocate and initialize an `IOContext` for buffered I/O. It must be later
     /// freed with `free`.
-    ///
-    /// @param write_flag Set to 1 if the buffer should be writable, 0 otherwise.
-    /// @param opaque An opaque pointer to user-specific data.
-    /// @param read_packet  A function for refilling the buffer, may be NULL.
-    ///                     For stream protocols, must never return 0 but rather
-    ///                     a proper AVERROR code.
-    /// @param write_packet A function for writing the buffer contents, may be NULL.
-    ///        The function may not change the input buffers content.
-    /// @param seek A function for seeking to specified byte position, may be NULL.
     pub fn alloc(
         /// Memory block for input/output operations via AVIOContext.
         /// The buffer must be allocated with av_malloc() and friends.
@@ -983,10 +980,19 @@ pub const IOContext = extern struct {
         /// For protocols with fixed blocksize it should be set to this blocksize.
         /// For others a typical size is a cache page, e.g. 4kb.
         buffer: []u8,
+        /// Whether the buffer should be writable.
         write_flag: WriteFlag,
+        /// An opaque pointer to user-specific data.
         userdata: ?*anyopaque,
+        /// A function for refilling the buffer.
+        ///
+        /// For stream protocols, must never return 0 but rather a proper AVERROR code.
         read_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
+        /// A function for writing the buffer contents.
+        ///
+        /// The function may not change the input buffers content.
         write_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
+        /// A function for seeking to specified byte position.
         seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.C) i64,
     ) error{OutOfMemory}!*IOContext {
         return avio_alloc_context(
@@ -1003,6 +1009,16 @@ pub const IOContext = extern struct {
     pub fn free(ioc: *IOContext) void {
         var keep_your_dirty_hands_off_my_pointers_ffmpeg: ?*IOContext = ioc;
         avio_context_free(&keep_your_dirty_hands_off_my_pointers_ffmpeg);
+    }
+
+    /// Close the resource accessed by the IOContext s and free it.
+    ///
+    /// This function can only be used if s was opened by avio_open().
+    ///
+    /// The internal buffer is automatically flushed before closing the
+    /// resource.
+    pub fn close(s: *IOContext) Error!void {
+        _ = try wrap(avio_close(s));
     }
 };
 
