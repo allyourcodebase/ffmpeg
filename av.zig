@@ -196,7 +196,7 @@ fn wrap(averror: c_int) Error!c_uint {
     return switch (averror) {
         0 => unreachable, // handled above
 
-        -@as(c_int, @intFromEnum(E.INVAL)) => unreachable, // incorrect ffmpeg API usage
+        -@as(c_int, @intFromEnum(E.INVAL)) => return error.FFmpegInvalid,
         -@as(c_int, @intFromEnum(E.NOENT)) => return error.FileNotFound,
         -@as(c_int, @intFromEnum(E.NOMEM)) => return error.OutOfMemory,
         -@as(c_int, @intFromEnum(E.PERM)) => return error.PermissionDenied,
@@ -248,6 +248,10 @@ pub const Error = error{
     BsfNotFound,
     /// Internal FFmpeg bug
     FFmpegBug,
+    /// Usually indicates invalid API usage, which would have been an assertion
+    /// rather than an error, but is also returned for input files that failed
+    /// to demux or decode.
+    FFmpegInvalid,
     BufferTooSmall,
     DecoderNotFound,
     DemuxerNotFound,
@@ -286,6 +290,7 @@ pub const Error = error{
     HttpOther4xx,
     Http5xx,
 
+    /// FFmpeg returned an undocumented error code.
     Unexpected,
 };
 
