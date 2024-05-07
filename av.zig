@@ -22,6 +22,8 @@ pub extern fn av_find_best_stream(
 ) c_int;
 /// Prefer `FormatContext.read_frame`.
 pub extern fn av_read_frame(s: *FormatContext, pkt: *Packet) c_int;
+/// Prefer `FormatContext.seek_frame`.
+pub extern fn av_seek_frame(s: *FormatContext, stream_index: c_int, timestamp: i64, flags: c_int) c_int;
 
 /// Prefer `IOContext.alloc`.
 pub extern fn avio_alloc_context(
@@ -84,6 +86,8 @@ pub extern fn avcodec_open2(avctx: *CodecContext, codec: *const Codec, options: 
 pub extern fn avcodec_send_packet(avctx: *CodecContext, avpkt: ?*const Packet) c_int;
 /// Prefer `CodecContext.receive_frame`.
 pub extern fn avcodec_receive_frame(avctx: *CodecContext, frame: *Frame) c_int;
+/// Prefer `CodecContext.flush_buffers`.
+pub extern fn avcodec_flush_buffers(avctx: *CodecContext) void;
 
 /// Prefer `Packet.alloc`.
 pub extern fn av_packet_alloc() ?*Packet;
@@ -173,6 +177,12 @@ pub fn malloc(size: usize) error{OutOfMemory}![]u8 {
 }
 
 pub const free = av_free;
+
+/// Undefined timestamp value.
+///
+/// Usually reported by demuxer that work on containers that do not provide
+/// either pts or dts.
+pub const NOPTS_VALUE: i64 = @bitCast(@as(u64, 0x8000000000000000));
 
 pub const OPT_SEARCH = packed struct(c_int) {
     CHILDREN: bool = false,
@@ -878,6 +888,23 @@ pub const FormatContext = extern struct {
     /// contain data that needs to be freed.
     pub fn read_frame(s: *FormatContext, pkt: *Packet) Error!void {
         _ = try wrap(av_read_frame(s, pkt));
+    }
+
+    /// Seek to the keyframe at timestamp in the specified stream.
+    pub fn seek_frame(
+        /// media file handle
+        s: *FormatContext,
+        /// If stream_index is (-1), a default stream is selected, and
+        /// timestamp is automatically converted from AV_TIME_BASE units to the
+        /// stream specific time_base.
+        stream_index: c_int,
+        /// In AVStream.time_base units or, if no stream is specified, in
+        /// AV_TIME_BASE units.
+        timestamp: i64,
+        /// select direction and seeking mode
+        flags: c_int,
+    ) Error!void {
+        _ = try wrap(av_seek_frame(s, stream_index, timestamp, flags));
     }
 };
 
@@ -2631,6 +2658,21 @@ pub const CodecContext = extern struct {
     ) Error!void {
         _ = try wrap(avcodec_receive_frame(avctx, frame));
     }
+
+    /// Reset the internal codec state / flush internal buffers. Should be called
+    /// e.g. when seeking or when switching to a different stream.
+    ///
+    /// For decoders, this function just releases any references the decoder
+    /// might keep internally, but the caller's references remain valid.
+    ///
+    /// For encoders, this function will only do something if the encoder
+    /// declares support for AV_CODEC_CAP_ENCODER_FLUSH. When called, the encoder
+    /// will drain any remaining packets, and can then be re-used for a different
+    /// stream (as opposed to sending a null frame which will leave the encoder
+    /// in a permanent EOF state after draining). This can be desirable if the
+    /// cost of tearing down and replacing the encoder instance is high.
+    ///
+    pub const flush_buffers = avcodec_flush_buffers;
 };
 
 /// Decoded (raw) audio or video data.
