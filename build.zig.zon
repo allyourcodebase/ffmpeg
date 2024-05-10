@@ -2,6 +2,8 @@
     .name = "libffmpeg",
     .version = "7.0.1-3",
 
+    .minimum_zig_version = "0.12.0",
+
     .dependencies = .{
         .libz = .{
             .url = "https://github.com/allyourcodebase/zlib/archive/refs/tags/1.3.1-3.tar.gz",
@@ -9,23 +11,23 @@
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/refs/tags/3.100.1-2.tar.gz",
-            .hash = "122050e58ca4d57f5e2cc3d6404691d3040bbe41e76e4ef93b52f2105f1157f7d429",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/refs/tags/3.100.1-3.tar.gz",
+            .hash = "1220bee0fcf98bf6ad75b7bb09ff1f873ca38547a15b1e7a4532d20d94107d8d330a",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/refs/tags/1.3.8-2.tar.gz",
-            .hash = "1220884c1636f0e6dc92b6e74b97a2d25fe240a77bab9fed3af3e1581f80c3e7256f",
+            .url = "https://github.com/andrewrk/libvorbis/archive/refs/tags/1.3.8-3.tar.gz",
+            .hash = "122074e0bf09c3622780e697c11c6744e763dd63777e480baf2b583ee3ab6a02ff14",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/refs/tags/1.3.6-1.tar.gz",
-            .hash = "1220e920d74980c0794a969e1fc0647c863023acbe935ed244a79ff8ec65f2875023",
+            .url = "https://github.com/andrewrk/libogg/archive/refs/tags/1.3.6-2.tar.gz",
+            .hash = "1220b3e1fb33317c92f9ead09630f6b4be59e80d0a8780754f8aa4ee7da61cb7b47a",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/cfccd3eaba0526e360795494a0e4bc39acc4d68c.tar.gz",
-            .hash = "1220f9bd108d1e7097b27d388a7a65effd503598df61e34a2af02be00b22af567fc7",
+            .url = "https://github.com/andrewrk/nasm/archive/b5f62392d56baf6aa02567f28e0da70664609262.tar.gz",
+            .hash = "122004fa7e2ff0b3d472049743358f8fdf065cdf63bc0e5e3d54c6bb8d81d93e40da",
         },
     },
     .paths = .{

@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
     lib.linkLibrary(libvorbis_dep.artifact("vorbis"));
     lib.linkLibrary(libogg_dep.artifact("ogg"));
     lib.linkLibC();
-    lib.addIncludePath(.{ .path = "." });
+    lib.addIncludePath(b.path("."));
 
     const avconfig_h = b.addConfigHeader(.{
         .style = .blank,
@@ -926,7 +926,7 @@ pub fn build(b: *std.Build) void {
                 nasm_run.addArgs(&.{"-o"});
                 lib.addObjectFile(nasm_run.addOutputFileArg(output_basename));
 
-                nasm_run.addFileArg(.{ .path = input_file });
+                nasm_run.addFileArg(b.path(input_file));
             }
         },
         else => {},
@@ -934,10 +934,10 @@ pub fn build(b: *std.Build) void {
 
     b.installArtifact(lib);
     lib.installConfigHeader(avconfig_h);
-    for (headers) |h| lib.installHeader(.{ .path = h }, h);
+    for (headers) |h| lib.installHeader(b.path(h), h);
 
     const bindings = b.addModule("av", .{
-        .root_source_file = .{ .path = "av.zig" },
+        .root_source_file = b.path("av.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -956,7 +956,7 @@ pub fn build(b: *std.Build) void {
 
     const show_metadata_zig = b.addExecutable(.{
         .name = "show_metadata_zig",
-        .root_source_file = .{ .path = "doc/examples/show_metadata.zig" },
+        .root_source_file = b.path("doc/examples/show_metadata.zig"),
         .target = target,
         .optimize = optimize,
     });
