@@ -24,6 +24,8 @@ pub extern fn av_find_best_stream(
 pub extern fn av_read_frame(s: *FormatContext, pkt: *Packet) c_int;
 /// Prefer `FormatContext.seek_frame`.
 pub extern fn av_seek_frame(s: *FormatContext, stream_index: c_int, timestamp: i64, flags: c_int) c_int;
+/// Prefer `FormatContext.flush`.
+pub extern fn avformat_flush(s: *FormatContext) c_int;
 
 /// Prefer `IOContext.alloc`.
 pub extern fn avio_alloc_context(
@@ -905,6 +907,23 @@ pub const FormatContext = extern struct {
         flags: c_int,
     ) Error!void {
         _ = try wrap(av_seek_frame(s, stream_index, timestamp, flags));
+    }
+
+    /// Discard all internally buffered data. This can be useful when dealing with
+    /// discontinuities in the byte stream. Generally works only with formats that
+    /// can resync. This includes headerless formats like MPEG-TS/TS but should also
+    /// work with NUT, Ogg and in a limited way AVI for example.
+    ///
+    /// The set of streams, the detected duration, stream parameters and codecs do
+    /// not change when calling this function. If you want a complete reset, it's
+    /// better to open a new `FormatContext`.
+    ///
+    /// This does not flush the `IOContext` (s->pb). If necessary, call
+    /// avio_flush(s->pb) before calling this function.
+    ///
+    /// @return >=0 on success, error code otherwise
+    pub fn flush(s: *FormatContext) Error!void {
+        _ = try wrap(avformat_flush(s));
     }
 };
 
