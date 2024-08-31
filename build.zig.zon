@@ -1,6 +1,6 @@
 .{
     .name = "libffmpeg",
-    .version = "7.0.1-4",
+    .version = "7.0.1-5",
 
     .minimum_zig_version = "0.14.0-dev.1359+e9a00ba7f",
 
