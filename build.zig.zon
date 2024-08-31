@@ -2,7 +2,7 @@
     .name = "libffmpeg",
     .version = "7.0.1-4",
 
-    .minimum_zig_version = "0.12.0",
+    .minimum_zig_version = "0.14.0-dev.1359+e9a00ba7f",
 
     .dependencies = .{
         .libz = .{
@@ -11,8 +11,8 @@
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/refs/tags/3.100.1-3.tar.gz",
-            .hash = "1220bee0fcf98bf6ad75b7bb09ff1f873ca38547a15b1e7a4532d20d94107d8d330a",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/refs/tags/3.100.1-4.tar.gz",
+            .hash = "1220da08eac618097d61be76506ddb71ecee9e76cb709a36b761c248262057846670",
         },
         .libvorbis = .{
             .url = "https://github.com/andrewrk/libvorbis/archive/refs/tags/1.3.8-3.tar.gz",
@@ -26,8 +26,8 @@
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/andrewrk/nasm/archive/b5f62392d56baf6aa02567f28e0da70664609262.tar.gz",
-            .hash = "122004fa7e2ff0b3d472049743358f8fdf065cdf63bc0e5e3d54c6bb8d81d93e40da",
+            .url = "https://github.com/allyourcodebase/nasm/archive/refs/tags/2.16.1-3.tar.gz",
+            .hash = "12200a9194f9cdd05e9ff23729f4ed0e54f51abe09bd6eaf61b58609791647b141d2",
         },
     },
     .paths = .{

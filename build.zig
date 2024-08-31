@@ -68,8 +68,8 @@ pub fn build(b: *std.Build) void {
             else => false,
         }),
         .ARCH_PARISC = 0,
-        .ARCH_PPC = @intFromBool(t.cpu.arch.isPPC()),
-        .ARCH_PPC64 = @intFromBool(t.cpu.arch.isPPC64()),
+        .ARCH_PPC = @intFromBool(t.cpu.arch.isPowerPC()),
+        .ARCH_PPC64 = @intFromBool(t.cpu.arch.isPowerPC64()),
         .ARCH_RISCV = @intFromBool(t.cpu.arch.isRISCV()),
         .ARCH_S390 = @intFromBool(t.cpu.arch == .s390x),
         .ARCH_SH4 = 0,
@@ -976,12 +976,12 @@ const CategorizedSources = struct {
 
 /// For x86, files ending in .asm are omitted.
 fn categorizeSources(ally: std.mem.Allocator, target: std.Target) CategorizedSources {
-    var libs: [@typeInfo(CategorizedSources).Struct.fields.len]struct {
+    var libs: [@typeInfo(CategorizedSources).@"struct".fields.len]struct {
         prefix: []const u8,
         list: std.ArrayListUnmanaged([]const u8) = .{},
     } = undefined;
 
-    inline for (@typeInfo(CategorizedSources).Struct.fields, 0..) |field, i| {
+    inline for (@typeInfo(CategorizedSources).@"struct".fields, 0..) |field, i| {
         libs[i] = .{ .prefix = "lib" ++ field.name ++ "/" };
     }
     for (all_sources) |prefixed_path| {
@@ -1039,7 +1039,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target) CategorizedSou
                     if (!std.Target.arm.featureSetHas(target.cpu.features, .neon))
                         continue;
                 },
-                .aarch64, .aarch64_be, .aarch64_32 => {
+                .aarch64, .aarch64_be => {
                     if (!std.Target.aarch64.featureSetHas(target.cpu.features, .neon))
                         continue;
                 },
@@ -1048,7 +1048,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target) CategorizedSou
         } else if (std.mem.startsWith(u8, sub_path, "opencl/")) {
             continue;
         } else if (std.mem.startsWith(u8, sub_path, "ppc/")) {
-            if (!target.cpu.arch.isPPC()) continue;
+            if (!target.cpu.arch.isPowerPC()) continue;
         } else if (std.mem.startsWith(u8, sub_path, "riscv/")) {
             if (!target.cpu.arch.isRISCV()) continue;
         } else if (std.mem.startsWith(u8, sub_path, "sh4/")) {
@@ -1067,7 +1067,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target) CategorizedSou
     }
 
     var result: CategorizedSources = undefined;
-    inline for (@typeInfo(CategorizedSources).Struct.fields, 0..) |field, i| {
+    inline for (@typeInfo(CategorizedSources).@"struct".fields, 0..) |field, i| {
         @field(result, field.name) = libs[i].list.items;
     }
     return result;
@@ -1262,7 +1262,6 @@ fn have_aarch64_feat(t: std.Target, feat: std.Target.aarch64.Feature) c_int {
     return @intFromBool(switch (t.cpu.arch) {
         .aarch64,
         .aarch64_be,
-        .aarch64_32,
         => std.Target.aarch64.featureSetHas(t.cpu.features, feat),
 
         else => false,
