@@ -13,7 +13,7 @@ API usage examples.
 ## Usage
 
 ```
-zig fetch --save=ffmpeg git+https://github.com/allyourcodebase/ffmpeg#main
+zig fetch --save=ffmpeg https://github.com/allyourcodebase/ffmpeg/archive/refs/tags/7.0.1-5.tar.gz
 ```
 
 ```zig
