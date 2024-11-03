@@ -6,11 +6,11 @@ pub extern fn avformat_alloc_context() ?*FormatContext;
 /// Prefer `FormatContext.free`.
 pub extern fn avformat_free_context(?*FormatContext) void;
 /// Prefer `FormatContext.open_input`.
-pub extern fn avformat_open_input(ps: *?*FormatContext, url: [*:0]const u8, fmt: ?*const InputFormat, options: ?[*:null]?*Dictionary) c_int;
+pub extern fn avformat_open_input(ps: *?*FormatContext, url: [*:0]const u8, fmt: ?*const InputFormat, options: ?*Dictionary.Mutable) c_int;
 /// Prefer `FormatContext.close_input`.
 pub extern fn avformat_close_input(s: *?*FormatContext) void;
 /// Prefer `FormatContext.find_stream_info`.
-pub extern fn avformat_find_stream_info(ic: *FormatContext, options: ?*?*Dictionary) c_int;
+pub extern fn avformat_find_stream_info(ic: *FormatContext, options: ?[*]Dictionary.Mutable) c_int;
 /// Prefer `FormatContext.find_best_stream`.
 pub extern fn av_find_best_stream(
     ic: *FormatContext,
@@ -26,6 +26,8 @@ pub extern fn av_read_frame(s: *FormatContext, pkt: *Packet) c_int;
 pub extern fn av_seek_frame(s: *FormatContext, stream_index: c_int, timestamp: i64, flags: c_int) c_int;
 /// Prefer `FormatContext.flush`.
 pub extern fn avformat_flush(s: *FormatContext) c_int;
+/// Prefer `FormatContext.dump`
+pub extern fn av_dump_format(ic: *FormatContext, index: c_uint, url: ?[*:0]const u8, is_output: enum(c_int) { input, output }) void;
 
 /// Prefer `IOContext.alloc`.
 pub extern fn avio_alloc_context(
@@ -48,8 +50,20 @@ pub extern fn av_log_set_level(level: LOG) void;
 pub extern fn av_malloc(size: usize) ?[*]u8;
 /// Prefer `free`.
 pub extern fn av_free(ptr: ?*anyopaque) void;
-/// Prefer `Dictionary.iterate`.
-pub extern fn av_dict_iterate(m: ?*const Dictionary, prev: ?*const Dictionary.Entry) ?*const Dictionary.Entry;
+/// Prefer `Dictionary.Const.get` or `Dictionary.Mutable.get`
+pub extern fn av_dict_get(m: Dictionary.Const, key: [*:0]const u8, prev: ?*const Dictionary.Entry, flags: Dictionary.Flags) ?*const Dictionary.Entry;
+/// Prefer `Dictionary.Const.iterate` or `Dictionary.Mutable.iterate`.
+pub extern fn av_dict_iterate(m: Dictionary.Const, prev: ?*const Dictionary.Entry) ?*const Dictionary.Entry;
+/// Prefer `Dictionary.Const.count` or `Dictionary.Mutable.count`.
+pub extern fn av_dict_count(m: Dictionary.Const) c_int;
+/// Prefer `Dictionary.Mutable.set`.
+pub extern fn av_dict_set(pm: *Dictionary.Mutable, key: [*:0]const u8, value: ?[*:0]const u8, flags: Dictionary.Flags) c_int;
+/// Prefer `Dictionary.Mutable.set_int`.
+pub extern fn av_dict_set_int(pm: *Dictionary.Mutable, key: [*:0]const u8, value: i64, flags: Dictionary.Flags) c_int;
+/// Prefer `Dictionary.Mutable.copy`.
+pub extern fn av_dict_copy(dst: *Dictionary.Mutable, src: Dictionary.Const, flags: Dictionary.Flags) void;
+/// Prefer `Dictionary.Const.free` or `Dictionary.Mutable.free`.
+pub extern fn av_dict_free(pm: *Dictionary.Const) void;
 
 /// Prefer `FilterContext.opt_set`.
 pub extern fn av_opt_set(obj: *anyopaque, name: [*:0]const u8, val: [*:0]const u8, search_flags: OPT_SEARCH) c_int;
@@ -77,19 +91,36 @@ pub extern fn av_buffersink_get_samples(ctx: *FilterContext, frame: *Frame, nb_s
 pub extern fn av_buffersink_set_frame_size(ctx: *FilterContext, frame_size: c_uint) void;
 
 /// Prefer `CodecContext.alloc`.
-pub extern fn avcodec_alloc_context3(codec: *const Codec) ?*CodecContext;
+pub extern fn avcodec_alloc_context3(codec: *const Codec) ?*Codec.Context;
 /// Prefer `CodecContext.free`.
-pub extern fn avcodec_free_context(avctx: *?*CodecContext) void;
+pub extern fn avcodec_free_context(avctx: *?*Codec.Context) void;
 /// Prefer `CodecContext.parameters_to_context`.
-pub extern fn avcodec_parameters_to_context(codec: *CodecContext, par: *const CodecParameters) c_int;
+pub extern fn avcodec_parameters_to_context(codec: *Codec.Context, par: *const Codec.Parameters) c_int;
 /// Prefer `CodecContext.avcodec_open`.
-pub extern fn avcodec_open2(avctx: *CodecContext, codec: *const Codec, options: ?*?*Dictionary) c_int;
+pub extern fn avcodec_open2(avctx: *Codec.Context, codec: *const Codec, options: ?*Dictionary.Mutable) c_int;
 /// Prefer `CodecContext.send_packet`.
-pub extern fn avcodec_send_packet(avctx: *CodecContext, avpkt: ?*const Packet) c_int;
+pub extern fn avcodec_send_packet(avctx: *Codec.Context, avpkt: ?*const Packet) c_int;
 /// Prefer `CodecContext.receive_frame`.
-pub extern fn avcodec_receive_frame(avctx: *CodecContext, frame: *Frame) c_int;
+pub extern fn avcodec_receive_frame(avctx: *Codec.Context, frame: *Frame) c_int;
 /// Prefer `CodecContext.flush_buffers`.
-pub extern fn avcodec_flush_buffers(avctx: *CodecContext) void;
+pub extern fn avcodec_flush_buffers(avctx: *Codec.Context) void;
+
+/// Prefer `Codec.iterate`
+pub extern fn av_codec_iterate(@"opaque": *?*Codec.Iterator) ?*const Codec;
+/// Prefer `Codec.find_decoder`
+pub extern fn avcodec_find_decoder(id: Codec.ID) ?*const Codec;
+/// Prefer `Codec.find_decoder_by_name`
+pub extern fn avcodec_find_decoder_by_name(name: [*:0]const u8) ?*const Codec;
+/// Prefer `Codec.find_encoder`
+pub extern fn avcodec_find_encoder(id: Codec.ID) ?*const Codec;
+/// Prefer `Codec.find_encoder_by_name`
+pub extern fn avcodec_find_encoder_by_name(name: [*:0]const u8) ?*const Codec;
+/// Prefer `Codec.is_encoder`
+pub extern fn av_codec_is_encoder(codec: *const Codec) c_int;
+/// Prefer `Codec.is_decoder`
+pub extern fn av_codec_is_decoder(codec: *const Codec) c_int;
+/// Prefer `Codec.get_profile_name`
+pub extern fn av_get_profile_name(codec: *const Codec, profile: c_int) ?[*:0]const u8;
 
 /// Prefer `Packet.alloc`.
 pub extern fn av_packet_alloc() ?*Packet;
@@ -156,6 +187,19 @@ pub extern fn av_tx_init(
 ) c_int;
 /// Prefer `TXContext.uninit`.
 pub extern fn av_tx_uninit(ctx: *?*TXContext) void;
+
+/// Prefer `sws.Context.alloc`.
+pub extern fn sws_alloc_context() ?*sws.Context;
+/// Prefer `sws.Context.init`.
+pub extern fn sws_init_context(sws_context: *sws.Context, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter) c_int;
+/// Prefer `sws.Context.free`.
+pub extern fn sws_freeContext(swsContext: ?*sws.Context) void;
+/// Prefer `sws.Context.get`.
+pub extern fn sws_getContext(srcW: c_int, srcH: c_int, srcFormat: PixelFormat, dstW: c_int, dstH: c_int, dstFormat: PixelFormat, flags: sws.Flags, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter, ?[*]const f64) ?*sws.Context;
+/// Prefer `sws.Context.scale`.
+pub extern fn sws_scale(c: *sws.Context, srcSlice: [*]const [*]const u8, srcStride: [*]const c_int, srcSliceY: c_int, srcSliceH: c_int, dst: [*]const [*]u8, dstStride: [*]const c_int) c_int;
+/// Prefer `sws.Context.scale_frame`.
+pub extern fn sws_scale_frame(c: *sws.Context, dst: *Frame, src: *const Frame) c_int;
 
 /// Function pointer to a function to perform the transform.
 ///
@@ -296,7 +340,7 @@ pub const Error = error{
     FFmpegExperimentalFeature,
 
     /// * input is not accepted in the current state - user must read output with
-    ///   `CodecContext.receive_frame` (once all output is read, the packet
+    ///   `Codec.Context.receive_frame` (once all output is read, the packet
     ///   should be resent, and the call will not fail with WouldBlock).
     /// * output is not available in this state - user must try to send new input.
     WouldBlock,
@@ -507,23 +551,23 @@ pub const FormatContext = extern struct {
     programs: [*]*Program,
     /// Forced video codec_id.
     /// Demuxing: Set by user.
-    video_codec_id: CodecID,
+    video_codec_id: Codec.ID,
     /// Forced audio codec_id.
     /// Demuxing: Set by user.
-    audio_codec_id: CodecID,
+    audio_codec_id: Codec.ID,
     /// Forced subtitle codec_id.
     /// Demuxing: Set by user.
-    subtitle_codec_id: CodecID,
+    subtitle_codec_id: Codec.ID,
     /// Forced Data codec_id.
     /// Demuxing: Set by user.
-    data_codec_id: CodecID,
+    data_codec_id: Codec.ID,
     /// Metadata that applies to the whole file.
     ///
     /// - demuxing: set by libavformat in `open_input`
     /// - muxing: may be set by the caller before avformat_write_header()
     ///
     /// Freed by libavformat in avformat_free_context().
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     /// Start time of the stream in real world time, in microseconds
     /// since the Unix epoch (00:00 1st January 1970). That is, pts=0 in the
     /// stream was captured at this real world time.
@@ -601,7 +645,7 @@ pub const FormatContext = extern struct {
     /// - decoding: set by user
     max_probe_packets: c_int,
     /// Allow non-standard and experimental extension
-    /// See `CodecContext.strict_std_compliance`
+    /// See `Codec.Context.strict_std_compliance`
     strict_std_compliance: c_int,
     /// Flags indicating events happening on the file, a combination of
     /// AVFMT_EVENT_FLAG_*.
@@ -756,7 +800,7 @@ pub const FormatContext = extern struct {
     /// additional internal format contexts. Thus the AVFormatContext pointer
     /// passed to this callback may be different from the one facing the caller.
     /// It will, however, have the same 'opaque' field.
-    io_open: ?*const fn (*FormatContext, **IOContext, [*]const u8, c_int, *?*Dictionary) callconv(.C) c_int,
+    io_open: ?*const fn (*FormatContext, **IOContext, [*]const u8, c_int, *Dictionary.Mutable) callconv(.C) c_int,
     /// A callback for closing the streams opened with AVFormatContext.io_open().
     ///
     /// Using this is preferred over io_close, because this can return an error.
@@ -792,7 +836,7 @@ pub const FormatContext = extern struct {
         ///
         /// On return this parameter will be destroyed and replaced with
         /// a dict containing options that were not found. May be NULL.
-        options: ?[*:null]?*Dictionary,
+        options: ?*Dictionary.Mutable,
         pb: ?*IOContext,
     ) Error!*FormatContext {
         var ps: ?*FormatContext = try alloc();
@@ -829,7 +873,7 @@ pub const FormatContext = extern struct {
         /// corresponding to i-th stream.
         ///
         /// On return each dictionary will be filled with options that were not found.
-        options: ?*?*Dictionary,
+        options: ?[*]Dictionary.Mutable,
     ) Error!void {
         _ = try wrap(avformat_find_stream_info(ic, options));
     }
@@ -925,6 +969,11 @@ pub const FormatContext = extern struct {
     pub fn flush(s: *FormatContext) Error!void {
         _ = try wrap(avformat_flush(s));
     }
+
+    /// Print detailed information about the input or output format, such as
+    /// duration, bitrate, streams, container, programs, metadata, side data,
+    /// codec and time base.
+    pub const dump = av_dump_format;
 };
 
 pub const Class = extern struct {
@@ -969,9 +1018,9 @@ pub const OutputFormat = extern struct {
     long_name: [*c]const u8,
     mime_type: [*c]const u8,
     extensions: [*c]const u8,
-    audio_codec: CodecID,
-    video_codec: CodecID,
-    subtitle_codec: CodecID,
+    audio_codec: Codec.ID,
+    video_codec: Codec.ID,
+    subtitle_codec: Codec.ID,
     flags: c_int,
     codec_tag: [*c]const ?*const CodecTag,
     priv_class: [*c]const Class,
@@ -1069,10 +1118,10 @@ pub const IOContext = extern struct {
 };
 
 pub const Stream = extern struct {
-    av_class: [*c]const Class,
+    av_class: *const Class,
     index: c_int,
     id: c_int,
-    codecpar: [*c]CodecParameters,
+    codecpar: *Codec.Parameters,
     priv_data: ?*anyopaque,
     time_base: Rational,
     start_time: i64,
@@ -1081,10 +1130,10 @@ pub const Stream = extern struct {
     disposition: c_int,
     discard: Discard,
     sample_aspect_ratio: Rational,
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     avg_frame_rate: Rational,
     attached_pic: Packet,
-    side_data: [*c]PacketSideData,
+    side_data: [*]PacketSideData,
     nb_side_data: c_int,
     event_flags: c_int,
     r_frame_rate: Rational,
@@ -1095,9 +1144,9 @@ pub const Program = extern struct {
     id: c_int,
     flags: c_int,
     discard: Discard,
-    stream_index: [*c]c_uint,
+    stream_index: [*]c_uint,
     nb_stream_indexes: c_uint,
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     program_num: c_int,
     pmt_pid: c_int,
     pcr_pid: c_int,
@@ -1108,557 +1157,148 @@ pub const Program = extern struct {
     pts_wrap_behavior: c_int,
 };
 
-pub const CodecID = enum(c_uint) {
-    NONE = 0,
-    MPEG1VIDEO = 1,
-    MPEG2VIDEO = 2,
-    H261 = 3,
-    H263 = 4,
-    RV10 = 5,
-    RV20 = 6,
-    MJPEG = 7,
-    MJPEGB = 8,
-    LJPEG = 9,
-    SP5X = 10,
-    JPEGLS = 11,
-    MPEG4 = 12,
-    RAWVIDEO = 13,
-    MSMPEG4V1 = 14,
-    MSMPEG4V2 = 15,
-    MSMPEG4V3 = 16,
-    WMV1 = 17,
-    WMV2 = 18,
-    H263P = 19,
-    H263I = 20,
-    FLV1 = 21,
-    SVQ1 = 22,
-    SVQ3 = 23,
-    DVVIDEO = 24,
-    HUFFYUV = 25,
-    CYUV = 26,
-    H264 = 27,
-    INDEO3 = 28,
-    VP3 = 29,
-    THEORA = 30,
-    ASV1 = 31,
-    ASV2 = 32,
-    FFV1 = 33,
-    @"4XM" = 34,
-    VCR1 = 35,
-    CLJR = 36,
-    MDEC = 37,
-    ROQ = 38,
-    INTERPLAY_VIDEO = 39,
-    XAN_WC3 = 40,
-    XAN_WC4 = 41,
-    RPZA = 42,
-    CINEPAK = 43,
-    WS_VQA = 44,
-    MSRLE = 45,
-    MSVIDEO1 = 46,
-    IDCIN = 47,
-    @"8BPS" = 48,
-    SMC = 49,
-    FLIC = 50,
-    TRUEMOTION1 = 51,
-    VMDVIDEO = 52,
-    MSZH = 53,
-    ZLIB = 54,
-    QTRLE = 55,
-    TSCC = 56,
-    ULTI = 57,
-    QDRAW = 58,
-    VIXL = 59,
-    QPEG = 60,
-    PNG = 61,
-    PPM = 62,
-    PBM = 63,
-    PGM = 64,
-    PGMYUV = 65,
-    PAM = 66,
-    FFVHUFF = 67,
-    RV30 = 68,
-    RV40 = 69,
-    VC1 = 70,
-    WMV3 = 71,
-    LOCO = 72,
-    WNV1 = 73,
-    AASC = 74,
-    INDEO2 = 75,
-    FRAPS = 76,
-    TRUEMOTION2 = 77,
-    BMP = 78,
-    CSCD = 79,
-    MMVIDEO = 80,
-    ZMBV = 81,
-    AVS = 82,
-    SMACKVIDEO = 83,
-    NUV = 84,
-    KMVC = 85,
-    FLASHSV = 86,
-    CAVS = 87,
-    JPEG2000 = 88,
-    VMNC = 89,
-    VP5 = 90,
-    VP6 = 91,
-    VP6F = 92,
-    TARGA = 93,
-    DSICINVIDEO = 94,
-    TIERTEXSEQVIDEO = 95,
-    TIFF = 96,
-    GIF = 97,
-    DXA = 98,
-    DNXHD = 99,
-    THP = 100,
-    SGI = 101,
-    C93 = 102,
-    BETHSOFTVID = 103,
-    PTX = 104,
-    TXD = 105,
-    VP6A = 106,
-    AMV = 107,
-    VB = 108,
-    PCX = 109,
-    SUNRAST = 110,
-    INDEO4 = 111,
-    INDEO5 = 112,
-    MIMIC = 113,
-    RL2 = 114,
-    ESCAPE124 = 115,
-    DIRAC = 116,
-    BFI = 117,
-    CMV = 118,
-    MOTIONPIXELS = 119,
-    TGV = 120,
-    TGQ = 121,
-    TQI = 122,
-    AURA = 123,
-    AURA2 = 124,
-    V210X = 125,
-    TMV = 126,
-    V210 = 127,
-    DPX = 128,
-    MAD = 129,
-    FRWU = 130,
-    FLASHSV2 = 131,
-    CDGRAPHICS = 132,
-    R210 = 133,
-    ANM = 134,
-    BINKVIDEO = 135,
-    IFF_ILBM = 136,
-    KGV1 = 137,
-    YOP = 138,
-    VP8 = 139,
-    PICTOR = 140,
-    ANSI = 141,
-    A64_MULTI = 142,
-    A64_MULTI5 = 143,
-    R10K = 144,
-    MXPEG = 145,
-    LAGARITH = 146,
-    PRORES = 147,
-    JV = 148,
-    DFA = 149,
-    WMV3IMAGE = 150,
-    VC1IMAGE = 151,
-    UTVIDEO = 152,
-    BMV_VIDEO = 153,
-    VBLE = 154,
-    DXTORY = 155,
-    V410 = 156,
-    XWD = 157,
-    CDXL = 158,
-    XBM = 159,
-    ZEROCODEC = 160,
-    MSS1 = 161,
-    MSA1 = 162,
-    TSCC2 = 163,
-    MTS2 = 164,
-    CLLC = 165,
-    MSS2 = 166,
-    VP9 = 167,
-    AIC = 168,
-    ESCAPE130 = 169,
-    G2M = 170,
-    WEBP = 171,
-    HNM4_VIDEO = 172,
-    HEVC = 173,
-    FIC = 174,
-    ALIAS_PIX = 175,
-    BRENDER_PIX = 176,
-    PAF_VIDEO = 177,
-    EXR = 178,
-    VP7 = 179,
-    SANM = 180,
-    SGIRLE = 181,
-    MVC1 = 182,
-    MVC2 = 183,
-    HQX = 184,
-    TDSC = 185,
-    HQ_HQA = 186,
-    HAP = 187,
-    DDS = 188,
-    DXV = 189,
-    SCREENPRESSO = 190,
-    RSCC = 191,
-    AVS2 = 192,
-    PGX = 193,
-    AVS3 = 194,
-    MSP2 = 195,
-    VVC = 196,
-    Y41P = 197,
-    AVRP = 198,
-    @"012V" = 199,
-    AVUI = 200,
-    TARGA_Y216 = 201,
-    V308 = 202,
-    V408 = 203,
-    YUV4 = 204,
-    AVRN = 205,
-    CPIA = 206,
-    XFACE = 207,
-    SNOW = 208,
-    SMVJPEG = 209,
-    APNG = 210,
-    DAALA = 211,
-    CFHD = 212,
-    TRUEMOTION2RT = 213,
-    M101 = 214,
-    MAGICYUV = 215,
-    SHEERVIDEO = 216,
-    YLC = 217,
-    PSD = 218,
-    PIXLET = 219,
-    SPEEDHQ = 220,
-    FMVC = 221,
-    SCPR = 222,
-    CLEARVIDEO = 223,
-    XPM = 224,
-    AV1 = 225,
-    BITPACKED = 226,
-    MSCC = 227,
-    SRGC = 228,
-    SVG = 229,
-    GDV = 230,
-    FITS = 231,
-    IMM4 = 232,
-    PROSUMER = 233,
-    MWSC = 234,
-    WCMV = 235,
-    RASC = 236,
-    HYMT = 237,
-    ARBC = 238,
-    AGM = 239,
-    LSCR = 240,
-    VP4 = 241,
-    IMM5 = 242,
-    MVDV = 243,
-    MVHA = 244,
-    CDTOONS = 245,
-    MV30 = 246,
-    NOTCHLC = 247,
-    PFM = 248,
-    MOBICLIP = 249,
-    PHOTOCD = 250,
-    IPU = 251,
-    ARGO = 252,
-    CRI = 253,
-    SIMBIOSIS_IMX = 254,
-    SGA_VIDEO = 255,
-    GEM = 256,
-    VBN = 257,
-    JPEGXL = 258,
-    QOI = 259,
-    PHM = 260,
-    RADIANCE_HDR = 261,
-    WBMP = 262,
-    MEDIA100 = 263,
-    VQC = 264,
-    PDV = 265,
-    EVC = 266,
-    RTV1 = 267,
-    VMIX = 268,
-    LEAD = 269,
-    PCM_S16LE = 65536,
-    PCM_S16BE = 65537,
-    PCM_U16LE = 65538,
-    PCM_U16BE = 65539,
-    PCM_S8 = 65540,
-    PCM_U8 = 65541,
-    PCM_MULAW = 65542,
-    PCM_ALAW = 65543,
-    PCM_S32LE = 65544,
-    PCM_S32BE = 65545,
-    PCM_U32LE = 65546,
-    PCM_U32BE = 65547,
-    PCM_S24LE = 65548,
-    PCM_S24BE = 65549,
-    PCM_U24LE = 65550,
-    PCM_U24BE = 65551,
-    PCM_S24DAUD = 65552,
-    PCM_ZORK = 65553,
-    PCM_S16LE_PLANAR = 65554,
-    PCM_DVD = 65555,
-    PCM_F32BE = 65556,
-    PCM_F32LE = 65557,
-    PCM_F64BE = 65558,
-    PCM_F64LE = 65559,
-    PCM_BLURAY = 65560,
-    PCM_LXF = 65561,
-    S302M = 65562,
-    PCM_S8_PLANAR = 65563,
-    PCM_S24LE_PLANAR = 65564,
-    PCM_S32LE_PLANAR = 65565,
-    PCM_S16BE_PLANAR = 65566,
-    PCM_S64LE = 65567,
-    PCM_S64BE = 65568,
-    PCM_F16LE = 65569,
-    PCM_F24LE = 65570,
-    PCM_VIDC = 65571,
-    PCM_SGA = 65572,
-    ADPCM_IMA_QT = 69632,
-    ADPCM_IMA_WAV = 69633,
-    ADPCM_IMA_DK3 = 69634,
-    ADPCM_IMA_DK4 = 69635,
-    ADPCM_IMA_WS = 69636,
-    ADPCM_IMA_SMJPEG = 69637,
-    ADPCM_MS = 69638,
-    ADPCM_4XM = 69639,
-    ADPCM_XA = 69640,
-    ADPCM_ADX = 69641,
-    ADPCM_EA = 69642,
-    ADPCM_G726 = 69643,
-    ADPCM_CT = 69644,
-    ADPCM_SWF = 69645,
-    ADPCM_YAMAHA = 69646,
-    ADPCM_SBPRO_4 = 69647,
-    ADPCM_SBPRO_3 = 69648,
-    ADPCM_SBPRO_2 = 69649,
-    ADPCM_THP = 69650,
-    ADPCM_IMA_AMV = 69651,
-    ADPCM_EA_R1 = 69652,
-    ADPCM_EA_R3 = 69653,
-    ADPCM_EA_R2 = 69654,
-    ADPCM_IMA_EA_SEAD = 69655,
-    ADPCM_IMA_EA_EACS = 69656,
-    ADPCM_EA_XAS = 69657,
-    ADPCM_EA_MAXIS_XA = 69658,
-    ADPCM_IMA_ISS = 69659,
-    ADPCM_G722 = 69660,
-    ADPCM_IMA_APC = 69661,
-    ADPCM_VIMA = 69662,
-    ADPCM_AFC = 69663,
-    ADPCM_IMA_OKI = 69664,
-    ADPCM_DTK = 69665,
-    ADPCM_IMA_RAD = 69666,
-    ADPCM_G726LE = 69667,
-    ADPCM_THP_LE = 69668,
-    ADPCM_PSX = 69669,
-    ADPCM_AICA = 69670,
-    ADPCM_IMA_DAT4 = 69671,
-    ADPCM_MTAF = 69672,
-    ADPCM_AGM = 69673,
-    ADPCM_ARGO = 69674,
-    ADPCM_IMA_SSI = 69675,
-    ADPCM_ZORK = 69676,
-    ADPCM_IMA_APM = 69677,
-    ADPCM_IMA_ALP = 69678,
-    ADPCM_IMA_MTF = 69679,
-    ADPCM_IMA_CUNNING = 69680,
-    ADPCM_IMA_MOFLEX = 69681,
-    ADPCM_IMA_ACORN = 69682,
-    ADPCM_XMD = 69683,
-    AMR_NB = 73728,
-    AMR_WB = 73729,
-    RA_144 = 77824,
-    RA_288 = 77825,
-    ROQ_DPCM = 81920,
-    INTERPLAY_DPCM = 81921,
-    XAN_DPCM = 81922,
-    SOL_DPCM = 81923,
-    SDX2_DPCM = 81924,
-    GREMLIN_DPCM = 81925,
-    DERF_DPCM = 81926,
-    WADY_DPCM = 81927,
-    CBD2_DPCM = 81928,
-    MP2 = 86016,
-    MP3 = 86017,
-    AAC = 86018,
-    AC3 = 86019,
-    DTS = 86020,
-    VORBIS = 86021,
-    DVAUDIO = 86022,
-    WMAV1 = 86023,
-    WMAV2 = 86024,
-    MACE3 = 86025,
-    MACE6 = 86026,
-    VMDAUDIO = 86027,
-    FLAC = 86028,
-    MP3ADU = 86029,
-    MP3ON4 = 86030,
-    SHORTEN = 86031,
-    ALAC = 86032,
-    WESTWOOD_SND1 = 86033,
-    GSM = 86034,
-    QDM2 = 86035,
-    COOK = 86036,
-    TRUESPEECH = 86037,
-    TTA = 86038,
-    SMACKAUDIO = 86039,
-    QCELP = 86040,
-    WAVPACK = 86041,
-    DSICINAUDIO = 86042,
-    IMC = 86043,
-    MUSEPACK7 = 86044,
-    MLP = 86045,
-    GSM_MS = 86046,
-    ATRAC3 = 86047,
-    APE = 86048,
-    NELLYMOSER = 86049,
-    MUSEPACK8 = 86050,
-    SPEEX = 86051,
-    WMAVOICE = 86052,
-    WMAPRO = 86053,
-    WMALOSSLESS = 86054,
-    ATRAC3P = 86055,
-    EAC3 = 86056,
-    SIPR = 86057,
-    MP1 = 86058,
-    TWINVQ = 86059,
-    TRUEHD = 86060,
-    MP4ALS = 86061,
-    ATRAC1 = 86062,
-    BINKAUDIO_RDFT = 86063,
-    BINKAUDIO_DCT = 86064,
-    AAC_LATM = 86065,
-    QDMC = 86066,
-    CELT = 86067,
-    G723_1 = 86068,
-    G729 = 86069,
-    @"8SVX_EXP" = 86070,
-    @"8SVX_FIB" = 86071,
-    BMV_AUDIO = 86072,
-    RALF = 86073,
-    IAC = 86074,
-    ILBC = 86075,
-    OPUS = 86076,
-    COMFORT_NOISE = 86077,
-    TAK = 86078,
-    METASOUND = 86079,
-    PAF_AUDIO = 86080,
-    ON2AVC = 86081,
-    DSS_SP = 86082,
-    CODEC2 = 86083,
-    FFWAVESYNTH = 86084,
-    SONIC = 86085,
-    SONIC_LS = 86086,
-    EVRC = 86087,
-    SMV = 86088,
-    DSD_LSBF = 86089,
-    DSD_MSBF = 86090,
-    DSD_LSBF_PLANAR = 86091,
-    DSD_MSBF_PLANAR = 86092,
-    @"4GV" = 86093,
-    INTERPLAY_ACM = 86094,
-    XMA1 = 86095,
-    XMA2 = 86096,
-    DST = 86097,
-    ATRAC3AL = 86098,
-    ATRAC3PAL = 86099,
-    DOLBY_E = 86100,
-    APTX = 86101,
-    APTX_HD = 86102,
-    SBC = 86103,
-    ATRAC9 = 86104,
-    HCOM = 86105,
-    ACELP_KELVIN = 86106,
-    MPEGH_3D_AUDIO = 86107,
-    SIREN = 86108,
-    HCA = 86109,
-    FASTAUDIO = 86110,
-    MSNSIREN = 86111,
-    DFPWM = 86112,
-    BONK = 86113,
-    MISC4 = 86114,
-    APAC = 86115,
-    FTR = 86116,
-    WAVARC = 86117,
-    RKA = 86118,
-    AC4 = 86119,
-    OSQ = 86120,
-    QOA = 86121,
-    DVD_SUBTITLE = 94208,
-    DVB_SUBTITLE = 94209,
-    TEXT = 94210,
-    XSUB = 94211,
-    SSA = 94212,
-    MOV_TEXT = 94213,
-    HDMV_PGS_SUBTITLE = 94214,
-    DVB_TELETEXT = 94215,
-    SRT = 94216,
-    MICRODVD = 94217,
-    EIA_608 = 94218,
-    JACOSUB = 94219,
-    SAMI = 94220,
-    REALTEXT = 94221,
-    STL = 94222,
-    SUBVIEWER1 = 94223,
-    SUBVIEWER = 94224,
-    SUBRIP = 94225,
-    WEBVTT = 94226,
-    MPL2 = 94227,
-    VPLAYER = 94228,
-    PJS = 94229,
-    ASS = 94230,
-    HDMV_TEXT_SUBTITLE = 94231,
-    TTML = 94232,
-    ARIB_CAPTION = 94233,
-    TTF = 98304,
-    SCTE_35 = 98305,
-    EPG = 98306,
-    BINTEXT = 98307,
-    XBIN = 98308,
-    IDF = 98309,
-    OTF = 98310,
-    SMPTE_KLV = 98311,
-    DVD_NAV = 98312,
-    TIMED_ID3 = 98313,
-    BIN_DATA = 98314,
-    SMPTE_2038 = 98315,
-    PROBE = 102400,
-    MPEG2TS = 131072,
-    MPEG4SYSTEMS = 131073,
-    FFMETADATA = 135168,
-    WRAPPED_AVFRAME = 135169,
-    VNULL = 135170,
-    ANULL = 135171,
-
-    pub const FIRST_AUDIO: CodecID = .PCM_S16LE;
-    pub const FIRST_SUBTITLE: CodecID = .DVD_SUBTITLE;
-    pub const FIRST_UNKNOWN: CodecID = .TTF;
-};
-
 pub const Chapter = extern struct {
     id: i64,
     time_base: Rational,
     start: i64,
     end: i64,
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
 };
 
 pub const Dictionary = opaque {
+    pub const Const = extern struct {
+        dict: ?*const Dictionary,
+
+        pub const empty: Const = .{ .dict = null };
+
+        /// Get a dictionary entry with matching key.
+        ///
+        /// The returned entry key or value must not be changed, or it will
+        /// cause undefined behavior.
+        pub const get = av_dict_get;
+
+        /// Iterates through all entries in the dictionary.
+        ///
+        /// The returned `Entry` key/value must not be changed.
+        ///
+        /// As set() invalidates all previous entries returned by this function,
+        /// it must not be called while iterating over the dict.
+        pub const iterate = av_dict_iterate;
+
+        /// Get number of entries in dictionary.
+        pub const count = av_dict_count;
+
+        /// Free all the memory allocated for an Dictionary struct and all keys
+        /// and values.
+        pub fn free(dict: Const) void {
+            var keep_your_dirty_hands_off_my_pointers_ffmpeg = dict;
+            av_dict_free(&keep_your_dirty_hands_off_my_pointers_ffmpeg);
+        }
+    };
+
+    pub const Mutable = extern struct {
+        dict: ?*Dictionary,
+
+        pub const empty: Mutable = .{ .dict = null };
+
+        pub fn toConst(dict: Mutable) Const {
+            return .{ .dict = dict.dict };
+        }
+
+        /// Get a dictionary entry with matching key.
+        ///
+        /// The returned entry key or value must not be changed, or it will
+        /// cause undefined behavior.
+        pub fn get(dict: Mutable, key: [*:0]const u8, prev: ?*const Entry, flags: Flags) ?*const Entry {
+            return dict.toConst().get(key, prev, flags);
+        }
+
+        /// Iterates through all entries in the dictionary.
+        ///
+        /// The returned `Entry` key/value must not be changed.
+        ///
+        /// As set() invalidates all previous entries returned by this function,
+        /// it must not be called while iterating over the dict.
+        pub fn iterate(dict: Mutable, prev: ?*const Entry) ?*const Entry {
+            return dict.toConst().iterate(prev);
+        }
+
+        /// Get number of entries in dictionary.
+        pub fn count(dict: Mutable) c_int {
+            return dict.toConst().count();
+        }
+
+        /// Set the given entry in *pm, overwriting an existing entry.
+        ///
+        /// If DONT_STRDUP_KEY or DONT_STRDUP_VAL is set, these arguments will be
+        /// freed on error.
+        ///
+        /// Adding a new entry to a dictionary invalidates all existing entries
+        /// previously returned with get() or iterate().
+        pub fn set(dict: *Mutable, key: [*:0]const u8, value: ?[*:0]const u8, flags: Flags) error{OutOfMemory}!void {
+            _ = wrap(av_dict_set(dict, key, value, flags)) catch |err| switch (err) {
+                error.FFmpegInvalid => unreachable, // Zig prevents this by not making `key` nullable.
+                error.OutOfMemory => |e| return e,
+                else => unreachable, // I checked the source code, those are the only possible errors.
+            };
+        }
+
+        /// Set the given entry in *pm, overwriting an existing entry.
+        ///
+        /// If DONT_STRDUP_KEY or DONT_STRDUP_VAL is set, these arguments will be
+        /// freed on error.
+        ///
+        /// Adding a new entry to a dictionary invalidates all existing entries
+        /// previously returned with get() or iterate().
+        pub fn set_int(dict: *Mutable, key: [*:0]const u8, value: i64, flags: Flags) error{OutOfMemory}!void {
+            _ = wrap(av_dict_set_int(dict, key, value, flags)) catch |err| switch (err) {
+                error.FFmpegInvalid => unreachable, // Zig prevents this by not making `key` nullable.
+                error.OutOfMemory => |e| return e,
+                else => unreachable, // I checked the source code, those are the only possible errors.
+            };
+        }
+
+        pub fn copy(dst: *Mutable, src: Const, flags: Flags) error{OutOfMemory}!void {
+            _ = wrap(av_dict_copy(dst, src, flags)) catch |err| switch (err) {
+                error.OutOfMemory => |e| return e,
+                else => unreachable, // I checked the source code, those are the only possible errors.
+            };
+        }
+
+        /// Free all the memory allocated for an Dictionary struct and all keys
+        /// and values.
+        pub fn free(dict: Mutable) void {
+            dict.toConst().free();
+        }
+    };
+
+    /// Flags that influence behavior of the matching of keys or insertion to the dictionary.
+    pub const Flags = packed struct(c_int) {
+        /// Only get an entry with exact-case key match. Only relevant in get().
+        MATCH_CASE: bool = false,
+        /// Return first entry in a dictionary whose first part corresponds to
+        /// the search key.
+        IGNORE_SUFFIX: bool = false,
+        /// Take ownership of a key that's been allocated with av_malloc() or
+        /// another memory allocation function.
+        DONT_STRDUP_KEY: bool = false,
+        /// Take ownership of a value that's been allocated with av_malloc() or
+        /// another memory allocation function.
+        DONT_STRDUP_VAL: bool = false,
+        /// Don't overwrite existing entries.
+        DONT_OVERWRITE: bool = false,
+        /// If the entry already exists, append to it.  Note that no delimiter
+        /// is added, the strings are simply concatenated.
+        APPEND: bool = false,
+        /// Allow to store several equal keys in the dictionary.
+        MULTIKEY: bool = false,
+        unused: @Type(.{ .int = .{ .signedness = .unsigned, .bits = @bitSizeOf(c_int) - 7 } }) = 0,
+    };
+
     pub const Entry = extern struct {
         key: [*:0]u8,
         value: [*:0]u8,
     };
-
-    /// Iterates through all entries in the dictionary.
-    ///
-    /// The returned `Entry` key/value must not be changed.
-    ///
-    /// As av_dict_set() invalidates all previous entries returned by this
-    /// function, it must not be called while iterating over the dict.
-    pub const iterate = av_dict_iterate;
 };
 
 pub const IOInterruptCB = extern struct {
@@ -1670,24 +1310,6 @@ pub const DurationEstimationMethod = enum(c_uint) {
     PTS = 0,
     STREAM = 1,
     BITRATE = 2,
-};
-
-pub const Codec = extern struct {
-    name: [*c]const u8,
-    long_name: [*c]const u8,
-    type: MediaType,
-    id: CodecID,
-    capabilities: c_int,
-    max_lowres: u8,
-    supported_framerates: [*c]const Rational,
-    pix_fmts: [*c]const PixelFormat,
-    supported_samplerates: [*c]const c_int,
-    sample_fmts: [*c]const SampleFormat,
-    channel_layouts: [*c]const u64,
-    priv_class: [*c]const Class,
-    profiles: [*c]const Profile,
-    wrapper_name: [*c]const u8,
-    ch_layouts: [*c]const ChannelLayout,
 };
 
 pub const av_format_control_message = ?*const fn ([*c]FormatContext, c_int, ?*anyopaque, usize) callconv(.C) c_int;
@@ -1765,40 +1387,6 @@ pub const IODataMarkerType = enum(c_uint) {
     UNKNOWN = 3,
     TRAILER = 4,
     FLUSH_POINT = 5,
-};
-
-pub const CodecParameters = extern struct {
-    codec_type: MediaType,
-    codec_id: CodecID,
-    codec_tag: u32,
-    extradata: [*c]u8,
-    extradata_size: c_int,
-    coded_side_data: [*c]PacketSideData,
-    nb_coded_side_data: c_int,
-    format: c_int,
-    bit_rate: i64,
-    bits_per_coded_sample: c_int,
-    bits_per_raw_sample: c_int,
-    profile: c_int,
-    level: c_int,
-    width: c_int,
-    height: c_int,
-    sample_aspect_ratio: Rational,
-    framerate: Rational,
-    field_order: FieldOrder,
-    color_range: ColorRange,
-    color_primaries: ColorPrimaries,
-    color_trc: ColorTransferCharacteristic,
-    color_space: ColorSpace,
-    chroma_location: ChromaLocation,
-    video_delay: c_int,
-    ch_layout: ChannelLayout,
-    sample_rate: c_int,
-    block_align: c_int,
-    frame_size: c_int,
-    initial_padding: c_int,
-    trailing_padding: c_int,
-    seek_preroll: c_int,
 };
 
 pub const Rational = extern struct {
@@ -2104,7 +1692,7 @@ pub const SampleFormat = enum(c_int) {
 
 pub const Profile = extern struct {
     profile: c_int,
-    name: [*c]const u8,
+    name: ?[*:0]const u8,
 };
 
 /// A set of channels ordered in a specific way.
@@ -2434,264 +2022,891 @@ pub const SEEK = packed struct(c_int) {
     };
 };
 
-pub const CodecContext = extern struct {
-    av_class: [*c]const Class,
-    log_level_offset: c_int,
-    codec_type: MediaType,
-    codec: [*c]const Codec,
-    codec_id: CodecID,
-    codec_tag: c_uint,
-    priv_data: ?*anyopaque,
-    internal: ?*opaque {},
-    @"opaque": ?*anyopaque,
-    bit_rate: i64,
-    flags: c_int,
-    flags2: c_int,
-    extradata: [*c]u8,
-    extradata_size: c_int,
-    time_base: Rational,
-    pkt_timebase: Rational,
-    framerate: Rational,
-    ticks_per_frame: c_int,
-    delay: c_int,
-    width: c_int,
-    height: c_int,
-    coded_width: c_int,
-    coded_height: c_int,
-    sample_aspect_ratio: Rational,
-    pix_fmt: PixelFormat,
-    sw_pix_fmt: PixelFormat,
-    color_primaries: ColorPrimaries,
-    color_trc: ColorTransferCharacteristic,
-    colorspace: ColorSpace,
-    color_range: ColorRange,
-    chroma_sample_location: ChromaLocation,
-    field_order: FieldOrder,
-    refs: c_int,
-    has_b_frames: c_int,
-    slice_flags: c_int,
-    draw_horiz_band: ?*const fn ([*c]CodecContext, [*c]const Frame, [*c]c_int, c_int, c_int, c_int) callconv(.C) void,
-    get_format: ?*const fn ([*c]CodecContext, [*c]const PixelFormat) callconv(.C) PixelFormat,
-    max_b_frames: c_int,
-    b_quant_factor: f32,
-    b_quant_offset: f32,
-    i_quant_factor: f32,
-    i_quant_offset: f32,
-    lumi_masking: f32,
-    temporal_cplx_masking: f32,
-    spatial_cplx_masking: f32,
-    p_masking: f32,
-    dark_masking: f32,
-    nsse_weight: c_int,
-    me_cmp: c_int,
-    me_sub_cmp: c_int,
-    mb_cmp: c_int,
-    ildct_cmp: c_int,
-    dia_size: c_int,
-    last_predictor_count: c_int,
-    me_pre_cmp: c_int,
-    pre_dia_size: c_int,
-    me_subpel_quality: c_int,
-    me_range: c_int,
-    mb_decision: c_int,
-    intra_matrix: [*c]u16,
-    inter_matrix: [*c]u16,
-    chroma_intra_matrix: [*c]u16,
-    intra_dc_precision: c_int,
-    mb_lmin: c_int,
-    mb_lmax: c_int,
-    bidir_refine: c_int,
-    keyint_min: c_int,
-    gop_size: c_int,
-    mv0_threshold: c_int,
-    slices: c_int,
-    sample_rate: c_int,
-    sample_fmt: SampleFormat,
-    ch_layout: ChannelLayout,
-    frame_size: c_int,
-    block_align: c_int,
-    cutoff: c_int,
-    audio_service_type: AudioServiceType,
-    request_sample_fmt: SampleFormat,
-    initial_padding: c_int,
-    trailing_padding: c_int,
-    seek_preroll: c_int,
-    get_buffer2: ?*const fn ([*c]CodecContext, [*c]Frame, c_int) callconv(.C) c_int,
-    bit_rate_tolerance: c_int,
-    global_quality: c_int,
-    compression_level: c_int,
-    qcompress: f32,
-    qblur: f32,
-    qmin: c_int,
-    qmax: c_int,
-    max_qdiff: c_int,
-    rc_buffer_size: c_int,
-    rc_override_count: c_int,
-    rc_override: [*c]RcOverride,
-    rc_max_rate: i64,
-    rc_min_rate: i64,
-    rc_max_available_vbv_use: f32,
-    rc_min_vbv_overflow_use: f32,
-    rc_initial_buffer_occupancy: c_int,
-    trellis: c_int,
-    stats_out: [*c]u8,
-    stats_in: [*c]u8,
-    workaround_bugs: c_int,
-    strict_std_compliance: c_int,
-    error_concealment: c_int,
-    debug: c_int,
-    err_recognition: c_int,
-    hwaccel: [*c]const HWAccel,
-    hwaccel_context: ?*anyopaque,
-    hw_frames_ctx: [*c]BufferRef,
-    hw_device_ctx: [*c]BufferRef,
-    hwaccel_flags: c_int,
-    extra_hw_frames: c_int,
-    @"error": [8]u64,
-    dct_algo: c_int,
-    idct_algo: c_int,
-    bits_per_coded_sample: c_int,
-    bits_per_raw_sample: c_int,
-    thread_count: c_int,
-    thread_type: c_int,
-    active_thread_type: c_int,
-    execute: ?*const fn ([*c]CodecContext, ?*const fn ([*c]CodecContext, ?*anyopaque) callconv(.C) c_int, ?*anyopaque, [*c]c_int, c_int, c_int) callconv(.C) c_int,
-    execute2: ?*const fn ([*c]CodecContext, ?*const fn ([*c]CodecContext, ?*anyopaque, c_int, c_int) callconv(.C) c_int, ?*anyopaque, [*c]c_int, c_int) callconv(.C) c_int,
-    profile: c_int,
-    level: c_int,
-    properties: c_uint,
-    skip_loop_filter: Discard,
-    skip_idct: Discard,
-    skip_frame: Discard,
-    skip_alpha: c_int,
-    skip_top: c_int,
-    skip_bottom: c_int,
-    lowres: c_int,
-    codec_descriptor: [*c]const CodecDescriptor,
-    sub_charenc: [*c]u8,
-    sub_charenc_mode: c_int,
-    subtitle_header_size: c_int,
-    subtitle_header: [*c]u8,
-    dump_separator: [*c]u8,
-    codec_whitelist: [*c]u8,
-    coded_side_data: [*c]PacketSideData,
-    nb_coded_side_data: c_int,
-    export_side_data: c_int,
-    max_pixels: i64,
-    apply_cropping: c_int,
-    discard_damaged_percentage: c_int,
-    max_samples: i64,
-    get_encode_buffer: ?*const fn ([*c]CodecContext, [*c]Packet, c_int) callconv(.C) c_int,
-    frame_num: i64,
-    side_data_prefer_packet: [*c]c_int,
-    nb_side_data_prefer_packet: c_uint,
-    decoded_side_data: [*c][*c]FrameSideData,
-    nb_decoded_side_data: c_int,
+pub const Codec = extern struct {
+    pub const ID = enum(c_uint) {
+        NONE = 0,
+        MPEG1VIDEO = 1,
+        MPEG2VIDEO = 2,
+        H261 = 3,
+        H263 = 4,
+        RV10 = 5,
+        RV20 = 6,
+        MJPEG = 7,
+        MJPEGB = 8,
+        LJPEG = 9,
+        SP5X = 10,
+        JPEGLS = 11,
+        MPEG4 = 12,
+        RAWVIDEO = 13,
+        MSMPEG4V1 = 14,
+        MSMPEG4V2 = 15,
+        MSMPEG4V3 = 16,
+        WMV1 = 17,
+        WMV2 = 18,
+        H263P = 19,
+        H263I = 20,
+        FLV1 = 21,
+        SVQ1 = 22,
+        SVQ3 = 23,
+        DVVIDEO = 24,
+        HUFFYUV = 25,
+        CYUV = 26,
+        H264 = 27,
+        INDEO3 = 28,
+        VP3 = 29,
+        THEORA = 30,
+        ASV1 = 31,
+        ASV2 = 32,
+        FFV1 = 33,
+        @"4XM" = 34,
+        VCR1 = 35,
+        CLJR = 36,
+        MDEC = 37,
+        ROQ = 38,
+        INTERPLAY_VIDEO = 39,
+        XAN_WC3 = 40,
+        XAN_WC4 = 41,
+        RPZA = 42,
+        CINEPAK = 43,
+        WS_VQA = 44,
+        MSRLE = 45,
+        MSVIDEO1 = 46,
+        IDCIN = 47,
+        @"8BPS" = 48,
+        SMC = 49,
+        FLIC = 50,
+        TRUEMOTION1 = 51,
+        VMDVIDEO = 52,
+        MSZH = 53,
+        ZLIB = 54,
+        QTRLE = 55,
+        TSCC = 56,
+        ULTI = 57,
+        QDRAW = 58,
+        VIXL = 59,
+        QPEG = 60,
+        PNG = 61,
+        PPM = 62,
+        PBM = 63,
+        PGM = 64,
+        PGMYUV = 65,
+        PAM = 66,
+        FFVHUFF = 67,
+        RV30 = 68,
+        RV40 = 69,
+        VC1 = 70,
+        WMV3 = 71,
+        LOCO = 72,
+        WNV1 = 73,
+        AASC = 74,
+        INDEO2 = 75,
+        FRAPS = 76,
+        TRUEMOTION2 = 77,
+        BMP = 78,
+        CSCD = 79,
+        MMVIDEO = 80,
+        ZMBV = 81,
+        AVS = 82,
+        SMACKVIDEO = 83,
+        NUV = 84,
+        KMVC = 85,
+        FLASHSV = 86,
+        CAVS = 87,
+        JPEG2000 = 88,
+        VMNC = 89,
+        VP5 = 90,
+        VP6 = 91,
+        VP6F = 92,
+        TARGA = 93,
+        DSICINVIDEO = 94,
+        TIERTEXSEQVIDEO = 95,
+        TIFF = 96,
+        GIF = 97,
+        DXA = 98,
+        DNXHD = 99,
+        THP = 100,
+        SGI = 101,
+        C93 = 102,
+        BETHSOFTVID = 103,
+        PTX = 104,
+        TXD = 105,
+        VP6A = 106,
+        AMV = 107,
+        VB = 108,
+        PCX = 109,
+        SUNRAST = 110,
+        INDEO4 = 111,
+        INDEO5 = 112,
+        MIMIC = 113,
+        RL2 = 114,
+        ESCAPE124 = 115,
+        DIRAC = 116,
+        BFI = 117,
+        CMV = 118,
+        MOTIONPIXELS = 119,
+        TGV = 120,
+        TGQ = 121,
+        TQI = 122,
+        AURA = 123,
+        AURA2 = 124,
+        V210X = 125,
+        TMV = 126,
+        V210 = 127,
+        DPX = 128,
+        MAD = 129,
+        FRWU = 130,
+        FLASHSV2 = 131,
+        CDGRAPHICS = 132,
+        R210 = 133,
+        ANM = 134,
+        BINKVIDEO = 135,
+        IFF_ILBM = 136,
+        KGV1 = 137,
+        YOP = 138,
+        VP8 = 139,
+        PICTOR = 140,
+        ANSI = 141,
+        A64_MULTI = 142,
+        A64_MULTI5 = 143,
+        R10K = 144,
+        MXPEG = 145,
+        LAGARITH = 146,
+        PRORES = 147,
+        JV = 148,
+        DFA = 149,
+        WMV3IMAGE = 150,
+        VC1IMAGE = 151,
+        UTVIDEO = 152,
+        BMV_VIDEO = 153,
+        VBLE = 154,
+        DXTORY = 155,
+        V410 = 156,
+        XWD = 157,
+        CDXL = 158,
+        XBM = 159,
+        ZEROCODEC = 160,
+        MSS1 = 161,
+        MSA1 = 162,
+        TSCC2 = 163,
+        MTS2 = 164,
+        CLLC = 165,
+        MSS2 = 166,
+        VP9 = 167,
+        AIC = 168,
+        ESCAPE130 = 169,
+        G2M = 170,
+        WEBP = 171,
+        HNM4_VIDEO = 172,
+        HEVC = 173,
+        FIC = 174,
+        ALIAS_PIX = 175,
+        BRENDER_PIX = 176,
+        PAF_VIDEO = 177,
+        EXR = 178,
+        VP7 = 179,
+        SANM = 180,
+        SGIRLE = 181,
+        MVC1 = 182,
+        MVC2 = 183,
+        HQX = 184,
+        TDSC = 185,
+        HQ_HQA = 186,
+        HAP = 187,
+        DDS = 188,
+        DXV = 189,
+        SCREENPRESSO = 190,
+        RSCC = 191,
+        AVS2 = 192,
+        PGX = 193,
+        AVS3 = 194,
+        MSP2 = 195,
+        VVC = 196,
+        Y41P = 197,
+        AVRP = 198,
+        @"012V" = 199,
+        AVUI = 200,
+        TARGA_Y216 = 201,
+        V308 = 202,
+        V408 = 203,
+        YUV4 = 204,
+        AVRN = 205,
+        CPIA = 206,
+        XFACE = 207,
+        SNOW = 208,
+        SMVJPEG = 209,
+        APNG = 210,
+        DAALA = 211,
+        CFHD = 212,
+        TRUEMOTION2RT = 213,
+        M101 = 214,
+        MAGICYUV = 215,
+        SHEERVIDEO = 216,
+        YLC = 217,
+        PSD = 218,
+        PIXLET = 219,
+        SPEEDHQ = 220,
+        FMVC = 221,
+        SCPR = 222,
+        CLEARVIDEO = 223,
+        XPM = 224,
+        AV1 = 225,
+        BITPACKED = 226,
+        MSCC = 227,
+        SRGC = 228,
+        SVG = 229,
+        GDV = 230,
+        FITS = 231,
+        IMM4 = 232,
+        PROSUMER = 233,
+        MWSC = 234,
+        WCMV = 235,
+        RASC = 236,
+        HYMT = 237,
+        ARBC = 238,
+        AGM = 239,
+        LSCR = 240,
+        VP4 = 241,
+        IMM5 = 242,
+        MVDV = 243,
+        MVHA = 244,
+        CDTOONS = 245,
+        MV30 = 246,
+        NOTCHLC = 247,
+        PFM = 248,
+        MOBICLIP = 249,
+        PHOTOCD = 250,
+        IPU = 251,
+        ARGO = 252,
+        CRI = 253,
+        SIMBIOSIS_IMX = 254,
+        SGA_VIDEO = 255,
+        GEM = 256,
+        VBN = 257,
+        JPEGXL = 258,
+        QOI = 259,
+        PHM = 260,
+        RADIANCE_HDR = 261,
+        WBMP = 262,
+        MEDIA100 = 263,
+        VQC = 264,
+        PDV = 265,
+        EVC = 266,
+        RTV1 = 267,
+        VMIX = 268,
+        LEAD = 269,
+        PCM_S16LE = 65536,
+        PCM_S16BE = 65537,
+        PCM_U16LE = 65538,
+        PCM_U16BE = 65539,
+        PCM_S8 = 65540,
+        PCM_U8 = 65541,
+        PCM_MULAW = 65542,
+        PCM_ALAW = 65543,
+        PCM_S32LE = 65544,
+        PCM_S32BE = 65545,
+        PCM_U32LE = 65546,
+        PCM_U32BE = 65547,
+        PCM_S24LE = 65548,
+        PCM_S24BE = 65549,
+        PCM_U24LE = 65550,
+        PCM_U24BE = 65551,
+        PCM_S24DAUD = 65552,
+        PCM_ZORK = 65553,
+        PCM_S16LE_PLANAR = 65554,
+        PCM_DVD = 65555,
+        PCM_F32BE = 65556,
+        PCM_F32LE = 65557,
+        PCM_F64BE = 65558,
+        PCM_F64LE = 65559,
+        PCM_BLURAY = 65560,
+        PCM_LXF = 65561,
+        S302M = 65562,
+        PCM_S8_PLANAR = 65563,
+        PCM_S24LE_PLANAR = 65564,
+        PCM_S32LE_PLANAR = 65565,
+        PCM_S16BE_PLANAR = 65566,
+        PCM_S64LE = 65567,
+        PCM_S64BE = 65568,
+        PCM_F16LE = 65569,
+        PCM_F24LE = 65570,
+        PCM_VIDC = 65571,
+        PCM_SGA = 65572,
+        ADPCM_IMA_QT = 69632,
+        ADPCM_IMA_WAV = 69633,
+        ADPCM_IMA_DK3 = 69634,
+        ADPCM_IMA_DK4 = 69635,
+        ADPCM_IMA_WS = 69636,
+        ADPCM_IMA_SMJPEG = 69637,
+        ADPCM_MS = 69638,
+        ADPCM_4XM = 69639,
+        ADPCM_XA = 69640,
+        ADPCM_ADX = 69641,
+        ADPCM_EA = 69642,
+        ADPCM_G726 = 69643,
+        ADPCM_CT = 69644,
+        ADPCM_SWF = 69645,
+        ADPCM_YAMAHA = 69646,
+        ADPCM_SBPRO_4 = 69647,
+        ADPCM_SBPRO_3 = 69648,
+        ADPCM_SBPRO_2 = 69649,
+        ADPCM_THP = 69650,
+        ADPCM_IMA_AMV = 69651,
+        ADPCM_EA_R1 = 69652,
+        ADPCM_EA_R3 = 69653,
+        ADPCM_EA_R2 = 69654,
+        ADPCM_IMA_EA_SEAD = 69655,
+        ADPCM_IMA_EA_EACS = 69656,
+        ADPCM_EA_XAS = 69657,
+        ADPCM_EA_MAXIS_XA = 69658,
+        ADPCM_IMA_ISS = 69659,
+        ADPCM_G722 = 69660,
+        ADPCM_IMA_APC = 69661,
+        ADPCM_VIMA = 69662,
+        ADPCM_AFC = 69663,
+        ADPCM_IMA_OKI = 69664,
+        ADPCM_DTK = 69665,
+        ADPCM_IMA_RAD = 69666,
+        ADPCM_G726LE = 69667,
+        ADPCM_THP_LE = 69668,
+        ADPCM_PSX = 69669,
+        ADPCM_AICA = 69670,
+        ADPCM_IMA_DAT4 = 69671,
+        ADPCM_MTAF = 69672,
+        ADPCM_AGM = 69673,
+        ADPCM_ARGO = 69674,
+        ADPCM_IMA_SSI = 69675,
+        ADPCM_ZORK = 69676,
+        ADPCM_IMA_APM = 69677,
+        ADPCM_IMA_ALP = 69678,
+        ADPCM_IMA_MTF = 69679,
+        ADPCM_IMA_CUNNING = 69680,
+        ADPCM_IMA_MOFLEX = 69681,
+        ADPCM_IMA_ACORN = 69682,
+        ADPCM_XMD = 69683,
+        AMR_NB = 73728,
+        AMR_WB = 73729,
+        RA_144 = 77824,
+        RA_288 = 77825,
+        ROQ_DPCM = 81920,
+        INTERPLAY_DPCM = 81921,
+        XAN_DPCM = 81922,
+        SOL_DPCM = 81923,
+        SDX2_DPCM = 81924,
+        GREMLIN_DPCM = 81925,
+        DERF_DPCM = 81926,
+        WADY_DPCM = 81927,
+        CBD2_DPCM = 81928,
+        MP2 = 86016,
+        MP3 = 86017,
+        AAC = 86018,
+        AC3 = 86019,
+        DTS = 86020,
+        VORBIS = 86021,
+        DVAUDIO = 86022,
+        WMAV1 = 86023,
+        WMAV2 = 86024,
+        MACE3 = 86025,
+        MACE6 = 86026,
+        VMDAUDIO = 86027,
+        FLAC = 86028,
+        MP3ADU = 86029,
+        MP3ON4 = 86030,
+        SHORTEN = 86031,
+        ALAC = 86032,
+        WESTWOOD_SND1 = 86033,
+        GSM = 86034,
+        QDM2 = 86035,
+        COOK = 86036,
+        TRUESPEECH = 86037,
+        TTA = 86038,
+        SMACKAUDIO = 86039,
+        QCELP = 86040,
+        WAVPACK = 86041,
+        DSICINAUDIO = 86042,
+        IMC = 86043,
+        MUSEPACK7 = 86044,
+        MLP = 86045,
+        GSM_MS = 86046,
+        ATRAC3 = 86047,
+        APE = 86048,
+        NELLYMOSER = 86049,
+        MUSEPACK8 = 86050,
+        SPEEX = 86051,
+        WMAVOICE = 86052,
+        WMAPRO = 86053,
+        WMALOSSLESS = 86054,
+        ATRAC3P = 86055,
+        EAC3 = 86056,
+        SIPR = 86057,
+        MP1 = 86058,
+        TWINVQ = 86059,
+        TRUEHD = 86060,
+        MP4ALS = 86061,
+        ATRAC1 = 86062,
+        BINKAUDIO_RDFT = 86063,
+        BINKAUDIO_DCT = 86064,
+        AAC_LATM = 86065,
+        QDMC = 86066,
+        CELT = 86067,
+        G723_1 = 86068,
+        G729 = 86069,
+        @"8SVX_EXP" = 86070,
+        @"8SVX_FIB" = 86071,
+        BMV_AUDIO = 86072,
+        RALF = 86073,
+        IAC = 86074,
+        ILBC = 86075,
+        OPUS = 86076,
+        COMFORT_NOISE = 86077,
+        TAK = 86078,
+        METASOUND = 86079,
+        PAF_AUDIO = 86080,
+        ON2AVC = 86081,
+        DSS_SP = 86082,
+        CODEC2 = 86083,
+        FFWAVESYNTH = 86084,
+        SONIC = 86085,
+        SONIC_LS = 86086,
+        EVRC = 86087,
+        SMV = 86088,
+        DSD_LSBF = 86089,
+        DSD_MSBF = 86090,
+        DSD_LSBF_PLANAR = 86091,
+        DSD_MSBF_PLANAR = 86092,
+        @"4GV" = 86093,
+        INTERPLAY_ACM = 86094,
+        XMA1 = 86095,
+        XMA2 = 86096,
+        DST = 86097,
+        ATRAC3AL = 86098,
+        ATRAC3PAL = 86099,
+        DOLBY_E = 86100,
+        APTX = 86101,
+        APTX_HD = 86102,
+        SBC = 86103,
+        ATRAC9 = 86104,
+        HCOM = 86105,
+        ACELP_KELVIN = 86106,
+        MPEGH_3D_AUDIO = 86107,
+        SIREN = 86108,
+        HCA = 86109,
+        FASTAUDIO = 86110,
+        MSNSIREN = 86111,
+        DFPWM = 86112,
+        BONK = 86113,
+        MISC4 = 86114,
+        APAC = 86115,
+        FTR = 86116,
+        WAVARC = 86117,
+        RKA = 86118,
+        AC4 = 86119,
+        OSQ = 86120,
+        QOA = 86121,
+        DVD_SUBTITLE = 94208,
+        DVB_SUBTITLE = 94209,
+        TEXT = 94210,
+        XSUB = 94211,
+        SSA = 94212,
+        MOV_TEXT = 94213,
+        HDMV_PGS_SUBTITLE = 94214,
+        DVB_TELETEXT = 94215,
+        SRT = 94216,
+        MICRODVD = 94217,
+        EIA_608 = 94218,
+        JACOSUB = 94219,
+        SAMI = 94220,
+        REALTEXT = 94221,
+        STL = 94222,
+        SUBVIEWER1 = 94223,
+        SUBVIEWER = 94224,
+        SUBRIP = 94225,
+        WEBVTT = 94226,
+        MPL2 = 94227,
+        VPLAYER = 94228,
+        PJS = 94229,
+        ASS = 94230,
+        HDMV_TEXT_SUBTITLE = 94231,
+        TTML = 94232,
+        ARIB_CAPTION = 94233,
+        TTF = 98304,
+        SCTE_35 = 98305,
+        EPG = 98306,
+        BINTEXT = 98307,
+        XBIN = 98308,
+        IDF = 98309,
+        OTF = 98310,
+        SMPTE_KLV = 98311,
+        DVD_NAV = 98312,
+        TIMED_ID3 = 98313,
+        BIN_DATA = 98314,
+        SMPTE_2038 = 98315,
+        PROBE = 102400,
+        MPEG2TS = 131072,
+        MPEG4SYSTEMS = 131073,
+        FFMETADATA = 135168,
+        WRAPPED_AVFRAME = 135169,
+        VNULL = 135170,
+        ANULL = 135171,
 
-    pub fn alloc(codec: *const Codec) error{OutOfMemory}!*CodecContext {
-        return avcodec_alloc_context3(codec) orelse return error.OutOfMemory;
-    }
+        pub const FIRST_AUDIO: ID = .PCM_S16LE;
+        pub const FIRST_SUBTITLE: ID = .DVD_SUBTITLE;
+        pub const FIRST_UNKNOWN: ID = .TTF;
+    };
 
-    pub fn free(self: *@This()) void {
-        var keep_your_dirty_hands_off_my_pointers_ffmpeg: ?*@This() = self;
-        avcodec_free_context(&keep_your_dirty_hands_off_my_pointers_ffmpeg);
-    }
+    pub const Descriptor = extern struct {
+        id: ID,
+        type: MediaType,
+        name: [*:0]const u8,
+        long_name: ?[*:0]const u8,
+        props: c_int,
+        mime_types: ?[*:null]const ?[*:0]const u8,
+        profiles: ?[*]const Profile,
+    };
 
-    /// Fill the codec context based on the values from the supplied codec
-    /// parameters.
-    ///
-    /// Any allocated fields in codec that have a corresponding field in par
-    /// are freed and replaced with duplicates of the corresponding field in
-    /// par. Fields in codec that do not have a counterpart in par are not
-    /// touched.
-    pub fn parameters_to_context(codec: *CodecContext, par: *const CodecParameters) Error!void {
-        _ = try wrap(avcodec_parameters_to_context(codec, par));
-    }
+    pub const Parameters = extern struct {
+        codec_type: MediaType,
+        codec_id: ID,
+        codec_tag: u32,
+        extradata: [*]u8,
+        extradata_size: c_int,
+        coded_side_data: [*]PacketSideData,
+        nb_coded_side_data: c_int,
+        format: c_int,
+        bit_rate: i64,
+        bits_per_coded_sample: c_int,
+        bits_per_raw_sample: c_int,
+        profile: c_int,
+        level: c_int,
+        width: c_int,
+        height: c_int,
+        sample_aspect_ratio: Rational,
+        framerate: Rational,
+        field_order: FieldOrder,
+        color_range: ColorRange,
+        color_primaries: ColorPrimaries,
+        color_trc: ColorTransferCharacteristic,
+        color_space: ColorSpace,
+        chroma_location: ChromaLocation,
+        video_delay: c_int,
+        ch_layout: ChannelLayout,
+        sample_rate: c_int,
+        block_align: c_int,
+        frame_size: c_int,
+        initial_padding: c_int,
+        trailing_padding: c_int,
+        seek_preroll: c_int,
+    };
 
-    pub fn open(cc: *CodecContext, codec: *const Codec, options: ?*?*Dictionary) Error!void {
-        _ = try wrap(avcodec_open2(cc, codec, options));
-    }
+    pub const Context = extern struct {
+        av_class: *const Class,
+        log_level_offset: c_int,
+        codec_type: MediaType,
+        codec: ?*const Codec,
+        codec_id: ID,
+        codec_tag: c_uint,
+        priv_data: ?*anyopaque,
+        internal: ?*opaque {},
+        @"opaque": ?*anyopaque,
+        bit_rate: i64,
+        flags: c_int,
+        flags2: c_int,
+        extradata: [*]u8,
+        extradata_size: c_int,
+        time_base: Rational,
+        pkt_timebase: Rational,
+        framerate: Rational,
+        ticks_per_frame: c_int,
+        delay: c_int,
+        width: c_int,
+        height: c_int,
+        coded_width: c_int,
+        coded_height: c_int,
+        sample_aspect_ratio: Rational,
+        pix_fmt: PixelFormat,
+        sw_pix_fmt: PixelFormat,
+        color_primaries: ColorPrimaries,
+        color_trc: ColorTransferCharacteristic,
+        colorspace: ColorSpace,
+        color_range: ColorRange,
+        chroma_sample_location: ChromaLocation,
+        field_order: FieldOrder,
+        refs: c_int,
+        has_b_frames: c_int,
+        slice_flags: c_int,
+        draw_horiz_band: ?*const fn (s: *Context, src: *const Frame, offset: *[Frame.NUM_DATA_POINTERS]c_int, y: c_int, @"type": c_int, height: c_int) callconv(.C) void,
+        get_format: *const fn (s: *Context, fmt: *const PixelFormat) callconv(.C) PixelFormat,
+        max_b_frames: c_int,
+        b_quant_factor: f32,
+        b_quant_offset: f32,
+        i_quant_factor: f32,
+        i_quant_offset: f32,
+        lumi_masking: f32,
+        temporal_cplx_masking: f32,
+        spatial_cplx_masking: f32,
+        p_masking: f32,
+        dark_masking: f32,
+        nsse_weight: c_int,
+        me_cmp: c_int,
+        me_sub_cmp: c_int,
+        mb_cmp: c_int,
+        ildct_cmp: c_int,
+        dia_size: c_int,
+        last_predictor_count: c_int,
+        me_pre_cmp: c_int,
+        pre_dia_size: c_int,
+        me_subpel_quality: c_int,
+        me_range: c_int,
+        mb_decision: c_int,
+        intra_matrix: [*]u16,
+        inter_matrix: [*]u16,
+        chroma_intra_matrix: [*]u16,
+        intra_dc_precision: c_int,
+        mb_lmin: c_int,
+        mb_lmax: c_int,
+        bidir_refine: c_int,
+        keyint_min: c_int,
+        gop_size: c_int,
+        mv0_threshold: c_int,
+        slices: c_int,
+        sample_rate: c_int,
+        sample_fmt: SampleFormat,
+        ch_layout: ChannelLayout,
+        frame_size: c_int,
+        block_align: c_int,
+        cutoff: c_int,
+        audio_service_type: AudioServiceType,
+        request_sample_fmt: SampleFormat,
+        initial_padding: c_int,
+        trailing_padding: c_int,
+        seek_preroll: c_int,
+        get_buffer2: *const fn (s: *Context, frame: *Frame, flags: c_int) callconv(.C) c_int,
+        bit_rate_tolerance: c_int,
+        global_quality: c_int,
+        compression_level: c_int,
+        qcompress: f32,
+        qblur: f32,
+        qmin: c_int,
+        qmax: c_int,
+        max_qdiff: c_int,
+        rc_buffer_size: c_int,
+        rc_override_count: c_int,
+        rc_override: [*]RcOverride,
+        rc_max_rate: i64,
+        rc_min_rate: i64,
+        rc_max_available_vbv_use: f32,
+        rc_min_vbv_overflow_use: f32,
+        rc_initial_buffer_occupancy: c_int,
+        trellis: c_int,
+        stats_out: [*]u8,
+        stats_in: [*]u8,
+        workaround_bugs: c_int,
+        strict_std_compliance: c_int,
+        error_concealment: c_int,
+        debug: c_int,
+        err_recognition: c_int,
+        hwaccel: ?*const HWAccel,
+        hwaccel_context: ?*anyopaque,
+        hw_frames_ctx: ?*BufferRef,
+        hw_device_ctx: ?*BufferRef,
+        hwaccel_flags: c_int,
+        extra_hw_frames: c_int,
+        @"error": [Frame.NUM_DATA_POINTERS]u64,
+        dct_algo: c_int,
+        idct_algo: c_int,
+        bits_per_coded_sample: c_int,
+        bits_per_raw_sample: c_int,
+        thread_count: c_int,
+        thread_type: c_int,
+        active_thread_type: c_int,
+        execute: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8) callconv(.C) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int, size: c_int) callconv(.C) c_int,
+        execute2: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8, jobnr: c_int, threadnr: c_int) callconv(.C) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int) callconv(.C) c_int,
+        profile: c_int,
+        level: c_int,
+        properties: c_uint,
+        skip_loop_filter: Discard,
+        skip_idct: Discard,
+        skip_frame: Discard,
+        skip_alpha: c_int,
+        skip_top: c_int,
+        skip_bottom: c_int,
+        lowres: c_int,
+        codec_descriptor: ?*const Descriptor,
+        sub_charenc: ?[*:0]u8,
+        sub_charenc_mode: c_int,
+        subtitle_header_size: c_int,
+        subtitle_header: ?[*]u8,
+        dump_separator: ?[*:0]u8,
+        codec_whitelist: ?[*:0]u8,
+        coded_side_data: ?[*]PacketSideData,
+        nb_coded_side_data: c_int,
+        export_side_data: c_int,
+        max_pixels: i64,
+        apply_cropping: c_int,
+        discard_damaged_percentage: c_int,
+        max_samples: i64,
+        get_encode_buffer: *const fn (s: *Context, pkt: *Packet, flags: c_int) callconv(.C) c_int,
+        frame_num: i64,
+        side_data_prefer_packet: ?[*]c_int,
+        nb_side_data_prefer_packet: c_uint,
+        decoded_side_data: ?[*]*FrameSideData,
+        nb_decoded_side_data: c_int,
 
-    /// Supply raw packet data as input to a decoder.
-    ///
-    /// Internally, this call will copy relevant `CodecContext` fields, which
-    /// can influence decoding per-packet, and apply them when the packet is
-    /// actually decoded. (For example `CodecContext.skip_frame`, which might
-    /// direct the decoder to drop the frame contained by the packet sent with
-    /// this function.)
-    ///
-    /// Warning: The input buffer, avpkt->data must be
-    /// AV_INPUT_BUFFER_PADDING_SIZE larger than the actual read bytes because
-    /// some optimized bitstream readers read 32 or 64 bits at once and could
-    /// read over the end.
-    ///
-    /// The `CodecContext` MUST have been opened with `open` before packets may
-    /// be fed to the decoder.
-    ///
-    /// Notable error codes:
-    /// * `Error.WouldBlock`
-    /// * `Error.EndOfFile`
-    /// * others are also possible
-    pub fn send_packet(
-        cc: *CodecContext,
-        /// The input `Packet`.
+        pub fn alloc(codec: *const Codec) error{OutOfMemory}!*Context {
+            return avcodec_alloc_context3(codec) orelse return error.OutOfMemory;
+        }
+
+        pub fn free(self: *@This()) void {
+            var keep_your_dirty_hands_off_my_pointers_ffmpeg: ?*@This() = self;
+            avcodec_free_context(&keep_your_dirty_hands_off_my_pointers_ffmpeg);
+        }
+
+        /// Fill the codec context based on the values from the supplied codec
+        /// parameters.
         ///
-        /// Usually, this will be a single video frame, or several complete
-        /// audio frames.
+        /// Any allocated fields in codec that have a corresponding field in par
+        /// are freed and replaced with duplicates of the corresponding field in
+        /// par. Fields in codec that do not have a counterpart in par are not
+        /// touched.
+        pub fn parameters_to_context(codec: *Context, par: *const Codec.Parameters) Error!void {
+            _ = try wrap(avcodec_parameters_to_context(codec, par));
+        }
+
+        pub fn open(cc: *Context, codec: *const Codec, options: ?*Dictionary.Mutable) Error!void {
+            _ = try wrap(avcodec_open2(cc, codec, options));
+        }
+
+        /// Supply raw packet data as input to a decoder.
         ///
-        /// Ownership of the packet remains with the caller, and the decoder
-        /// will not write to the packet.
+        /// Internally, this call will copy relevant `CodecContext` fields, which
+        /// can influence decoding per-packet, and apply them when the packet is
+        /// actually decoded. (For example `CodecContext.skip_frame`, which might
+        /// direct the decoder to drop the frame contained by the packet sent with
+        /// this function.)
         ///
-        /// The decoder may create a reference to the packet data (or copy it
-        /// if the packet is not reference-counted).
+        /// Warning: The input buffer, avpkt->data must be
+        /// AV_INPUT_BUFFER_PADDING_SIZE larger than the actual read bytes because
+        /// some optimized bitstream readers read 32 or 64 bits at once and could
+        /// read over the end.
         ///
-        /// Unlike with older APIs, the packet is always fully consumed, and if
-        /// it contains multiple frames (e.g. some audio codecs), will require
-        /// you to call `CodecContext.receive_frame` multiple times afterwards
-        /// before you can send a new packet. It can be NULL (or an AVPacket
-        /// with data set to NULL and size set to 0); in this case, it is
-        /// considered a flush packet, which signals the end of the stream.
-        /// Sending the first flush packet will return success. Subsequent ones
-        /// are unnecessary and will return AVERROR_EOF. If the decoder still
-        /// has frames buffered, it will return them after sending a flush
-        /// packet.
-        packet: ?*const Packet,
-    ) Error!void {
-        _ = try wrap(avcodec_send_packet(cc, packet));
+        /// The `CodecContext` MUST have been opened with `open` before packets may
+        /// be fed to the decoder.
+        ///
+        /// Notable error codes:
+        /// * `Error.WouldBlock`
+        /// * `Error.EndOfFile`
+        /// * others are also possible
+        pub fn send_packet(
+            cc: *Context,
+            /// The input `Packet`.
+            ///
+            /// Usually, this will be a single video frame, or several complete
+            /// audio frames.
+            ///
+            /// Ownership of the packet remains with the caller, and the decoder
+            /// will not write to the packet.
+            ///
+            /// The decoder may create a reference to the packet data (or copy it
+            /// if the packet is not reference-counted).
+            ///
+            /// Unlike with older APIs, the packet is always fully consumed, and if
+            /// it contains multiple frames (e.g. some audio codecs), will require
+            /// you to call `CodecContext.receive_frame` multiple times afterwards
+            /// before you can send a new packet. It can be NULL (or an AVPacket
+            /// with data set to NULL and size set to 0); in this case, it is
+            /// considered a flush packet, which signals the end of the stream.
+            /// Sending the first flush packet will return success. Subsequent ones
+            /// are unnecessary and will return AVERROR_EOF. If the decoder still
+            /// has frames buffered, it will return them after sending a flush
+            /// packet.
+            packet: ?*const Packet,
+        ) Error!void {
+            _ = try wrap(avcodec_send_packet(cc, packet));
+        }
+
+        /// Return decoded output data from a decoder or encoder (when the
+        /// AV_CODEC_FLAG_RECON_FRAME flag is used).
+        ///
+        /// Notable error codes:
+        /// * `Error.WouldBlock`
+        /// * `Error.EndOfFile`
+        /// * others are also possible
+        pub fn receive_frame(
+            avctx: *Context,
+            /// This will be set to a reference-counted video or audio frame
+            /// (depending on the decoder type) allocated by the codec. Note that
+            /// the function will always call `Frame.unref` before doing anything
+            /// else.
+            frame: *Frame,
+        ) Error!void {
+            _ = try wrap(avcodec_receive_frame(avctx, frame));
+        }
+
+        /// Reset the internal codec state / flush internal buffers. Should be called
+        /// e.g. when seeking or when switching to a different stream.
+        ///
+        /// For decoders, this function just releases any references the decoder
+        /// might keep internally, but the caller's references remain valid.
+        ///
+        /// For encoders, this function will only do something if the encoder
+        /// declares support for AV_CODEC_CAP_ENCODER_FLUSH. When called, the encoder
+        /// will drain any remaining packets, and can then be re-used for a different
+        /// stream (as opposed to sending a null frame which will leave the encoder
+        /// in a permanent EOF state after draining). This can be desirable if the
+        /// cost of tearing down and replacing the encoder instance is high.
+        ///
+        pub const flush_buffers = avcodec_flush_buffers;
+    };
+
+    name: [*:0]const u8,
+    long_name: ?[*:0]const u8,
+    type: MediaType,
+    id: ID,
+    capabilities: c_int,
+    max_lowres: u8,
+    supported_framerates: ?[*]const Rational,
+    pix_fmts: ?[*:.NONE]const PixelFormat,
+    supported_samplerates: ?[*:0]const c_int,
+    sample_fmts: ?[*:.NONE]const SampleFormat,
+    priv_class: *const Class,
+    profiles: ?[*]const Profile,
+    wrapper_name: ?[*:0]const u8,
+    ch_layouts: [*]const ChannelLayout,
+
+    /// Iterate over all registered codecs.
+    pub const iterate = av_codec_iterate;
+
+    /// Find a registered decoder with a matching codec ID.
+    pub fn find_decoder(id: ID) error{DecoderNotFound}!*const Codec {
+        return avcodec_find_decoder(id) orelse error.DecoderNotFound;
     }
 
-    /// Return decoded output data from a decoder or encoder (when the
-    /// AV_CODEC_FLAG_RECON_FRAME flag is used).
-    ///
-    /// Notable error codes:
-    /// * `Error.WouldBlock`
-    /// * `Error.EndOfFile`
-    /// * others are also possible
-    pub fn receive_frame(
-        avctx: *CodecContext,
-        /// This will be set to a reference-counted video or audio frame
-        /// (depending on the decoder type) allocated by the codec. Note that
-        /// the function will always call `Frame.unref` before doing anything
-        /// else.
-        frame: *Frame,
-    ) Error!void {
-        _ = try wrap(avcodec_receive_frame(avctx, frame));
+    /// Find a registered decoder with the specified name.
+    pub fn find_decoder_by_name(name: [*:0]const u8) error{DecoderNotFound}!*const Codec {
+        return avcodec_find_decoder_by_name(name) orelse error.DecoderNotFound;
     }
 
-    /// Reset the internal codec state / flush internal buffers. Should be called
-    /// e.g. when seeking or when switching to a different stream.
-    ///
-    /// For decoders, this function just releases any references the decoder
-    /// might keep internally, but the caller's references remain valid.
-    ///
-    /// For encoders, this function will only do something if the encoder
-    /// declares support for AV_CODEC_CAP_ENCODER_FLUSH. When called, the encoder
-    /// will drain any remaining packets, and can then be re-used for a different
-    /// stream (as opposed to sending a null frame which will leave the encoder
-    /// in a permanent EOF state after draining). This can be desirable if the
-    /// cost of tearing down and replacing the encoder instance is high.
-    ///
-    pub const flush_buffers = avcodec_flush_buffers;
+    /// Find a registered encoder with a matching codec ID.
+    pub fn find_encoder(id: ID) error{EncoderNotFound}!*const Codec {
+        return avcodec_find_encoder(id) orelse error.EncoderNotFound;
+    }
+
+    /// Find a registered encoder with the specified name.
+    pub fn find_encoder_by_name(name: [*:0]const u8) error{EncoderNotFound}!*const Codec {
+        return avcodec_find_encoder_by_name(name) orelse error.EncoderNotFound;
+    }
+
+    pub fn is_encoder(codec: *const Codec) bool {
+        return av_codec_is_encoder(codec) != 0;
+    }
+
+    pub fn is_decoder(codec: *const Codec) bool {
+        return av_codec_is_decoder(codec) != 0;
+    }
+
+    /// Return a name for the specified profile, if available.
+    pub fn get_profile_name(codec: *const Codec, profile: c_int) error{ProfileNotFound}![*:0]const u8 {
+        return av_get_profile_name(codec, profile) orelse error.ProfileNotFound;
+    }
 };
 
 /// Decoded (raw) audio or video data.
@@ -2725,8 +2940,10 @@ pub const CodecContext = extern struct {
 /// C structure field name for fields accessible through `Options`. The `Class`
 /// for `Frame` can be obtained from avcodec_get_frame_class()
 pub const Frame = extern struct {
-    data: [8][*]u8,
-    linesize: [8]c_int,
+    pub const NUM_DATA_POINTERS = 8;
+
+    data: [NUM_DATA_POINTERS][*]u8,
+    linesize: [NUM_DATA_POINTERS]c_int,
     /// Pointers to the data planes/channels.
     ///
     /// For video, this should simply point to data[].
@@ -2744,7 +2961,10 @@ pub const Frame = extern struct {
     height: c_int,
     /// Number of audio samples (per channel) described by this frame.
     nb_samples: c_int,
-    format: SampleFormat,
+    format: extern union {
+        pixel: PixelFormat,
+        sample: SampleFormat,
+    },
     key_frame: c_int,
     pict_type: PictureType,
     sample_aspect_ratio: Rational,
@@ -2764,7 +2984,7 @@ pub const Frame = extern struct {
     palette_has_changed: c_int,
     /// Sample rate of the audio data.
     sample_rate: c_int,
-    buf: [8]*BufferRef,
+    buf: [NUM_DATA_POINTERS]*BufferRef,
     extended_buf: [*]*BufferRef,
     nb_extended_buf: c_int,
     side_data: [*]*FrameSideData,
@@ -2777,7 +2997,7 @@ pub const Frame = extern struct {
     chroma_location: ChromaLocation,
     best_effort_timestamp: i64,
     pkt_pos: i64,
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     decode_error_flags: c_int,
     pkt_size: c_int,
     hw_frames_ctx: *BufferRef,
@@ -2800,7 +3020,7 @@ pub const Frame = extern struct {
     /// must be allocated through other means, e.g. with av_frame_get_buffer()
     /// or manually.
     pub fn alloc() error{OutOfMemory}!*Frame {
-        return av_frame_alloc() orelse return error.OutOfMemory;
+        return av_frame_alloc() orelse error.OutOfMemory;
     }
 
     /// Free the frame and any dynamically allocated objects in it, e.g.
@@ -2848,7 +3068,7 @@ pub const FrameSideData = extern struct {
     type: FrameSideDataType,
     data: [*c]u8,
     size: usize,
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     buf: [*c]BufferRef,
 };
 
@@ -2905,19 +3125,9 @@ pub const RcOverride = extern struct {
 pub const HWAccel = extern struct {
     name: [*c]const u8,
     type: MediaType,
-    id: CodecID,
+    id: Codec.ID,
     pix_fmt: PixelFormat,
     capabilities: c_int,
-};
-
-pub const CodecDescriptor = extern struct {
-    id: CodecID,
-    type: MediaType,
-    name: [*c]const u8,
-    long_name: [*c]const u8,
-    props: c_int,
-    mime_types: [*c]const [*c]const u8,
-    profiles: [*c]const Profile,
 };
 
 pub const FilterGraph = extern struct {
@@ -3456,7 +3666,7 @@ pub const StreamGroup = extern struct {
         iamf_mix_presentation: ?*IAMFMixPresentation,
         tile_grid: *TileGrid,
     },
-    metadata: ?*Dictionary,
+    metadata: Dictionary.Mutable,
     nb_streams: c_uint,
     streams: [*]*Stream,
     disposition: c_int,
@@ -3473,3 +3683,83 @@ pub const StreamGroup = extern struct {
 
 pub const IAMFAudioElement = opaque {};
 pub const IAMFMixPresentation = opaque {};
+
+pub const sws = struct {
+    pub const Flags = packed struct(c_int) {
+        FAST_BILINEAR: bool = false,
+        BILINEAR: bool = false,
+        BICUBIC: bool = false,
+        X: bool = false,
+        POINT: bool = false,
+        AREA: bool = false,
+        BICUBLIN: bool = false,
+        GAUSS: bool = false,
+        SINC: bool = false,
+        LANCZOS: bool = false,
+        SPLINE: bool = false,
+        unused11: u1 = 0,
+        PRINT_INFO: bool = false,
+        /// not completely implemented
+        /// internal chrominance subsampling info
+        FULL_CHR_H_INT: bool = false,
+        /// not completely implemented
+        /// input subsampling info
+        FULL_CHR_H_INP: bool = false,
+        /// not completely implemented
+        DIRECT_BGR: bool = false,
+        SRC_V_CHR_DROP: u2 = 0,
+        ACCURATE_RND: bool = false,
+        BITEXACT: bool = false,
+        unused20: u3 = 0,
+        ERROR_DIFFUSION: bool = false,
+        unused24: @Type(.{ .int = .{ .signedness = .unsigned, .bits = @bitSizeOf(c_int) - 24 } }) = 0,
+    };
+
+    pub const Vector = extern struct {
+        coeff: [*]f64,
+        length: c_int,
+    };
+
+    pub const Filter = extern struct {
+        lumH: ?*Vector,
+        lumV: ?*Vector,
+        chrH: ?*Vector,
+        chrV: ?*Vector,
+    };
+
+    pub const Context = opaque {
+        /// Allocate an empty sws.Context. This must be filled and passed to
+        /// init().
+        pub fn alloc() error{OutOfMemory}!*Context {
+            return sws_alloc_context() orelse error.OutOfMemory;
+        }
+
+        /// Initialize the swscaler context sws_context.
+        pub fn init(sws_context: *Context, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter) Error!void {
+            _ = try wrap(sws_init_context(sws_context, srcFilter, dstFilter));
+        }
+
+        /// Free the swscaler context swsContext.
+        pub const free = sws_freeContext;
+
+        /// Allocate and return an sws.Context. You need it to perform
+        /// scaling/conversion operations using sws.Context.scale().
+        pub fn get(srcW: c_int, srcH: c_int, srcFormat: PixelFormat, dstW: c_int, dstH: c_int, dstFormat: PixelFormat, flags: Flags, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter, param: ?[*]const f64) error{OutOfMemory}!void {
+            return sws_getContext(srcW, srcH, srcFormat, dstW, dstH, dstFormat, flags, srcFilter, dstFilter, param) orelse error.OutOfMemory;
+        }
+
+        /// Scale the image slice in srcSlice and put the resulting scaled
+        /// slice in the image in dst. A slice is a sequence of consecutive
+        /// rows in an image.
+        ///
+        /// Slices have to be provided in sequential order.
+        pub fn scale(c: *Context, srcSlice: [*]const [*]const u8, srcStride: [*]const c_int, srcSliceY: c_int, srcSliceH: c_int, dst: [*]const [*]u8, dstStride: [*]const c_int) Error!void {
+            _ = try wrap(sws_scale(c, srcSlice, srcStride, srcSliceY, srcSliceH, dst, dstStride));
+        }
+
+        /// Scale source data from src and write the output to dst.
+        pub fn scale_frame(c: *Context, dst: *Frame, src: *const Frame) Error!void {
+            _ = try wrap(sws_scale_frame(c, dst, src));
+        }
+    };
+};

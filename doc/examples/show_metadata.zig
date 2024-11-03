@@ -28,7 +28,7 @@ pub fn main() !void {
     try fc.find_stream_info(null);
 
     var it: ?*const av.Dictionary.Entry = null;
-    while (av.Dictionary.iterate(fc.metadata, it)) |tag| : (it = tag) {
+    while (fc.metadata.iterate(it)) |tag| : (it = tag) {
         try std.io.getStdOut().writer().print("{s}={s}\n", .{ tag.key, tag.value });
     }
 }
