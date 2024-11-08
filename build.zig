@@ -63,7 +63,7 @@ pub fn build(b: *std.Build) void {
     const common_config = .{
         .ARCH_AARCH64 = t.cpu.arch.isAARCH64(),
         .ARCH_ALPHA = false,
-        .ARCH_ARM = t.cpu.arch.isARM(),
+        .ARCH_ARM = t.cpu.arch.isArm(),
         .ARCH_AVR32 = false,
         .ARCH_AVR32_AP = false,
         .ARCH_AVR32_UC = false,
@@ -3249,7 +3249,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
         } else if (std.mem.startsWith(u8, sub_path, "alpha/")) {
             continue;
         } else if (std.mem.startsWith(u8, sub_path, "arm/")) {
-            if (!target.cpu.arch.isARM()) continue;
+            if (!target.cpu.arch.isArm()) continue;
         } else if (std.mem.startsWith(u8, sub_path, "alpha/")) {
             continue;
         } else if (std.mem.startsWith(u8, sub_path, "avr32/")) {
