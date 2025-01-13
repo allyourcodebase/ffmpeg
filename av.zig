@@ -901,7 +901,7 @@ pub const FormatContext = extern struct {
         /// or -1 if none
         related_stream: c_int,
     ) Error!struct { c_uint, *const Codec } {
-        var decoder: ?*Codec = undefined;
+        var decoder: ?*const Codec = undefined;
         const n = try wrap(av_find_best_stream(ic, media_type, wanted_stream_nb, related_stream, &decoder, 0));
         return .{ n, decoder.? };
     }
