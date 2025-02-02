@@ -399,7 +399,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_NANOSLEEP = true,
         .HAVE_PEEKNAMEDPIPE = false,
         .HAVE_POSIX_MEMALIGN = true,
-        .HAVE_PRCTL = true,
+        .HAVE_PRCTL = t.os.tag != .macos,
         .HAVE_PTHREAD_CANCEL = true,
         .HAVE_PTHREAD_SET_NAME_NP = false,
         .HAVE_PTHREAD_SETNAME_NP = false,
