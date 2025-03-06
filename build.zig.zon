@@ -1,8 +1,9 @@
 .{
-    .name = "libffmpeg",
+    .name = .libffmpeg,
     .version = "7.0.1-5",
 
     .minimum_zig_version = "0.14.0-dev.2638+04c9f50ae",
+    .fingerprint = 0x11edc27f18e8e283,
 
     .dependencies = .{
         .libz = .{
