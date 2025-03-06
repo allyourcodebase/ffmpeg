@@ -3744,7 +3744,7 @@ pub const sws = struct {
 
         /// Allocate and return an sws.Context. You need it to perform
         /// scaling/conversion operations using sws.Context.scale().
-        pub fn get(srcW: c_int, srcH: c_int, srcFormat: PixelFormat, dstW: c_int, dstH: c_int, dstFormat: PixelFormat, flags: Flags, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter, param: ?[*]const f64) error{OutOfMemory}!void {
+        pub fn get(srcW: c_int, srcH: c_int, srcFormat: PixelFormat, dstW: c_int, dstH: c_int, dstFormat: PixelFormat, flags: Flags, srcFilter: ?*sws.Filter, dstFilter: ?*sws.Filter, param: ?[*]const f64) error{OutOfMemory}!*Context {
             return sws_getContext(srcW, srcH, srcFormat, dstW, dstH, dstFormat, flags, srcFilter, dstFilter, param) orelse error.OutOfMemory;
         }
 
