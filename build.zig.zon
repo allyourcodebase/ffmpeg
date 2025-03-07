@@ -1,48 +1,48 @@
 .{
-    .name = "libffmpeg",
-    .version = "7.0.1-5",
-
-    .minimum_zig_version = "0.14.0-dev.2638+04c9f50ae",
+    .name = .ffmpeg,
+    .version = "7.0.1-6",
+    .fingerprint = 0x2ffce39e03d03ecd,
+    .minimum_zig_version = "0.14.0",
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/allyourcodebase/zlib/archive/refs/tags/1.3.1-3.tar.gz",
-            .hash = "1220138f4aba0c01e66b68ed9e1e1e74614c06e4743d88bc58af4f1c3dd0aae5fea7",
+            .url = "https://github.com/allyourcodebase/zlib/archive/6c72830882690c1eb2567a537525c3f432c1da50.tar.gz",
+            .hash = "zlib-1.3.1-ZZQ7lVgMAACwO4nUUd8GLhsuQ5JQq_VAhlEiENJTUv6h",
         },
         .mbedtls = .{
-            .url = "git+https://github.com/allyourcodebase/mbedtls#40a2c1126b45f87d19b256229620bc2995637e5a",
-            .hash = "122034bd019496a4e20a775116c53ef05e3247e9a98436b3407d4c0503fa3a16cd42",
+            .url = "git+https://github.com/allyourcodebase/mbedtls#7d862fe61ff2eac37ee54e1e017fc287bed1cd7a",
+            .hash = "mbedtls-3.6.2-E4NURzYUAABWLBwHJWx_ppb_j2kDSoGfCfR2rI2zs9dz",
             .lazy = true,
         },
         .openssl = .{
-            .url = "https://github.com/allyourcodebase/openssl/archive/refs/tags/3.3.1-1.tar.gz",
-            .hash = "12207c40cefa38fe90e4230dfba2e5c76b37e1ee36602512cad8ff0501f892002a65",
+            .url = "https://github.com/allyourcodebase/openssl/archive/f348124c5382bcc377f1b3277357cbf2ed2fb8db.tar.gz",
+            .hash = "openssl-3.3.1-2-TC9C3Se3ZACF5WO_CjoD7Bt_X94oCsAAbbwhOp1rTZBe",
             .lazy = true,
         },
         .libressl = .{
-            .url = "https://github.com/allyourcodebase/libressl/archive/refs/tags/3.9.2+1.tar.gz",
-            .hash = "12201f5cc06c88f191696106723797449baacb6ea38b07b6cf31c18c0382a6bea33e",
+            .url = "https://github.com/allyourcodebase/libressl/archive/refs/tags/4.0.0+2.tar.gz",
+            .hash = "libressl-4.0.0--kqV4LnSAACWhbUEm8O5KHGuJpNJsN0xLIlbFun7ql-m",
             .lazy = true,
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/refs/tags/3.100.1-4.tar.gz",
-            .hash = "1220da08eac618097d61be76506ddb71ecee9e76cb709a36b761c248262057846670",
+            .url = "https://github.com/andrewrk/libmp3lame/archive/9a7e3db1a86d86c33e1663c13ebe8e8f047fc008.tar.gz",
+            .hash = "libmp3lame-3.100.1-5-67wlF1KvEwDaCOrGGAl9Yb52UG3bcezunnbLcJo2t2HC",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/refs/tags/1.3.8-3.tar.gz",
-            .hash = "122074e0bf09c3622780e697c11c6744e763dd63777e480baf2b583ee3ab6a02ff14",
+            .url = "https://github.com/andrewrk/libvorbis/archive/f276273dcb0d9a5e0d832e3745c458c8056ee7ad.tar.gz",
+            .hash = "libvorbis-1.3.8-4-gL_KI2kPJACPcXW6H_SSrsaRnauuaJGPS9wPqg5ALE8q",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/refs/tags/1.3.6-2.tar.gz",
-            .hash = "1220b3e1fb33317c92f9ead09630f6b4be59e80d0a8780754f8aa4ee7da61cb7b47a",
+            .url = "https://github.com/andrewrk/libogg/archive/a0dc88e815fdd278b412d9b5ba09221f20517e03.tar.gz",
+            .hash = "libogg-1.3.6-3-ZBKq7fQUAgCz4fszMXyS-erQljD2tL5Z6A0Kh4B1T4qk",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/allyourcodebase/nasm/archive/refs/tags/2.16.1-3.tar.gz",
-            .hash = "12200a9194f9cdd05e9ff23729f4ed0e54f51abe09bd6eaf61b58609791647b141d2",
+            .url = "https://github.com/allyourcodebase/nasm/archive/c153aec97cfe50a4600d9cf3d5f703d58f9ccd56.tar.gz",
+            .hash = "nasm-2.16.1-4-J30EdyVnXADate9iz7jWR4Q9tL1jU9S2Lw7PGgfOjP0v",
         },
     },
     .paths = .{
