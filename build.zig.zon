@@ -10,8 +10,8 @@
             .hash = "zlib-1.3.1-ZZQ7lbYMAAAuaZnFj2675ah508w1Oc-EuY1V1cWJka2C",
         },
         .mbedtls = .{
-            .url = "git+https://github.com/allyourcodebase/mbedtls#7d862fe61ff2eac37ee54e1e017fc287bed1cd7a",
-            .hash = "mbedtls-3.6.2-E4NURzYUAABWLBwHJWx_ppb_j2kDSoGfCfR2rI2zs9dz",
+            .url = "git+https://github.com/dasimmet/mbedtls#c86bbeb05de1a2c4645de2b973ee07f33a82d538",
+            .hash = "mbedtls-3.6.4-E4NUR7EUAAC0PK_jVCUyV3dvci1Uwbl4JFQzScnyqcsn",
             .lazy = true,
         },
         .openssl = .{
@@ -26,23 +26,23 @@
         },
 
         .libmp3lame = .{
-            .url = "https://github.com/andrewrk/libmp3lame/archive/9a7e3db1a86d86c33e1663c13ebe8e8f047fc008.tar.gz",
-            .hash = "libmp3lame-3.100.1-5-67wlF1KvEwDaCOrGGAl9Yb52UG3bcezunnbLcJo2t2HC",
+            .url = "https://github.com/jaysonsantos/libmp3lame/archive/62ed386c7f10926d9d53df768b0b0f73934e9522.tar.gz",
+            .hash = "libmp3lame-3.100.1-5-67wlF6uvEwBKHk2TOnFZQwpod8u9kmIIdpgCAmtc2kZp",
         },
         .libvorbis = .{
-            .url = "https://github.com/andrewrk/libvorbis/archive/f276273dcb0d9a5e0d832e3745c458c8056ee7ad.tar.gz",
-            .hash = "libvorbis-1.3.8-4-gL_KI2kPJACPcXW6H_SSrsaRnauuaJGPS9wPqg5ALE8q",
+            .url = "https://github.com/floatdrop/libvorbis/archive/6049d325043ab6f08b19fb760b8633815ff305c7.tar.gz",
+            .hash = "libvorbis-1.3.8-4-gL_KI9QPJAC3loix2mlGg1pXcJwogdNlh2S4rNJIyG0w",
         },
         .libogg = .{
-            .url = "https://github.com/andrewrk/libogg/archive/a0dc88e815fdd278b412d9b5ba09221f20517e03.tar.gz",
-            .hash = "libogg-1.3.6-3-ZBKq7fQUAgCz4fszMXyS-erQljD2tL5Z6A0Kh4B1T4qk",
+            .url = "https://github.com/jaysonsantos/libogg/archive/5b8e403d1a296a8adc27735ed6bb0a1ca560ddfd.tar.gz",
+            .hash = "libogg-1.3.6-3-ZBKq7UcVAgD8yYBphV_PiV9Si8rBvZBYLBbdbbFIbKLX",
         },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
-            .url = "https://github.com/allyourcodebase/nasm/archive/c153aec97cfe50a4600d9cf3d5f703d58f9ccd56.tar.gz",
-            .hash = "nasm-2.16.1-4-J30EdyVnXADate9iz7jWR4Q9tL1jU9S2Lw7PGgfOjP0v",
+            .url = "https://github.com/vytskalt/nasm/archive/af40be2131cd2f4787fee97c3a543c2e6642ace9.tar.gz",
+            .hash = "nasm-2.16.1-4-J30Ed2hnXADeQLsOnARG2k-8pbg7qc4OsJFAU8DDYLDm",
         },
     },
     .paths = .{

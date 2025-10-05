@@ -36,11 +36,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    const lib = b.addStaticLibrary(.{
-        .name = "ffmpeg",
+    const lib = b.addLibrary(.{ .name = "ffmpeg", .root_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
-    });
+    }) });
     lib.linkLibrary(libz_dep.artifact("z"));
     if (lazy_mbedtls_dep) |mbedtls_dep| lib.linkLibrary(mbedtls_dep.artifact("mbedtls"));
     if (lazy_openssl_dep) |openssl_dep| lib.linkLibrary(openssl_dep.artifact("openssl"));
@@ -3173,8 +3172,10 @@ pub fn build(b: *std.Build) void {
 
     const show_metadata_c = b.addExecutable(.{
         .name = "show_metadata_c",
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     show_metadata_c.addCSourceFiles(.{
         .files = &.{"doc/examples/show_metadata.c"},
@@ -3184,9 +3185,11 @@ pub fn build(b: *std.Build) void {
 
     const show_metadata_zig = b.addExecutable(.{
         .name = "show_metadata_zig",
-        .root_source_file = b.path("doc/examples/show_metadata.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("doc/examples/show_metadata.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     show_metadata_zig.root_module.addImport("av", bindings);
     b.installArtifact(show_metadata_zig);
