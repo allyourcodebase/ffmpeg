@@ -35,9 +35,9 @@ pub extern fn avio_alloc_context(
     buffer_size: c_int,
     write_flag: IOContext.WriteFlag,
     @"opaque": ?*anyopaque,
-    read_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
-    write_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
-    seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.C) i64,
+    read_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.c) c_int,
+    write_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.c) c_int,
+    seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.c) i64,
 ) [*c]IOContext;
 /// Prefer `IOContext.free`.
 pub extern fn avio_context_free(s: *?*IOContext) void;
@@ -215,7 +215,7 @@ pub const tx_fn = fn (
     output_array: ?*anyopaque,
     input_array: ?*anyopaque,
     stride_in_bytes: isize,
-) callconv(.C) void;
+) callconv(.c) void;
 
 pub fn malloc(size: usize) error{OutOfMemory}![]u8 {
     const ptr = av_malloc(size) orelse return error.OutOfMemory;
@@ -800,7 +800,7 @@ pub const FormatContext = extern struct {
     /// additional internal format contexts. Thus the AVFormatContext pointer
     /// passed to this callback may be different from the one facing the caller.
     /// It will, however, have the same 'opaque' field.
-    io_open: ?*const fn (*FormatContext, **IOContext, [*]const u8, c_int, *Dictionary.Mutable) callconv(.C) c_int,
+    io_open: ?*const fn (*FormatContext, **IOContext, [*]const u8, c_int, *Dictionary.Mutable) callconv(.c) c_int,
     /// A callback for closing the streams opened with AVFormatContext.io_open().
     ///
     /// Using this is preferred over io_close, because this can return an error.
@@ -810,7 +810,7 @@ pub const FormatContext = extern struct {
     /// @param s the format context
     /// @param pb IO context to be closed and freed
     /// @return 0 on success, a negative AVERROR code on failure
-    io_close2: ?*const fn (*FormatContext, *IOContext) callconv(.C) c_int,
+    io_close2: ?*const fn (*FormatContext, *IOContext) callconv(.c) c_int,
 
     /// `free` can be used to free the context and everything
     /// allocated by the framework within it.
@@ -978,16 +978,16 @@ pub const FormatContext = extern struct {
 
 pub const Class = extern struct {
     class_name: [*c]const u8,
-    item_name: ?*const fn (?*anyopaque) callconv(.C) [*c]const u8,
+    item_name: ?*const fn (?*anyopaque) callconv(.c) [*c]const u8,
     option: ?*const Option_6,
     version: c_int,
     log_level_offset_offset: c_int,
     parent_log_context_offset: c_int,
     category: ClassCategory,
-    get_category: ?*const fn (?*anyopaque) callconv(.C) ClassCategory,
-    query_ranges: ?*const fn ([*c]?*OptionRanges, ?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
-    child_next: ?*const fn (?*anyopaque, ?*anyopaque) callconv(.C) ?*anyopaque,
-    child_class_iterate: ?*const fn ([*c]?*anyopaque) callconv(.C) [*c]const Class,
+    get_category: ?*const fn (?*anyopaque) callconv(.c) ClassCategory,
+    query_ranges: ?*const fn ([*c]?*OptionRanges, ?*anyopaque, [*c]const u8, c_int) callconv(.c) c_int,
+    child_next: ?*const fn (?*anyopaque, ?*anyopaque) callconv(.c) ?*anyopaque,
+    child_class_iterate: ?*const fn ([*c]?*anyopaque) callconv(.c) [*c]const Class,
 };
 
 pub const InputFormat = extern struct {
@@ -1001,16 +1001,16 @@ pub const InputFormat = extern struct {
     raw_codec_id: c_int,
     priv_data_size: c_int,
     flags_internal: c_int,
-    read_probe: ?*const fn ([*c]const ProbeData) callconv(.C) c_int,
-    read_header: ?*const fn ([*c]FormatContext) callconv(.C) c_int,
-    read_packet: ?*const fn ([*c]FormatContext, [*c]Packet) callconv(.C) c_int,
-    read_close: ?*const fn ([*c]FormatContext) callconv(.C) c_int,
-    read_seek: ?*const fn ([*c]FormatContext, c_int, i64, c_int) callconv(.C) c_int,
-    read_timestamp: ?*const fn ([*c]FormatContext, c_int, [*c]i64, i64) callconv(.C) i64,
-    read_play: ?*const fn ([*c]FormatContext) callconv(.C) c_int,
-    read_pause: ?*const fn ([*c]FormatContext) callconv(.C) c_int,
-    read_seek2: ?*const fn ([*c]FormatContext, c_int, i64, i64, i64, c_int) callconv(.C) c_int,
-    get_device_list: ?*const fn ([*c]FormatContext, ?*DeviceInfoList) callconv(.C) c_int,
+    read_probe: ?*const fn ([*c]const ProbeData) callconv(.c) c_int,
+    read_header: ?*const fn ([*c]FormatContext) callconv(.c) c_int,
+    read_packet: ?*const fn ([*c]FormatContext, [*c]Packet) callconv(.c) c_int,
+    read_close: ?*const fn ([*c]FormatContext) callconv(.c) c_int,
+    read_seek: ?*const fn ([*c]FormatContext, c_int, i64, c_int) callconv(.c) c_int,
+    read_timestamp: ?*const fn ([*c]FormatContext, c_int, [*c]i64, i64) callconv(.c) i64,
+    read_play: ?*const fn ([*c]FormatContext) callconv(.c) c_int,
+    read_pause: ?*const fn ([*c]FormatContext) callconv(.c) c_int,
+    read_seek2: ?*const fn ([*c]FormatContext, c_int, i64, i64, i64, c_int) callconv(.c) c_int,
+    get_device_list: ?*const fn ([*c]FormatContext, ?*DeviceInfoList) callconv(.c) c_int,
 };
 
 pub const OutputFormat = extern struct {
@@ -1033,9 +1033,9 @@ pub const IOContext = extern struct {
     buf_ptr: [*]u8,
     buf_end: [*]u8,
     @"opaque": ?*anyopaque,
-    read_packet: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.C) c_int,
-    write_packet: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.C) c_int,
-    seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.C) i64,
+    read_packet: ?*const fn (?*anyopaque, [*c]u8, c_int) callconv(.c) c_int,
+    write_packet: ?*const fn (?*anyopaque, [*c]const u8, c_int) callconv(.c) c_int,
+    seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.c) i64,
     pos: i64,
     eof_reached: c_int,
     @"error": c_int,
@@ -1044,14 +1044,14 @@ pub const IOContext = extern struct {
     min_packet_size: c_int,
     checksum: c_ulong,
     checksum_ptr: [*c]u8,
-    update_checksum: ?*const fn (c_ulong, [*c]const u8, c_uint) callconv(.C) c_ulong,
-    read_pause: ?*const fn (?*anyopaque, c_int) callconv(.C) c_int,
-    read_seek: ?*const fn (?*anyopaque, c_int, i64, c_int) callconv(.C) i64,
+    update_checksum: ?*const fn (c_ulong, [*c]const u8, c_uint) callconv(.c) c_ulong,
+    read_pause: ?*const fn (?*anyopaque, c_int) callconv(.c) c_int,
+    read_seek: ?*const fn (?*anyopaque, c_int, i64, c_int) callconv(.c) i64,
     seekable: c_int,
     direct: c_int,
     protocol_whitelist: [*c]const u8,
     protocol_blacklist: [*c]const u8,
-    write_data_type: ?*const fn (?*anyopaque, [*c]const u8, c_int, IODataMarkerType, i64) callconv(.C) c_int,
+    write_data_type: ?*const fn (?*anyopaque, [*c]const u8, c_int, IODataMarkerType, i64) callconv(.c) c_int,
     ignore_boundary_point: c_int,
     buf_ptr_max: [*c]u8,
     bytes_read: i64,
@@ -1082,13 +1082,13 @@ pub const IOContext = extern struct {
         /// A function for refilling the buffer.
         ///
         /// For stream protocols, must never return 0 but rather a proper AVERROR code.
-        read_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
+        read_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.c) c_int,
         /// A function for writing the buffer contents.
         ///
         /// The function may not change the input buffers content.
-        write_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.C) c_int,
+        write_packet: ?*const fn (?*anyopaque, [*:0]u8, c_int) callconv(.c) c_int,
         /// A function for seeking to specified byte position.
-        seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.C) i64,
+        seek: ?*const fn (?*anyopaque, i64, SEEK) callconv(.c) i64,
     ) error{OutOfMemory}!*IOContext {
         return avio_alloc_context(
             buffer.ptr,
@@ -1302,7 +1302,7 @@ pub const Dictionary = opaque {
 };
 
 pub const IOInterruptCB = extern struct {
-    callback: ?*const fn (?*anyopaque) callconv(.C) c_int,
+    callback: ?*const fn (?*anyopaque) callconv(.c) c_int,
     @"opaque": ?*anyopaque,
 };
 
@@ -1312,7 +1312,7 @@ pub const DurationEstimationMethod = enum(c_uint) {
     BITRATE = 2,
 };
 
-pub const av_format_control_message = ?*const fn ([*c]FormatContext, c_int, ?*anyopaque, usize) callconv(.C) c_int;
+pub const av_format_control_message = ?*const fn ([*c]FormatContext, c_int, ?*anyopaque, usize) callconv(.c) c_int;
 
 pub const Option_6 = opaque {};
 
@@ -2633,8 +2633,8 @@ pub const Codec = extern struct {
         refs: c_int,
         has_b_frames: c_int,
         slice_flags: c_int,
-        draw_horiz_band: ?*const fn (s: *Context, src: *const Frame, offset: *[Frame.NUM_DATA_POINTERS]c_int, y: c_int, @"type": c_int, height: c_int) callconv(.C) void,
-        get_format: *const fn (s: *Context, fmt: *const PixelFormat) callconv(.C) PixelFormat,
+        draw_horiz_band: ?*const fn (s: *Context, src: *const Frame, offset: *[Frame.NUM_DATA_POINTERS]c_int, y: c_int, @"type": c_int, height: c_int) callconv(.c) void,
+        get_format: *const fn (s: *Context, fmt: *const PixelFormat) callconv(.c) PixelFormat,
         max_b_frames: c_int,
         b_quant_factor: f32,
         b_quant_offset: f32,
@@ -2679,7 +2679,7 @@ pub const Codec = extern struct {
         initial_padding: c_int,
         trailing_padding: c_int,
         seek_preroll: c_int,
-        get_buffer2: *const fn (s: *Context, frame: *Frame, flags: c_int) callconv(.C) c_int,
+        get_buffer2: *const fn (s: *Context, frame: *Frame, flags: c_int) callconv(.c) c_int,
         bit_rate_tolerance: c_int,
         global_quality: c_int,
         compression_level: c_int,
@@ -2718,8 +2718,8 @@ pub const Codec = extern struct {
         thread_count: c_int,
         thread_type: c_int,
         active_thread_type: c_int,
-        execute: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8) callconv(.C) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int, size: c_int) callconv(.C) c_int,
-        execute2: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8, jobnr: c_int, threadnr: c_int) callconv(.C) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int) callconv(.C) c_int,
+        execute: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8) callconv(.c) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int, size: c_int) callconv(.c) c_int,
+        execute2: *const fn (c: *Context, *const fn (c2: *Context, arg: [*]u8, jobnr: c_int, threadnr: c_int) callconv(.c) c_int, arg2: [*]u8, ret: ?[*]c_int, count: c_int) callconv(.c) c_int,
         profile: c_int,
         level: c_int,
         properties: c_uint,
@@ -2744,7 +2744,7 @@ pub const Codec = extern struct {
         apply_cropping: c_int,
         discard_damaged_percentage: c_int,
         max_samples: i64,
-        get_encode_buffer: *const fn (s: *Context, pkt: *Packet, flags: c_int) callconv(.C) c_int,
+        get_encode_buffer: *const fn (s: *Context, pkt: *Packet, flags: c_int) callconv(.c) c_int,
         frame_num: i64,
         side_data_prefer_packet: ?[*]c_int,
         nb_side_data_prefer_packet: c_uint,
@@ -3394,8 +3394,8 @@ pub const BUFFERSINK_FLAG = packed struct(c_uint) {
     _: u30 = 0,
 };
 
-pub const filter_execute_func = fn ([*c]FilterContext, ?*const filter_action_func, ?*anyopaque, [*c]c_int, c_int) callconv(.C) c_int;
-pub const filter_action_func = fn ([*c]FilterContext, ?*anyopaque, c_int, c_int) callconv(.C) c_int;
+pub const filter_execute_func = fn ([*c]FilterContext, ?*const filter_action_func, ?*anyopaque, [*c]c_int, c_int) callconv(.c) c_int;
+pub const filter_action_func = fn ([*c]FilterContext, ?*anyopaque, c_int, c_int) callconv(.c) c_int;
 pub const FilterLink = extern struct {
     src: [*c]FilterContext,
     srcpad: ?*FilterPad,
@@ -3437,11 +3437,11 @@ pub const Filter = extern struct {
     nb_inputs: u8,
     nb_outputs: u8,
     formats_state: u8,
-    preinit: ?*const fn ([*c]FilterContext) callconv(.C) c_int,
-    init: ?*const fn ([*c]FilterContext) callconv(.C) c_int,
-    uninit: ?*const fn ([*c]FilterContext) callconv(.C) void,
+    preinit: ?*const fn ([*c]FilterContext) callconv(.c) c_int,
+    init: ?*const fn ([*c]FilterContext) callconv(.c) c_int,
+    uninit: ?*const fn ([*c]FilterContext) callconv(.c) void,
     formats: extern union {
-        query_func: ?*const fn ([*c]FilterContext) callconv(.C) c_int,
+        query_func: ?*const fn ([*c]FilterContext) callconv(.c) c_int,
         pixels_list: [*c]const PixelFormat,
         samples_list: [*c]const SampleFormat,
         pix_fmt: PixelFormat,
@@ -3449,8 +3449,8 @@ pub const Filter = extern struct {
     },
     priv_size: c_int,
     flags_internal: c_int,
-    process_command: ?*const fn ([*c]FilterContext, [*c]const u8, [*c]const u8, [*c]u8, c_int, c_int) callconv(.C) c_int,
-    activate: ?*const fn ([*c]FilterContext) callconv(.C) c_int,
+    process_command: ?*const fn ([*c]FilterContext, [*c]const u8, [*c]const u8, [*c]u8, c_int, c_int) callconv(.c) c_int,
+    activate: ?*const fn ([*c]FilterContext) callconv(.c) c_int,
 
     /// Get a filter definition matching the given name.
     ///
