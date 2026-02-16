@@ -2984,7 +2984,7 @@ pub const Frame = extern struct {
     palette_has_changed: c_int,
     /// Sample rate of the audio data.
     sample_rate: c_int,
-    buf: [NUM_DATA_POINTERS]*BufferRef,
+    buf: [NUM_DATA_POINTERS]?*BufferRef,
     extended_buf: [*]*BufferRef,
     nb_extended_buf: c_int,
     side_data: [*]*FrameSideData,
