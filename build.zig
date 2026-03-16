@@ -3211,7 +3211,7 @@ const CategorizedSources = struct {
 fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) CategorizedSources {
     var libs: [@typeInfo(CategorizedSources).@"struct".fields.len]struct {
         prefix: []const u8,
-        list: std.ArrayListUnmanaged([]const u8) = .{},
+        list: std.ArrayListUnmanaged([]const u8) = .empty,
     } = undefined;
 
     inline for (@typeInfo(CategorizedSources).@"struct".fields, 0..) |field, i| {
