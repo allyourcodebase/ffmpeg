@@ -10,6 +10,30 @@ is [Zig](https://ziglang.org/download/).
 Zig API bindings are also provided via the "av" module. See `doc/examples` for
 API usage examples.
 
+## Usage
+
+```
+zig fetch --save=ffmpeg https://github.com/allyourcodebase/ffmpeg/archive/refs/tags/7.0.1-5.tar.gz
+```
+
+```zig
+// build.zig
+const ffmpeg_dep = b.dependency("ffmpeg", .{.target = target, .optimize = optimize});
+```
+
+Choose one:
+
+- Just link ffmpeg:
+
+  ```zig
+  exe.linkLibrary(ffmpeg_dep.artifact("ffmpeg"));
+  ```
+- Add zig bindings with `@import("ffmpeg")`
+  
+  ```zig
+  exe.root_module.addImport("ffmpeg", ffmpeg_dep.module("av"));
+  ```
+
 ## Differences from Upstream
 
 * Only a single static library is produced. There is no option to create a
