@@ -856,15 +856,14 @@ pub fn build(b: *std.Build) void {
         .CONFIG_THIS_YEAR = 2024,
         .FFMPEG_DATADIR = "/dev/null",
         .AVCONV_DATADIR = "/dev/null",
-        .CC_IDENT = "clang 17.0.4 (CLANG)",
-        .OS_NAME = .linux,
+        .CC_IDENT = "clang 21.1.8 (CLANG)",
+        .OS_NAME = osName(t.os.tag),
         .EXTERN_PREFIX = switch (t.os.tag) {
             .macos => "_",
             else => "",
         },
         .BUILDSUF = "",
         .SLIBSUF = t.os.tag.dynamicLibSuffix(),
-        .HAVE_MMX2 = have_x86_feat(t, .mmx),
         .SWS_MAX_FILTER_SIZE = 256,
     });
     switch (t.os.tag) {
@@ -3193,6 +3192,20 @@ pub fn build(b: *std.Build) void {
     });
     show_metadata_zig.root_module.addImport("av", bindings);
     b.installArtifact(show_metadata_zig);
+}
+
+fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin } {
+    return switch (os_tag) {
+        .driverkit,
+        .ios,
+        .maccatalyst,
+        .macos,
+        .tvos,
+        .visionos,
+        .watchos,
+        => .darwin,
+        else => .linux,
+    };
 }
 
 const Tls = enum { disabled, gnutls, libtls, mbedtls, openssl, libressl, schannel, securetransport };
