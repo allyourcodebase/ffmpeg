@@ -862,21 +862,19 @@ pub fn build(b: *std.Build) void {
             .macos => "_",
             else => "",
         },
+    });
+    switch (t.os.tag) {
+        .macos => config_h.addIdent("EXTERN_ASM", "_"),
+        else => config_h.addValues(.{ .EXTERN_ASM = {} }),
+    }
+    config_h.addValues(.{
         .BUILDSUF = "",
         .SLIBSUF = t.os.tag.dynamicLibSuffix(),
         .SWS_MAX_FILTER_SIZE = 256,
     });
-    switch (t.os.tag) {
-        .macos => {
-            config_h.addValues(.{
-                .EXTERN_ASM = ._,
-            });
-        },
-        else => {
-            config_h.addValues(.{
-                .EXTERN_ASM = {},
-            });
-        },
+    switch (t.cpu.arch) {
+        .aarch64 => config_h.addIdent("AS_ARCH_LEVEL", asArchLevel(b, t.cpu.features)),
+        else => {},
     }
     config_h.addValues(common_config);
     lib.root_module.addConfigHeader(config_h);
@@ -3206,6 +3204,49 @@ fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin } {
         => .darwin,
         else => .linux,
     };
+}
+
+fn aarch64Feat(set: std.Target.Cpu.Feature.Set, f: std.Target.aarch64.Feature) bool {
+    return std.Target.aarch64.featureSetHas(set, f);
+}
+
+fn asArchLevel(b: *std.Build, set: std.Target.Cpu.Feature.Set) []const u8 {
+    const prefix = if (aarch64Feat(set, .v9_6a))
+        "armv9.6-a"
+    else if (aarch64Feat(set, .v9_5a))
+        "armv9.5-a"
+    else if (aarch64Feat(set, .v9_4a))
+        "armv9.4-a"
+    else if (aarch64Feat(set, .v9_3a))
+        "armv9.3-a"
+    else if (aarch64Feat(set, .v9_2a))
+        "armv9.2-a"
+    else if (aarch64Feat(set, .v9_1a))
+        "armv9.1-a"
+    else if (aarch64Feat(set, .v8_9a))
+        "armv8.9-a"
+    else if (aarch64Feat(set, .v8_8a))
+        "armv8.8-a"
+    else if (aarch64Feat(set, .v8_7a))
+        "armv8.6-a"
+    else if (aarch64Feat(set, .v8_6a))
+        "armv8.6-a"
+    else if (aarch64Feat(set, .v8_5a))
+        "armv8.5-a"
+    else if (aarch64Feat(set, .v8_4a))
+        "armv8.4-a"
+    else if (aarch64Feat(set, .v8_3a))
+        "armv8.3-a"
+    else if (aarch64Feat(set, .v8_2a))
+        "armv8.2-a"
+    else if (aarch64Feat(set, .v8_1a))
+        "armv8.1-a"
+    else
+        @panic("unknown");
+
+    const crc = if (aarch64Feat(set, .crc)) "+crc" else "";
+
+    return b.fmt("{s}{s}", .{ prefix, crc });
 }
 
 const Tls = enum { disabled, gnutls, libtls, mbedtls, openssl, libressl, schannel, securetransport };
