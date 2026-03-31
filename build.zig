@@ -3246,7 +3246,7 @@ fn asArchLevel(b: *std.Build, t: std.Target) []const u8 {
     else if (have_aarch64_feat(t, .v8_1a))
         "armv8.1-a"
     else
-        @panic("unknown");
+        "armv8-a";
 
     const crc = if (have_aarch64_feat(t, .crc)) "+crc" else "";
 
