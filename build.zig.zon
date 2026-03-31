@@ -2,7 +2,7 @@
     .name = .ffmpeg,
     .version = "7.0.1-9",
     .fingerprint = 0x2ffce39e03d03ecd,
-    .minimum_zig_version = "0.16.0-dev.2267+27e8d05ee",
+    .minimum_zig_version = "0.16.0-dev.3061+9b1eaad13",
 
     .dependencies = .{
         .libz = .{
