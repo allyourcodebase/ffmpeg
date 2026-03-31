@@ -100,7 +100,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_ARMV5TE = have_arm_feat(t, .has_v5te),
         .HAVE_ARMV6 = have_arm_feat(t, .has_v6),
         .HAVE_ARMV6T2 = have_arm_feat(t, .has_v6t2),
-        .HAVE_ARMV8 = have_arm_feat(t, .has_v8),
+        .HAVE_ARMV8 = have_arm_feat(t, .has_v8) or have_aarch64_feat(t, .v8a),
         .HAVE_DOTPROD = have_arm_feat(t, .dotprod) or have_aarch64_feat(t, .dotprod),
         .HAVE_I8MM = have_arm_feat(t, .i8mm) or have_aarch64_feat(t, .i8mm),
         .HAVE_NEON = have_arm_feat(t, .neon) or have_aarch64_feat(t, .neon),
@@ -873,7 +873,7 @@ pub fn build(b: *std.Build) void {
         .SWS_MAX_FILTER_SIZE = 256,
     });
     switch (t.cpu.arch) {
-        .aarch64 => config_h.addIdent("AS_ARCH_LEVEL", asArchLevel(b, t.cpu.features)),
+        .aarch64 => config_h.addIdent("AS_ARCH_LEVEL", asArchLevel(b, t)),
         else => {},
     }
     config_h.addValues(common_config);
@@ -3206,45 +3206,41 @@ fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin } {
     };
 }
 
-fn aarch64Feat(set: std.Target.Cpu.Feature.Set, f: std.Target.aarch64.Feature) bool {
-    return std.Target.aarch64.featureSetHas(set, f);
-}
-
-fn asArchLevel(b: *std.Build, set: std.Target.Cpu.Feature.Set) []const u8 {
-    const prefix = if (aarch64Feat(set, .v9_6a))
+fn asArchLevel(b: *std.Build, t: std.Target) []const u8 {
+    const prefix = if (have_aarch64_feat(t, .v9_6a))
         "armv9.6-a"
-    else if (aarch64Feat(set, .v9_5a))
+    else if (have_aarch64_feat(t, .v9_5a))
         "armv9.5-a"
-    else if (aarch64Feat(set, .v9_4a))
+    else if (have_aarch64_feat(t, .v9_4a))
         "armv9.4-a"
-    else if (aarch64Feat(set, .v9_3a))
+    else if (have_aarch64_feat(t, .v9_3a))
         "armv9.3-a"
-    else if (aarch64Feat(set, .v9_2a))
+    else if (have_aarch64_feat(t, .v9_2a))
         "armv9.2-a"
-    else if (aarch64Feat(set, .v9_1a))
+    else if (have_aarch64_feat(t, .v9_1a))
         "armv9.1-a"
-    else if (aarch64Feat(set, .v8_9a))
+    else if (have_aarch64_feat(t, .v8_9a))
         "armv8.9-a"
-    else if (aarch64Feat(set, .v8_8a))
+    else if (have_aarch64_feat(t, .v8_8a))
         "armv8.8-a"
-    else if (aarch64Feat(set, .v8_7a))
+    else if (have_aarch64_feat(t, .v8_7a))
         "armv8.6-a"
-    else if (aarch64Feat(set, .v8_6a))
+    else if (have_aarch64_feat(t, .v8_6a))
         "armv8.6-a"
-    else if (aarch64Feat(set, .v8_5a))
+    else if (have_aarch64_feat(t, .v8_5a))
         "armv8.5-a"
-    else if (aarch64Feat(set, .v8_4a))
+    else if (have_aarch64_feat(t, .v8_4a))
         "armv8.4-a"
-    else if (aarch64Feat(set, .v8_3a))
+    else if (have_aarch64_feat(t, .v8_3a))
         "armv8.3-a"
-    else if (aarch64Feat(set, .v8_2a))
+    else if (have_aarch64_feat(t, .v8_2a))
         "armv8.2-a"
-    else if (aarch64Feat(set, .v8_1a))
+    else if (have_aarch64_feat(t, .v8_1a))
         "armv8.1-a"
     else
         @panic("unknown");
 
-    const crc = if (aarch64Feat(set, .crc)) "+crc" else "";
+    const crc = if (have_aarch64_feat(t, .crc)) "+crc" else "";
 
     return b.fmt("{s}{s}", .{ prefix, crc });
 }
