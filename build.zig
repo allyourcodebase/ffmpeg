@@ -38,7 +38,7 @@ pub fn build(b: *std.Build) void {
     });
 
     const omit_frame_pointer = false;
-    const pic = t.os.tag != .linux;
+    const pic = true;
     const lib = b.addLibrary(.{ .name = "ffmpeg", .root_module = b.createModule(.{
         .target = target,
         .optimize = optimize,
