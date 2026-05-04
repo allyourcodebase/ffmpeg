@@ -26,7 +26,7 @@ Choose one:
 - Just link ffmpeg:
 
   ```zig
-  exe.linkLibrary(ffmpeg_dep.artifact("ffmpeg"));
+  exe.root_module.linkLibrary(ffmpeg_dep.artifact("ffmpeg"));
   ```
 - Add zig bindings with `@import("ffmpeg")`
   
