@@ -10,18 +10,18 @@
             .hash = "zlib-1.3.1-1-ZZQ7ldENAAA7qJjUXP6E6xnRuV-jDL9dyoJFc_eb3zQ6",
         },
         .mbedtls = .{
-            .url = "git+https://github.com/allyourcodebase/mbedtls#7d862fe61ff2eac37ee54e1e017fc287bed1cd7a",
-            .hash = "mbedtls-3.6.2-E4NURzYUAABWLBwHJWx_ppb_j2kDSoGfCfR2rI2zs9dz",
+            .url = "git+https://github.com/allyourcodebase/mbedtls#3aa71a19acc173ae57b6a1114d62f2fdfd22960c",
+            .hash = "mbedtls-3.6.4-E4NUR2wWAAAUSvVbho9aaU31-e4D8glu9l1VfxKezBkV",
             .lazy = true,
         },
         .openssl = .{
-            .url = "https://github.com/allyourcodebase/openssl/archive/refs/tags/3.3.2.tar.gz",
-            .hash = "openssl-3.3.2-TC9C3Wa3ZACgB1hZbrLOQCK9XccIBaW_F3imFfIeYP06",
+            .url = "git+https://github.com/allyourcodebase/openssl#0ac677650d43eadf669067d050992118b13338d2",
+            .hash = "openssl-3.3.2-TC9C3Ze3ZABaKR5hc8KRnRPhTClKrKQKqTnXTUYkvmSR",
             .lazy = true,
         },
         .libressl = .{
-            .url = "https://github.com/allyourcodebase/libressl/archive/refs/tags/4.0.0+3.tar.gz",
-            .hash = "libressl-4.0.0--kqV4OjTAADhw9rD-tZaxFy2KPrSU4Bt9FOi9UZe-Zjl",
+            .url = "git+https://github.com/allyourcodebase/libressl#43f34e823bddea90329e4475bb9c4f9d05e8542a",
+            .hash = "libressl-4.0.0--kqV4KPTAACsSRP8mSIZmqgVa5OZjw6WEgvcftWkLu-c",
             .lazy = true,
         },
 
