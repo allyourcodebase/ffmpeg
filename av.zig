@@ -50,6 +50,8 @@ pub extern fn av_log_set_level(level: LOG) void;
 pub extern fn av_malloc(size: usize) ?[*]u8;
 /// Prefer `free`.
 pub extern fn av_free(ptr: ?*anyopaque) void;
+/// Prefer `freep`.
+pub extern fn av_freep(ptr: ?*anyopaque) void;
 /// Prefer `Dictionary.Const.get` or `Dictionary.Mutable.get`
 pub extern fn av_dict_get(m: Dictionary.Const, key: [*:0]const u8, prev: ?*const Dictionary.Entry, flags: Dictionary.Flags) ?*const Dictionary.Entry;
 /// Prefer `Dictionary.Const.iterate` or `Dictionary.Mutable.iterate`.
@@ -201,6 +203,29 @@ pub extern fn sws_scale(c: *sws.Context, srcSlice: [*]const [*]const u8, srcStri
 /// Prefer `sws.Context.scale_frame`.
 pub extern fn sws_scale_frame(c: *sws.Context, dst: *Frame, src: *const Frame) c_int;
 
+/// Prefer `swr.Context.alloc`.
+pub extern fn swr_alloc() ?*sws.Context;
+/// Prefer `swr.Context.init`.
+pub extern fn swr_init(swr_context: *swr.Context) c_int;
+/// Prefer `swr.Context.is_initialized`.
+pub extern fn swr_is_initialized(swr_context: *swr.Context) c_int;
+/// Prefer `swr.Context.alloc_set_opts`
+pub extern fn swr_alloc_set_opts2(swr_context: *?*swr.Context, out_ch_layout: *const ChannelLayout, out_sample_fmt: SampleFormat, out_sample_rate: c_int, in_ch_layout: *const ChannelLayout, in_sample_fmt: SampleFormat, in_sample_rate: c_int, log_offset: c_int, log_ctx: ?[*]u8) c_int;
+/// Prefer `swr.Context.free`.
+pub extern fn swr_free(swsContext: *?*swr.Context) void;
+/// Prefer `swr.Context.close`
+pub extern fn swr_close(swr_context: *swr.Context) void;
+/// Prefer `swr.Context.convert`
+pub extern fn swr_convert(swr_context: *swr.Context, out: [*]const [*]u8, out_count: c_int, in: [*]const [*]const u8, in_count: c_int) c_int;
+/// Prefer `swr.Context.get_delay`
+pub extern fn swr_get_delay(swr_context: *swr.Context, base: i64) i64;
+
+pub extern fn av_samples_alloc(audio_data: [*]?[*]u8, linesize: ?[*]c_int, nb_channels: c_int, nb_samples: c_int, sample_fmt: SampleFormat, @"align": c_int) c_int;
+pub extern fn av_samples_fill_arrays(audio_data: [*]?[*]u8, linesize: ?[*]c_int, buf: [*]const u8, nb_channels: c_int, nb_samples: c_int, sample_fmt: SampleFormat, @"align": c_int) c_int;
+
+/// Prefer `Rounding.rescale_rnd`
+pub extern fn av_rescale_rnd(a: i64, b: i64, c: i64, rounding: Rounding) i64;
+
 /// Function pointer to a function to perform the transform.
 ///
 /// Using a different context than the one allocated during `av_tx_init` is not
@@ -223,6 +248,7 @@ pub fn malloc(size: usize) error{OutOfMemory}![]u8 {
 }
 
 pub const free = av_free;
+pub const freep = av_freep;
 
 /// Undefined timestamp value.
 ///
@@ -252,7 +278,7 @@ pub const LOG = enum(c_int) {
     }
 };
 
-fn wrap(averror: c_int) Error!c_uint {
+pub fn wrap(averror: c_int) Error!c_uint {
     if (averror >= 0) return @intCast(averror);
     const E = std.posix.E;
     return switch (averror) {
@@ -351,6 +377,7 @@ pub const Error = error{
     HttpNotFound,
     HttpOther4xx,
     Http5xx,
+    NotRepresentable,
 
     /// FFmpeg returned an undocumented error code.
     Unexpected,
@@ -1371,6 +1398,10 @@ pub const Packet = extern struct {
         av_packet_free(&keep_your_dirty_hands_off_my_pointers_ffmpeg);
     }
 
+    pub fn ref(dst: *Packet, src: *const Packet) !void {
+        _ = try wrap(av_packet_ref(dst, src));
+    }
+
     /// Wipe the packet.
     ///
     /// Unreference the buffer referenced by the packet and reset the
@@ -1397,6 +1428,20 @@ pub const Rational = extern struct {
         const num: f64 = @floatFromInt(a.num);
         const den: f64 = @floatFromInt(a.den);
         return num / den;
+    }
+};
+
+pub const Rounding = enum(c_int) {
+    ZERO = 0,
+    INF = 1,
+    DOWN = 2,
+    UP = 3,
+    NEAR_INF = 5,
+    PASS_MINMAX = 8192,
+    pub fn rescale_rnd(a: i64, b: i64, c: i64, rnd: Rounding) Error!i64 {
+        const result = av_rescale_rnd(a, b, c, rnd);
+        if (result == std.math.maxInt(i64)) return error.NotRepresentable;
+        return result;
     }
 };
 
@@ -3760,6 +3805,31 @@ pub const sws = struct {
         /// Scale source data from src and write the output to dst.
         pub fn scale_frame(c: *Context, dst: *Frame, src: *const Frame) Error!void {
             _ = try wrap(sws_scale_frame(c, dst, src));
+        }
+    };
+};
+
+pub const swr = struct {
+    pub const Context = opaque {
+        pub fn alloc() error{OutOfMemory}!*Context {
+            return swr_alloc() orelse error.OutOfMemory;
+        }
+        pub fn alloc_set_opts(out_ch_layout: *const ChannelLayout, out_sample_fmt: SampleFormat, out_sample_rate: c_int, in_ch_layout: *const ChannelLayout, in_sample_fmt: SampleFormat, in_sample_rate: c_int, log_offset: c_int, log_ctx: ?[*]u8) !*Context {
+            var swr_context: ?*Context = null;
+            _ = try wrap(swr_alloc_set_opts2(&swr_context, out_ch_layout, out_sample_fmt, out_sample_rate, in_ch_layout, in_sample_fmt, in_sample_rate, log_offset, log_ctx));
+            return swr_context.?;
+        }
+        pub fn init(swr_context: *Context) Error!void {
+            _ = try wrap(swr_init(swr_context));
+        }
+        pub fn free(swr_context: *Context) void {
+            swr_free(@ptrCast(@constCast(&swr_context)));
+        }
+        pub fn convert(swr_context: *Context, out: [*]const [*]u8, out_count: c_int, in: [*]const [*]const u8, in_count: c_int) !c_uint {
+            return try wrap(swr_convert(swr_context, out, out_count, in, in_count));
+        }
+        pub fn get_delay(swr_context: *Context, base: i64) i64 {
+            return swr_get_delay(swr_context, base);
         }
     };
 };
