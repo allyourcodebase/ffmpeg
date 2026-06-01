@@ -26,11 +26,12 @@
 
 #include "libavcodec/put_bits.h"
 #include "libavformat/avformat.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/avstring.h"
 #include "libavutil/file_open.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "signature.h"
 #include "signature_lookup.c"
 
@@ -385,9 +386,7 @@ static int xml_export(AVFilterContext *ctx, StreamContext *sc, const char* filen
     f = avpriv_fopen_utf8(filename, "w");
     if (!f) {
         int err = AVERROR(EINVAL);
-        char buf[128];
-        av_strerror(err, buf, sizeof(buf));
-        av_log(ctx, AV_LOG_ERROR, "cannot open xml file %s: %s\n", filename, buf);
+        av_log(ctx, AV_LOG_ERROR, "cannot open xml file %s: %s\n", filename, av_err2str(err));
         return err;
     }
 
@@ -499,9 +498,7 @@ static int binary_export(AVFilterContext *ctx, StreamContext *sc, const char* fi
     f = avpriv_fopen_utf8(filename, "wb");
     if (!f) {
         int err = AVERROR(EINVAL);
-        char buf[128];
-        av_strerror(err, buf, sizeof(buf));
-        av_log(ctx, AV_LOG_ERROR, "cannot open file %s: %s\n", filename, buf);
+        av_log(ctx, AV_LOG_ERROR, "cannot open file %s: %s\n", filename, av_err2str(err));
         av_freep(&buffer);
         return err;
     }
@@ -584,7 +581,7 @@ static int request_frame(AVFilterLink *outlink)
     StreamContext *sc, *sc2;
     MatchingInfo match;
     int i, j, ret;
-    int lookup = 1; /* indicates wheather EOF of all files is reached */
+    int lookup = 1; /* indicates whether EOF of all files is reached */
 
     /* process all inputs */
     for (i = 0; i < sic->nb_inputs; i++){
@@ -725,9 +722,11 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink       *il = ff_filter_link(inlink);
+    FilterLink       *ol = ff_filter_link(outlink);
 
     outlink->time_base = inlink->time_base;
-    outlink->frame_rate = inlink->frame_rate;
+    ol->frame_rate = il->frame_rate;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
     outlink->w = inlink->w;
     outlink->h = inlink->h;
@@ -744,15 +743,15 @@ static const AVFilterPad signature_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_signature = {
-    .name          = "signature",
-    .description   = NULL_IF_CONFIG_SMALL("Calculate the MPEG-7 video signature"),
+const FFFilter ff_vf_signature = {
+    .p.name        = "signature",
+    .p.description = NULL_IF_CONFIG_SMALL("Calculate the MPEG-7 video signature"),
+    .p.priv_class  = &signature_class,
+    .p.inputs      = NULL,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_INPUTS,
     .priv_size     = sizeof(SignatureContext),
-    .priv_class    = &signature_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_OUTPUTS(signature_outputs),
-    .inputs        = NULL,
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
 };

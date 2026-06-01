@@ -49,11 +49,10 @@
  *      even output then setting frame_rate=1/0 in practice.
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
-#include "libavutil/mathematics.h"
 #include "avfilter.h"
-#include "internal.h"
-#include "video.h"
+#include "filters.h"
 
 typedef struct DejudderContext {
     const AVClass *class;
@@ -79,12 +78,14 @@ AVFILTER_DEFINE_CLASS(dejudder);
 
 static int config_out_props(AVFilterLink *outlink)
 {
+    FilterLink     *outl = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     DejudderContext *s = ctx->priv;
     AVFilterLink *inlink = outlink->src->inputs[0];
+    FilterLink      *inl = ff_filter_link(inlink);
 
     outlink->time_base = av_mul_q(inlink->time_base, av_make_q(1, 2 * s->cycle));
-    outlink->frame_rate = av_mul_q(inlink->frame_rate, av_make_q(2 * s->cycle, 1));
+    outl->frame_rate = av_mul_q(inl->frame_rate, av_make_q(2 * s->cycle, 1));
 
     av_log(ctx, AV_LOG_VERBOSE, "cycle:%d\n", s->cycle);
 
@@ -173,11 +174,11 @@ static const AVFilterPad dejudder_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_dejudder = {
-    .name        = "dejudder",
-    .description = NULL_IF_CONFIG_SMALL("Remove judder produced by pullup."),
+const FFFilter ff_vf_dejudder = {
+    .p.name      = "dejudder",
+    .p.description= NULL_IF_CONFIG_SMALL("Remove judder produced by pullup."),
+    .p.priv_class= &dejudder_class,
     .priv_size   = sizeof(DejudderContext),
-    .priv_class  = &dejudder_class,
     FILTER_INPUTS(dejudder_inputs),
     FILTER_OUTPUTS(dejudder_outputs),
     .init        = dejudder_init,

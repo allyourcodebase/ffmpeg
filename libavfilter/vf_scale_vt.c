@@ -24,7 +24,8 @@
 #include "libavutil/hwcontext_videotoolbox.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "scale_eval.h"
 #include "video.h"
 
@@ -108,6 +109,8 @@ static av_cold int scale_vt_init(AVFilterContext *avctx)
         VTSessionSetProperty(s->transfer, kVTPixelTransferPropertyKey_DestinationYCbCrMatrix, value);
     }
 
+    VTSessionSetProperty(s->transfer, kVTPixelTransferPropertyKey_ScalingMode, kVTScalingMode_CropSourceToCleanAperture);
+
     return 0;
 }
 
@@ -131,6 +134,18 @@ static int scale_vt_filter_frame(AVFilterLink *link, AVFrame *in)
     CVPixelBufferRef src;
     CVPixelBufferRef dst;
 
+    int left;
+    int top;
+    int width;
+    int height;
+    CFNumberRef crop_width_num;
+    CFNumberRef crop_height_num;
+    CFNumberRef crop_offset_left_num;
+    CFNumberRef crop_offset_top_num;
+    const void *clean_aperture_keys[4];
+    const void *source_clean_aperture_values[4];
+    CFDictionaryRef source_clean_aperture;
+
     AVFrame *out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!out) {
         ret = AVERROR(ENOMEM);
@@ -140,6 +155,15 @@ static int scale_vt_filter_frame(AVFilterLink *link, AVFrame *in)
     ret = av_frame_copy_props(out, in);
     if (ret < 0)
         goto fail;
+
+    out->crop_left = 0;
+    out->crop_top = 0;
+    out->crop_right = 0;
+    out->crop_bottom = 0;
+    if (out->width != in->width || out->height != in->height) {
+        av_frame_side_data_remove_by_props(&out->side_data, &out->nb_side_data,
+                                           AV_SIDE_DATA_PROP_SIZE_DEPENDENT);
+    }
 
     av_reduce(&out->sample_aspect_ratio.num, &out->sample_aspect_ratio.den,
               (int64_t)in->sample_aspect_ratio.num * outlink->h * link->w,
@@ -152,9 +176,45 @@ static int scale_vt_filter_frame(AVFilterLink *link, AVFrame *in)
     if (s->colour_matrix != AVCOL_SPC_UNSPECIFIED)
         out->colorspace = s->colour_matrix;
 
+    width = (in->width - in->crop_right) - in->crop_left;
+    height = (in->height - in->crop_bottom) - in->crop_top;
+    // The crop offsets are relative to the center of the frame.
+    // the crop width and crop height are relative to the center of the crop rect, not top left as normal.
+    left = in->crop_left - in->width / 2 + width / 2;
+    top = in->crop_top - in->height / 2 + height / 2;
+    crop_width_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &width);
+    crop_height_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &height);
+    crop_offset_left_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &left);
+    crop_offset_top_num = CFNumberCreate(kCFAllocatorDefault, kCFNumberIntType, &top);
+
+    clean_aperture_keys[0] = kCVImageBufferCleanApertureWidthKey;
+    clean_aperture_keys[1] = kCVImageBufferCleanApertureHeightKey;
+    clean_aperture_keys[2] = kCVImageBufferCleanApertureHorizontalOffsetKey;
+    clean_aperture_keys[3] = kCVImageBufferCleanApertureVerticalOffsetKey;
+
+    source_clean_aperture_values[0] = crop_width_num;
+    source_clean_aperture_values[1] = crop_height_num;
+    source_clean_aperture_values[2] = crop_offset_left_num;
+    source_clean_aperture_values[3] = crop_offset_top_num;
+
+    source_clean_aperture = CFDictionaryCreate(kCFAllocatorDefault,
+                                                    clean_aperture_keys,
+                                                    source_clean_aperture_values,
+                                                    4,
+                                                    &kCFTypeDictionaryKeyCallBacks,
+                                                    &kCFTypeDictionaryValueCallBacks);
+
+    CFRelease(crop_width_num);
+    CFRelease(crop_height_num);
+    CFRelease(crop_offset_left_num);
+    CFRelease(crop_offset_top_num);
+
     src = (CVPixelBufferRef)in->data[3];
     dst = (CVPixelBufferRef)out->data[3];
+    CVBufferSetAttachment(src, kCVImageBufferCleanApertureKey,
+                           source_clean_aperture, kCVAttachmentMode_ShouldPropagate);
     ret = VTPixelTransferSessionTransferImage(s->transfer, src, dst);
+    CFRelease(source_clean_aperture);
     if (ret != noErr) {
         av_log(ctx, AV_LOG_ERROR, "transfer image failed, %d\n", ret);
         ret = AVERROR_EXTERNAL;
@@ -174,9 +234,11 @@ fail:
 static int scale_vt_config_output(AVFilterLink *outlink)
 {
     int err;
+    FilterLink       *outl = ff_filter_link(outlink);
     AVFilterContext *avctx = outlink->src;
     ScaleVtContext *s  = avctx->priv;
     AVFilterLink *inlink = outlink->src->inputs[0];
+    FilterLink        *inl = ff_filter_link(inlink);
     AVHWFramesContext *hw_frame_ctx_in;
     AVHWFramesContext *hw_frame_ctx_out;
 
@@ -185,6 +247,8 @@ static int scale_vt_config_output(AVFilterLink *outlink)
                                    &s->output_height);
     if (err < 0)
         return err;
+
+    ff_scale_adjust_dimensions(inlink, &s->output_width, &s->output_height, 0, 1, 1.f);
 
     outlink->w = s->output_width;
     outlink->h = s->output_height;
@@ -196,21 +260,22 @@ static int scale_vt_config_output(AVFilterLink *outlink)
         outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
     }
 
-    hw_frame_ctx_in = (AVHWFramesContext *)inlink->hw_frames_ctx->data;
+    hw_frame_ctx_in = (AVHWFramesContext *)inl->hw_frames_ctx->data;
 
-    av_buffer_unref(&outlink->hw_frames_ctx);
-    outlink->hw_frames_ctx = av_hwframe_ctx_alloc(hw_frame_ctx_in->device_ref);
-    hw_frame_ctx_out = (AVHWFramesContext *)outlink->hw_frames_ctx->data;
+    av_buffer_unref(&outl->hw_frames_ctx);
+    outl->hw_frames_ctx = av_hwframe_ctx_alloc(hw_frame_ctx_in->device_ref);
+    hw_frame_ctx_out = (AVHWFramesContext *)outl->hw_frames_ctx->data;
     hw_frame_ctx_out->format = AV_PIX_FMT_VIDEOTOOLBOX;
     hw_frame_ctx_out->sw_format = hw_frame_ctx_in->sw_format;
     hw_frame_ctx_out->width = outlink->w;
     hw_frame_ctx_out->height = outlink->h;
+    ((AVVTFramesContext *)hw_frame_ctx_out->hwctx)->color_range = ((AVVTFramesContext *)hw_frame_ctx_in->hwctx)->color_range;
 
     err = ff_filter_init_hw_frames(avctx, outlink, 1);
     if (err < 0)
         return err;
 
-    err = av_hwframe_ctx_init(outlink->hw_frames_ctx);
+    err = av_hwframe_ctx_init(outl->hw_frames_ctx);
     if (err < 0) {
         av_log(avctx, AV_LOG_ERROR,
                "Failed to init videotoolbox frame context, %s\n",
@@ -255,16 +320,16 @@ static const AVFilterPad scale_vt_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_scale_vt = {
-    .name           = "scale_vt",
-    .description    = NULL_IF_CONFIG_SMALL("Scale Videotoolbox frames"),
+const FFFilter ff_vf_scale_vt = {
+    .p.name         = "scale_vt",
+    .p.description  = NULL_IF_CONFIG_SMALL("Scale Videotoolbox frames"),
+    .p.priv_class   = &scale_vt_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(ScaleVtContext),
     .init           = scale_vt_init,
     .uninit         = scale_vt_uninit,
     FILTER_INPUTS(scale_vt_inputs),
     FILTER_OUTPUTS(scale_vt_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VIDEOTOOLBOX),
-    .priv_class     = &scale_vt_class,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

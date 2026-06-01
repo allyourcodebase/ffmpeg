@@ -39,6 +39,7 @@
 #include <zlib.h>
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
@@ -312,6 +313,9 @@ static int flashsv_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
     h_part   = s->image_width  % s->block_width;
     v_blocks = s->image_height / s->block_height;
     v_part   = s->image_height % s->block_height;
+
+    if (h_blocks * v_blocks * 16 > get_bits_left(&gb))
+        return AVERROR_INVALIDDATA;
 
     /* the block size could change between frames, make sure the buffer
      * is large enough, if not, get a larger one */

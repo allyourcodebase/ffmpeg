@@ -20,10 +20,11 @@
  */
 
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "framesync.h"
 
@@ -286,6 +287,8 @@ static int config_output(AVFilterLink *outlink)
     HysteresisContext *s = ctx->priv;
     AVFilterLink *base = ctx->inputs[0];
     AVFilterLink *alt = ctx->inputs[1];
+    FilterLink   *il = ff_filter_link(base);
+    FilterLink   *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -302,7 +305,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = base->w;
     outlink->h = base->h;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    outlink->frame_rate = base->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 2)) < 0)
         return ret;
@@ -362,9 +365,11 @@ static const AVFilterPad hysteresis_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_hysteresis = {
-    .name          = "hysteresis",
-    .description   = NULL_IF_CONFIG_SMALL("Grow first stream into second stream by connecting components."),
+const FFFilter ff_vf_hysteresis = {
+    .p.name        = "hysteresis",
+    .p.description = NULL_IF_CONFIG_SMALL("Grow first stream into second stream by connecting components."),
+    .p.priv_class  = &hysteresis_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .preinit       = hysteresis_framesync_preinit,
     .priv_size     = sizeof(HysteresisContext),
     .uninit        = uninit,
@@ -372,6 +377,4 @@ const AVFilter ff_vf_hysteresis = {
     FILTER_INPUTS(hysteresis_inputs),
     FILTER_OUTPUTS(hysteresis_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &hysteresis_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

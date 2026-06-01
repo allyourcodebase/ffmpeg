@@ -63,6 +63,8 @@ typedef struct DVEncContext {
     DVwork_chunk work_chunks[4 * 12 * 27];
 
     int quant_deadzone;
+
+    PixblockDSPContext pdsp;
 } DVEncContext;
 
 
@@ -70,8 +72,6 @@ static av_cold int dvvideo_encode_init(AVCodecContext *avctx)
 {
     DVEncContext *s = avctx->priv_data;
     FDCTDSPContext fdsp;
-    MECmpContext mecc;
-    PixblockDSPContext pdsp;
     int ret;
 
     s->avctx = avctx;
@@ -93,27 +93,26 @@ static av_cold int dvvideo_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
-    ret = ff_dv_init_dynamic_tables(s->work_chunks, s->sys);
-    if (ret < 0) {
-        av_log(avctx, AV_LOG_ERROR, "Error initializing work tables.\n");
-        return ret;
+    ff_dv_init_dynamic_tables(s->work_chunks, s->sys);
+
+    if (avctx->flags & AV_CODEC_FLAG_INTERLACED_DCT) {
+        MECmpContext mecc;
+        me_cmp_func ildct_cmp[6];
+
+        ff_me_cmp_init(&mecc, avctx);
+        ret = ff_set_cmp(&mecc, ildct_cmp, avctx->ildct_cmp, 0);
+        if (ret < 0)
+            return ret;
+        if (!ildct_cmp[5])
+            return AVERROR(EINVAL);
+        s->ildct_cmp = ildct_cmp[5];
     }
 
     memset(&fdsp,0, sizeof(fdsp));
-    memset(&mecc,0, sizeof(mecc));
-    memset(&pdsp,0, sizeof(pdsp));
     ff_fdctdsp_init(&fdsp, avctx);
-    ff_me_cmp_init(&mecc, avctx);
-    ff_pixblockdsp_init(&pdsp, avctx);
-    ret = ff_set_cmp(&mecc, mecc.ildct_cmp, avctx->ildct_cmp);
-    if (ret < 0)
-        return AVERROR(EINVAL);
-
-    s->get_pixels = pdsp.get_pixels;
-    s->ildct_cmp  = mecc.ildct_cmp[5];
-
     s->fdct[0]    = fdsp.fdct;
     s->fdct[1]    = fdsp.fdct248;
+    ff_pixblockdsp_init(&s->pdsp, 8);
 
 #if !CONFIG_HARDCODED_TABLES
     {
@@ -219,7 +218,7 @@ static av_always_inline PutBitContext *dv_encode_ac(EncBlockInfo *bi,
             if (bits_left) {
                 size -= bits_left;
                 put_bits(pb, bits_left, vlc >> size);
-                vlc = av_mod_uintp2(vlc, size);
+                vlc = av_zero_extend(vlc, size);
             }
             if (pb + 1 >= pb_end) {
                 bi->partial_bit_count  = size;
@@ -1201,6 +1200,14 @@ static int dvvideo_encode_frame(AVCodecContext *c, AVPacket *pkt,
     DVEncContext *s = c->priv_data;
     int ret;
 
+    if (!PIXBLOCKDSP_8BPP_GET_PIXELS_SUPPORTS_UNALIGNED &&
+        ((uintptr_t)frame->data[0] & 7 || frame->linesize[0] & 7 ||
+         (uintptr_t)frame->data[1] & 7 || frame->linesize[1] & 7 ||
+         (uintptr_t)frame->data[2] & 7 || frame->linesize[2] & 7))
+        s->get_pixels = s->pdsp.get_pixels_unaligned;
+    else
+        s->get_pixels = s->pdsp.get_pixels;
+
     if ((ret = ff_get_encode_buffer(c, pkt, s->sys->frame_size, 0)) < 0)
         return ret;
     /* Fixme: Only zero the part that is not overwritten later. */
@@ -1247,9 +1254,7 @@ const FFCodec ff_dvvideo_encoder = {
     .priv_data_size = sizeof(DVEncContext),
     .init           = dvvideo_encode_init,
     FF_CODEC_ENCODE_CB(dvvideo_encode_frame),
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_NONE
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_YUV411P, AV_PIX_FMT_YUV422P, AV_PIX_FMT_YUV420P),
+    .color_ranges   = AVCOL_RANGE_MPEG,
     .p.priv_class   = &dvvideo_encode_class,
 };

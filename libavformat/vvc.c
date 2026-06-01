@@ -21,13 +21,27 @@
  */
 
 #include "libavcodec/get_bits.h"
+#include "libavcodec/put_bits.h"
 #include "libavcodec/golomb.h"
 #include "libavcodec/vvc.h"
+#include "libavutil/avassert.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avc.h"
 #include "avio.h"
 #include "avio_internal.h"
+#include "nal.h"
 #include "vvc.h"
+
+enum {
+    OPI_INDEX,
+    VPS_INDEX,
+    SPS_INDEX,
+    PPS_INDEX,
+    SEI_PREFIX_INDEX,
+    SEI_SUFFIX_INDEX,
+    NB_ARRAYS
+};
 
 typedef struct VVCCNALUnitArray {
     uint8_t array_completeness;
@@ -64,35 +78,18 @@ typedef struct VVCDecoderConfigurationRecord {
     uint16_t max_picture_height;
     uint16_t avg_frame_rate;
     uint8_t num_of_arrays;
-    VVCCNALUnitArray *array;
+    VVCCNALUnitArray arrays[NB_ARRAYS];
 } VVCDecoderConfigurationRecord;
 
-typedef struct VVCCProfileTierLevel {
-    uint8_t profile_idc;
-    uint8_t tier_flag;
-    uint8_t general_level_idc;
-    uint8_t ptl_frame_only_constraint_flag;
-    uint8_t ptl_multilayer_enabled_flag;
-// general_constraint_info
-    uint8_t gci_present_flag;
-    uint8_t gci_general_constraints[9];
-    uint8_t gci_num_reserved_bits;
-// end general_constraint_info
-    uint8_t ptl_sublayer_level_present_flag[VVC_MAX_SUBLAYERS - 1];
-    uint8_t sublayer_level_idc[VVC_MAX_SUBLAYERS - 1];
-    uint8_t ptl_num_sub_profiles;
-    uint32_t general_sub_profile_idc[VVC_MAX_SUB_PROFILES];
-} VVCCProfileTierLevel;
-
 static void vvcc_update_ptl(VVCDecoderConfigurationRecord *vvcc,
-                            VVCCProfileTierLevel *ptl)
+                            VVCPTLRecord *ptl)
 {
     /*
      * The level indication general_level_idc must indicate a level of
      * capability equal to or greater than the highest level indicated for the
      * highest tier in all the parameter sets.
      */
-    if (vvcc->ptl.general_tier_flag < ptl->tier_flag)
+    if (vvcc->ptl.general_tier_flag < ptl->general_tier_flag)
         vvcc->ptl.general_level_idc = ptl->general_level_idc;
     else
         vvcc->ptl.general_level_idc =
@@ -103,7 +100,7 @@ static void vvcc_update_ptl(VVCDecoderConfigurationRecord *vvcc,
      * greater than the highest tier indicated in all the parameter sets.
      */
     vvcc->ptl.general_tier_flag =
-        FFMAX(vvcc->ptl.general_tier_flag, ptl->tier_flag);
+        FFMAX(vvcc->ptl.general_tier_flag, ptl->general_tier_flag);
 
     /*
      * The profile indication general_profile_idc must indicate a profile to
@@ -120,7 +117,7 @@ static void vvcc_update_ptl(VVCDecoderConfigurationRecord *vvcc,
      * Note: set the profile to the highest value for the sake of simplicity.
      */
     vvcc->ptl.general_profile_idc =
-        FFMAX(vvcc->ptl.general_profile_idc, ptl->profile_idc);
+        FFMAX(vvcc->ptl.general_profile_idc, ptl->general_profile_idc);
 
     /*
      * Each bit in flags may only be set if all
@@ -133,14 +130,13 @@ static void vvcc_update_ptl(VVCDecoderConfigurationRecord *vvcc,
     /*
      * Constraints Info
      */
-    if (ptl->gci_present_flag) {
-        vvcc->ptl.num_bytes_constraint_info = 9;
+    if (ptl->num_bytes_constraint_info) {
+        vvcc->ptl.num_bytes_constraint_info = ptl->num_bytes_constraint_info;
         memcpy(&vvcc->ptl.general_constraint_info[0],
-               &ptl->gci_general_constraints[0], sizeof(uint8_t) * 9);
-
+               &ptl->general_constraint_info[0], ptl->num_bytes_constraint_info);
     } else {
         vvcc->ptl.num_bytes_constraint_info = 1;
-        memset(&vvcc->ptl.general_constraint_info[0], 0, sizeof(uint8_t) * 9);
+        memset(&vvcc->ptl.general_constraint_info[0], 0, sizeof(vvcc->ptl.general_constraint_info));
     }
 
     /*
@@ -184,36 +180,35 @@ static void vvcc_parse_ptl(GetBitContext *gb,
                            unsigned int profileTierPresentFlag,
                            unsigned int max_sub_layers_minus1)
 {
-    VVCCProfileTierLevel general_ptl;
-    int j;
+    VVCPTLRecord general_ptl = { 0 };
 
     if (profileTierPresentFlag) {
-        general_ptl.profile_idc = get_bits(gb, 7);
-        general_ptl.tier_flag = get_bits1(gb);
+        general_ptl.general_profile_idc = get_bits(gb, 7);
+        general_ptl.general_tier_flag = get_bits1(gb);
     }
     general_ptl.general_level_idc = get_bits(gb, 8);
 
     general_ptl.ptl_frame_only_constraint_flag = get_bits1(gb);
     general_ptl.ptl_multilayer_enabled_flag = get_bits1(gb);
     if (profileTierPresentFlag) {       // parse constraint info
-        general_ptl.gci_present_flag = get_bits1(gb);
-        if (general_ptl.gci_present_flag) {
+        general_ptl.num_bytes_constraint_info = get_bits1(gb); // gci_present_flag
+        if (general_ptl.num_bytes_constraint_info) {
+            int gci_num_reserved_bits, j;
             for (j = 0; j < 8; j++)
-                general_ptl.gci_general_constraints[j] = get_bits(gb, 8);
-            general_ptl.gci_general_constraints[8] = get_bits(gb, 7);
+                general_ptl.general_constraint_info[j] = get_bits(gb, 8);
+            general_ptl.general_constraint_info[j++] = get_bits(gb, 7);
 
-            general_ptl.gci_num_reserved_bits = get_bits(gb, 8);
-            skip_bits(gb, general_ptl.gci_num_reserved_bits);
+            gci_num_reserved_bits = get_bits(gb, 8);
+            general_ptl.num_bytes_constraint_info = j;
+            skip_bits(gb, gci_num_reserved_bits);
         }
-        while (gb->index % 8 != 0)
-            skip_bits1(gb);
+        align_get_bits(gb);
     }
 
     for (int i = max_sub_layers_minus1 - 1; i >= 0; i--)
         general_ptl.ptl_sublayer_level_present_flag[i] = get_bits1(gb);
 
-    while (gb->index % 8 != 0)
-        skip_bits1(gb);
+    align_get_bits(gb);
 
     for (int i = max_sub_layers_minus1 - 1; i >= 0; i--) {
         if (general_ptl.ptl_sublayer_level_present_flag[i])
@@ -238,8 +233,6 @@ static int vvcc_parse_vps(GetBitContext *gb,
     unsigned int vps_max_sublayers_minus1;
     unsigned int vps_default_ptl_dpb_hrd_max_tid_flag;
     unsigned int vps_all_independent_layers_flag;
-    unsigned int vps_each_layer_is_an_ols_flag;
-    unsigned int vps_ols_mode_idc;
 
     unsigned int vps_pt_present_flag[VVC_MAX_PTLS];
     unsigned int vps_ptl_max_tid[VVC_MAX_PTLS];
@@ -266,6 +259,8 @@ static int vvcc_parse_vps(GetBitContext *gb,
 
     if (vps_max_layers_minus1 > 0 && vps_max_sublayers_minus1 > 0)
         vps_default_ptl_dpb_hrd_max_tid_flag = get_bits1(gb);
+    else
+        vps_default_ptl_dpb_hrd_max_tid_flag = 0;
     if (vps_max_layers_minus1 > 0)
         vps_all_independent_layers_flag = get_bits1(gb);
     else
@@ -274,10 +269,11 @@ static int vvcc_parse_vps(GetBitContext *gb,
     for (int i = 0; i <= vps_max_layers_minus1; i++) {
         skip_bits(gb, 6);    //vps_layer_id[i]
         if (i > 0 && !vps_all_independent_layers_flag) {
-            if (get_bits1(gb)) {    // vps_independent_layer_flag[i]
+            if (!get_bits1(gb)) {   // vps_independent_layer_flag[i]
                 unsigned int vps_max_tid_ref_present_flag = get_bits1(gb);
                 for (int j = 0; j < i; j++) {
-                    if (vps_max_tid_ref_present_flag && get_bits1(gb))  // vps_direct_ref_layer_flag[i][j]
+                    unsigned int vps_direct_ref_layer_flag = get_bits1(gb);
+                    if (vps_max_tid_ref_present_flag && vps_direct_ref_layer_flag)
                         skip_bits(gb, 3);                               // vps_max_tid_il_ref_pics_plus1
                 }
             }
@@ -285,11 +281,13 @@ static int vvcc_parse_vps(GetBitContext *gb,
     }
 
     if (vps_max_layers_minus1 > 0) {
+        unsigned int vps_each_layer_is_an_ols_flag;
         if (vps_all_independent_layers_flag)
             vps_each_layer_is_an_ols_flag = get_bits1(gb);
         else
             vps_each_layer_is_an_ols_flag = 0;
         if (!vps_each_layer_is_an_ols_flag) {
+            unsigned int vps_ols_mode_idc;
             if (!vps_all_independent_layers_flag)
                 vps_ols_mode_idc = get_bits(gb, 2);
             else
@@ -304,8 +302,6 @@ static int vvcc_parse_vps(GetBitContext *gb,
             }
         }
         vps_num_ptls_minus1 = get_bits(gb, 8);
-    } else {
-        vps_each_layer_is_an_ols_flag = 0;
     }
 
     for (int i = 0; i <= vps_num_ptls_minus1; i++) {
@@ -320,11 +316,11 @@ static int vvcc_parse_vps(GetBitContext *gb,
             vps_ptl_max_tid[i] = vps_max_sublayers_minus1;
     }
 
-    while (gb->index % 8 != 0)
-        skip_bits1(gb);
+    align_get_bits(gb);
 
     for (int i = 0; i <= vps_num_ptls_minus1; i++)
         vvcc_parse_ptl(gb, vvcc, vps_pt_present_flag[i], vps_ptl_max_tid[i]);
+    vvcc->ptl_present_flag = 1;
 
     /* nothing useful for vvcc past this point */
     return 0;
@@ -355,8 +351,10 @@ static int vvcc_parse_sps(GetBitContext *gb,
     vvcc->chroma_format_idc = get_bits(gb, 2);
     sps_log2_ctu_size_minus5 = get_bits(gb, 2);
 
-    if (get_bits1(gb))          // sps_ptl_dpb_hrd_params_present_flag
+    if (get_bits1(gb)) {        // sps_ptl_dpb_hrd_params_present_flag
+        vvcc->ptl_present_flag = 1;
         vvcc_parse_ptl(gb, vvcc, 1, sps_max_sublayers_minus1);
+    }
 
     skip_bits1(gb);             // sps_gdr_enabled_flag
     if (get_bits(gb, 1))        // sps_ref_pic_resampling_enabled_flag
@@ -384,6 +382,7 @@ static int vvcc_parse_sps(GetBitContext *gb,
         const int tmp_height_val  = AV_CEIL_RSHIFT(sps_pic_height_max_in_luma_samples, ctb_log2_size_y);
         const int wlen            = av_ceil_log2(tmp_width_val);
         const int hlen            = av_ceil_log2(tmp_height_val);
+        unsigned int sps_subpic_id_len;
         if (sps_num_subpics_minus1 > 0) {       // sps_num_subpics_minus1
             sps_independent_subpics_flag = get_bits1(gb);
             sps_subpic_same_size_flag = get_bits1(gb);
@@ -403,11 +402,11 @@ static int vvcc_parse_sps(GetBitContext *gb,
                 skip_bits(gb, 2);       // sps_subpic_treated_as_pic_flag && sps_loop_filter_across_subpic_enabled_flag
             }
         }
-        get_ue_golomb_long(gb); // sps_subpic_id_len_minus1
+        sps_subpic_id_len = get_ue_golomb_long(gb) + 1;
         if (get_bits1(gb)) {    // sps_subpic_id_mapping_explicitly_signalled_flag
             if (get_bits1(gb))  // sps_subpic_id_mapping_present_flag
                 for (int i = 0; i <= sps_num_subpics_minus1; i++) {
-                    skip_bits1(gb);     // sps_subpic_id[i]
+                    skip_bits_long(gb, sps_subpic_id_len); // sps_subpic_id[i]
                 }
         }
     }
@@ -444,32 +443,11 @@ static void nal_unit_parse_header(GetBitContext *gb, uint8_t *nal_type)
 
 static int vvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
                                    uint8_t nal_type, int ps_array_completeness,
-                                   VVCDecoderConfigurationRecord *vvcc)
+                                   VVCCNALUnitArray *array)
 {
     int ret;
-    uint8_t index;
     uint16_t num_nalus;
-    VVCCNALUnitArray *array;
 
-    for (index = 0; index < vvcc->num_of_arrays; index++)
-        if (vvcc->array[index].NAL_unit_type == nal_type)
-            break;
-
-    if (index >= vvcc->num_of_arrays) {
-        uint8_t i;
-
-        ret =
-            av_reallocp_array(&vvcc->array, index + 1,
-                              sizeof(VVCCNALUnitArray));
-        if (ret < 0)
-            return ret;
-
-        for (i = vvcc->num_of_arrays; i <= index; i++)
-            memset(&vvcc->array[i], 0, sizeof(VVCCNALUnitArray));
-        vvcc->num_of_arrays = index + 1;
-    }
-
-    array = &vvcc->array[index];
     num_nalus = array->num_nalus;
 
     ret = av_reallocp_array(&array->nal_unit, num_nalus + 1, sizeof(uint8_t *));
@@ -516,7 +494,8 @@ static int vvcc_array_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
 
 static int vvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
                              int ps_array_completeness,
-                             VVCDecoderConfigurationRecord *vvcc)
+                             VVCDecoderConfigurationRecord *vvcc,
+                             unsigned array_idx)
 {
     int ret = 0;
     GetBitContext gbc;
@@ -541,33 +520,25 @@ static int vvcc_add_nal_unit(uint8_t *nal_buf, uint32_t nal_size,
      * vvcc. Perhaps the SEI playload type should be checked
      * and non-declarative SEI messages discarded?
      */
-    switch (nal_type) {
-    case VVC_OPI_NUT:
-    case VVC_VPS_NUT:
-    case VVC_SPS_NUT:
-    case VVC_PPS_NUT:
-    case VVC_PREFIX_SEI_NUT:
-    case VVC_SUFFIX_SEI_NUT:
-        ret = vvcc_array_add_nal_unit(nal_buf, nal_size, nal_type,
-                                      ps_array_completeness, vvcc);
-        if (ret < 0)
-            goto end;
-        else if (nal_type == VVC_VPS_NUT)
-            ret = vvcc_parse_vps(&gbc, vvcc);
-        else if (nal_type == VVC_SPS_NUT)
-            ret = vvcc_parse_sps(&gbc, vvcc);
-        else if (nal_type == VVC_PPS_NUT)
-            ret = vvcc_parse_pps(&gbc, vvcc);
-        else if (nal_type == VVC_OPI_NUT) {
-            // not yet supported
-        }
-        if (ret < 0)
-            goto end;
-        break;
-    default:
-        ret = AVERROR_INVALIDDATA;
+    ret = vvcc_array_add_nal_unit(nal_buf, nal_size, nal_type,
+                                  ps_array_completeness,
+                                  &vvcc->arrays[array_idx]);
+    if (ret < 0)
         goto end;
+    if (vvcc->arrays[array_idx].num_nalus == 1)
+        vvcc->num_of_arrays++;
+
+    if (nal_type == VVC_VPS_NUT)
+        ret = vvcc_parse_vps(&gbc, vvcc);
+    else if (nal_type == VVC_SPS_NUT)
+        ret = vvcc_parse_sps(&gbc, vvcc);
+    else if (nal_type == VVC_PPS_NUT)
+        ret = vvcc_parse_pps(&gbc, vvcc);
+    else if (nal_type == VVC_OPI_NUT) {
+        // not yet supported
     }
+    if (ret < 0)
+        goto end;
 
   end:
     av_free(rbsp_buf);
@@ -578,31 +549,26 @@ static void vvcc_init(VVCDecoderConfigurationRecord *vvcc)
 {
     memset(vvcc, 0, sizeof(VVCDecoderConfigurationRecord));
     vvcc->lengthSizeMinusOne = 3;       // 4 bytes
-
-    vvcc->ptl.num_bytes_constraint_info = 1;
-
-    vvcc->ptl_present_flag = 1;
+    vvcc->ptl.ptl_frame_only_constraint_flag =
+    vvcc->ptl.ptl_multilayer_enabled_flag = 1;
 }
 
 static void vvcc_close(VVCDecoderConfigurationRecord *vvcc)
 {
-    uint8_t i;
+    for (unsigned i = 0; i < FF_ARRAY_ELEMS(vvcc->arrays); i++) {
+        VVCCNALUnitArray *const array = &vvcc->arrays[i];
 
-    for (i = 0; i < vvcc->num_of_arrays; i++) {
-        vvcc->array[i].num_nalus = 0;
-        av_freep(&vvcc->array[i].nal_unit);
-        av_freep(&vvcc->array[i].nal_unit_length);
+        array->num_nalus = 0;
+        av_freep(&array->nal_unit);
+        av_freep(&array->nal_unit_length);
     }
 
     vvcc->num_of_arrays = 0;
-    av_freep(&vvcc->array);
 }
 
 static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
 {
-    uint8_t i;
-    uint16_t j, vps_count = 0, sps_count = 0, pps_count = 0;
-    unsigned char *buf = NULL;
+    uint16_t vps_count = 0, sps_count = 0, pps_count = 0;
     /*
      * It's unclear how to properly compute these fields, so
      * let's always set them to values meaning 'unspecified'.
@@ -649,18 +615,18 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
     av_log(NULL, AV_LOG_TRACE,
            "ptl_multilayer_enabled_flag:         %" PRIu8 "\n",
            vvcc->ptl.ptl_multilayer_enabled_flag);
-    for (i = 0; i < vvcc->ptl.num_bytes_constraint_info; i++) {
+    for (int i = 0; i < vvcc->ptl.num_bytes_constraint_info; i++) {
         av_log(NULL, AV_LOG_TRACE,
                "general_constraint_info[%d]:          %" PRIu8 "\n", i,
                vvcc->ptl.general_constraint_info[i]);
     }
 
-    for (i = 0; i < vvcc->num_sublayers - 1; i++) {
+    for (int i = 0; i < vvcc->num_sublayers - 1; i++) {
         av_log(NULL, AV_LOG_TRACE,
-               "ptl_sublayer_level_present_flag[%" PRIu8 "]:  %" PRIu8 "\n", i,
+               "ptl_sublayer_level_present_flag[%d]:  %" PRIu8 "\n", i,
                vvcc->ptl.ptl_sublayer_level_present_flag[i]);
         av_log(NULL, AV_LOG_TRACE,
-               "sublayer_level_idc[%" PRIu8 "]: %" PRIu8 "\n", i,
+               "sublayer_level_idc[%d]: %" PRIu8 "\n", i,
                vvcc->ptl.sublayer_level_idc[i]);
     }
 
@@ -668,9 +634,9 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
            "num_sub_profiles:                    %" PRIu8 "\n",
            vvcc->ptl.ptl_num_sub_profiles);
 
-    for (i = 0; i < vvcc->ptl.ptl_num_sub_profiles; i++) {
+    for (unsigned i = 0; i < vvcc->ptl.ptl_num_sub_profiles; i++) {
         av_log(NULL, AV_LOG_TRACE,
-               "general_sub_profile_idc[%" PRIu8 "]:         %" PRIx32 "\n", i,
+               "general_sub_profile_idc[%u]:         %" PRIx32 "\n", i,
                vvcc->ptl.general_sub_profile_idc[i]);
     }
 
@@ -687,40 +653,33 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
     av_log(NULL, AV_LOG_TRACE,
            "num_of_arrays:                       %" PRIu8 "\n",
            vvcc->num_of_arrays);
-    for (i = 0; i < vvcc->num_of_arrays; i++) {
+    for (unsigned i = 0; i < FF_ARRAY_ELEMS(vvcc->arrays); i++) {
+        const VVCCNALUnitArray *const array = &vvcc->arrays[i];
+
+        if (array->num_nalus == 0)
+            continue;
+
         av_log(NULL, AV_LOG_TRACE,
-               "array_completeness[%" PRIu8 "]:               %" PRIu8 "\n", i,
-               vvcc->array[i].array_completeness);
+               "array_completeness[%u]:               %" PRIu8 "\n", i,
+               array->array_completeness);
         av_log(NULL, AV_LOG_TRACE,
-               "NAL_unit_type[%" PRIu8 "]:                    %" PRIu8 "\n", i,
-               vvcc->array[i].NAL_unit_type);
+               "NAL_unit_type[%u]:                    %" PRIu8 "\n", i,
+               array->NAL_unit_type);
         av_log(NULL, AV_LOG_TRACE,
-               "num_nalus[%" PRIu8 "]:                        %" PRIu16 "\n", i,
-               vvcc->array[i].num_nalus);
-        for (j = 0; j < vvcc->array[i].num_nalus; j++)
+               "num_nalus[%u]:                        %" PRIu16 "\n", i,
+               array->num_nalus);
+        for (unsigned j = 0; j < array->num_nalus; j++)
             av_log(NULL, AV_LOG_TRACE,
-                   "nal_unit_length[%" PRIu8 "][%" PRIu16 "]:               %"
-                   PRIu16 "\n", i, j, vvcc->array[i].nal_unit_length[j]);
+                   "nal_unit_length[%u][%u]:               %"
+                   PRIu16 "\n", i, j, array->nal_unit_length[j]);
     }
 
     /*
-     * We need at least one of each: VPS and SPS.
+     * We need at least one of each: SPS and PPS.
      */
-    for (i = 0; i < vvcc->num_of_arrays; i++)
-        switch (vvcc->array[i].NAL_unit_type) {
-        case VVC_VPS_NUT:
-            vps_count += vvcc->array[i].num_nalus;
-            break;
-        case VVC_SPS_NUT:
-            sps_count += vvcc->array[i].num_nalus;
-            break;
-        case VVC_PPS_NUT:
-            pps_count += vvcc->array[i].num_nalus;
-            break;
-        default:
-            break;
-        }
-
+    vps_count = vvcc->arrays[VPS_INDEX].num_nalus;
+    sps_count = vvcc->arrays[SPS_INDEX].num_nalus;
+    pps_count = vvcc->arrays[PPS_INDEX].num_nalus;
     if (vps_count > VVC_MAX_VPS_COUNT)
         return AVERROR_INVALIDDATA;
     if (!sps_count || sps_count > VVC_MAX_SPS_COUNT)
@@ -734,6 +693,10 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
     avio_w8(pb, vvcc->lengthSizeMinusOne << 1 | vvcc->ptl_present_flag | 0xf8);
 
     if (vvcc->ptl_present_flag) {
+        uint8_t buf[64];
+        PutBitContext pbc;
+
+        init_put_bits(&pbc, buf, sizeof(buf));
         /*
          * unsigned int(9) ols_idx;
          * unsigned int(3) num_sublayers;
@@ -765,15 +728,14 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
          * unsigned int (1) ptl_frame_only_constraint_flag
          * unsigned int (1) ptl_multilayer_enabled_flag
          * unsigned int (8*num_bytes_constraint_info -2) general_constraint_info */
-        buf =
-            (unsigned char *) malloc(sizeof(unsigned char) *
-                                     vvcc->ptl.num_bytes_constraint_info);
-        *buf = vvcc->ptl.ptl_frame_only_constraint_flag << vvcc->ptl.
-            num_bytes_constraint_info * 8 - 1 | vvcc->ptl.
-            ptl_multilayer_enabled_flag << vvcc->ptl.num_bytes_constraint_info *
-            8 - 2 | *vvcc->ptl.general_constraint_info >> 2;
-        avio_write(pb, buf, vvcc->ptl.num_bytes_constraint_info);
-        free(buf);
+        put_bits(&pbc, 1, vvcc->ptl.ptl_frame_only_constraint_flag);
+        put_bits(&pbc, 1, vvcc->ptl.ptl_multilayer_enabled_flag);
+        av_assert0(vvcc->ptl.num_bytes_constraint_info);
+        for (int i = 0; i < vvcc->ptl.num_bytes_constraint_info - 1; i++)
+            put_bits(&pbc, 8, vvcc->ptl.general_constraint_info[i]);
+        put_bits(&pbc, 6, vvcc->ptl.general_constraint_info[vvcc->ptl.num_bytes_constraint_info - 1] & 0x3f);
+        flush_put_bits(&pbc);
+        avio_write(pb, buf, put_bytes_output(&pbc));
 
         if (vvcc->num_sublayers > 1) {
             uint8_t ptl_sublayer_level_present_flags = 0;
@@ -816,25 +778,29 @@ static int vvcc_write(AVIOContext *pb, VVCDecoderConfigurationRecord *vvcc)
     /* unsigned int(8) num_of_arrays; */
     avio_w8(pb, vvcc->num_of_arrays);
 
-    for (i = 0; i < vvcc->num_of_arrays; i++) {
+    for (unsigned i = 0; i < FF_ARRAY_ELEMS(vvcc->arrays); i++) {
+        const VVCCNALUnitArray *const array = &vvcc->arrays[i];
+
+        if (!array->num_nalus)
+            continue;
         /*
          * bit(1) array_completeness;
          * unsigned int(2) reserved = 0;
          * unsigned int(5) NAL_unit_type;
          */
-        avio_w8(pb, vvcc->array[i].array_completeness << 7 |
-                vvcc->array[i].NAL_unit_type & 0x1f);
+        avio_w8(pb, array->array_completeness << 7 |
+                array->NAL_unit_type & 0x1f);
         /* unsigned int(16) num_nalus; */
-        if (vvcc->array[i].NAL_unit_type != VVC_DCI_NUT &&
-            vvcc->array[i].NAL_unit_type != VVC_OPI_NUT)
-            avio_wb16(pb, vvcc->array[i].num_nalus);
-        for (j = 0; j < vvcc->array[i].num_nalus; j++) {
+        if (array->NAL_unit_type != VVC_DCI_NUT &&
+            array->NAL_unit_type != VVC_OPI_NUT)
+            avio_wb16(pb, array->num_nalus);
+        for (int j = 0; j < array->num_nalus; j++) {
             /* unsigned int(16) nal_unit_length; */
-            avio_wb16(pb, vvcc->array[i].nal_unit_length[j]);
+            avio_wb16(pb, array->nal_unit_length[j]);
 
             /* bit(8*nal_unit_length) nal_unit; */
-            avio_write(pb, vvcc->array[i].nal_unit[j],
-                       vvcc->array[i].nal_unit_length[j]);
+            avio_write(pb, array->nal_unit[j],
+                       array->nal_unit_length[j]);
         }
     }
 
@@ -848,11 +814,11 @@ int ff_vvc_annexb2mp4(AVIOContext *pb, const uint8_t *buf_in,
     uint8_t *buf, *end, *start = NULL;
 
     if (!filter_ps) {
-        ret = ff_avc_parse_nal_units(pb, buf_in, size);
+        ret = ff_nal_parse_units(pb, buf_in, size);
         goto end;
     }
 
-    ret = ff_avc_parse_nal_units_buf(buf_in, &start, &size);
+    ret = ff_nal_parse_units_buf(buf_in, &start, &size);
     if (ret < 0)
         goto end;
 
@@ -929,7 +895,7 @@ int ff_isom_write_vvcc(AVIOContext *pb, const uint8_t *data,
         return AVERROR_INVALIDDATA;
     }
 
-    ret = ff_avc_parse_nal_units_buf(data, &start, &size);
+    ret = ff_nal_parse_units_buf(data, &start, &size);
     if (ret < 0)
         return ret;
 
@@ -944,19 +910,18 @@ int ff_isom_write_vvcc(AVIOContext *pb, const uint8_t *data,
 
         buf += 4;
 
-        switch (type) {
-        case VVC_OPI_NUT:
-        case VVC_VPS_NUT:
-        case VVC_SPS_NUT:
-        case VVC_PPS_NUT:
-        case VVC_PREFIX_SEI_NUT:
-        case VVC_SUFFIX_SEI_NUT:
-            ret = vvcc_add_nal_unit(buf, len, ps_array_completeness, &vvcc);
-            if (ret < 0)
-                goto end;
-            break;
-        default:
-            break;
+        for (unsigned i = 0; i < FF_ARRAY_ELEMS(vvcc.arrays); i++) {
+            static const uint8_t array_idx_to_type[] =
+                { VVC_OPI_NUT, VVC_VPS_NUT, VVC_SPS_NUT,
+                  VVC_PPS_NUT, VVC_PREFIX_SEI_NUT, VVC_SUFFIX_SEI_NUT };
+
+            if (type == array_idx_to_type[i]) {
+                ret = vvcc_add_nal_unit(buf, len, ps_array_completeness,
+                                        &vvcc, i);
+                if (ret < 0)
+                    goto end;
+                break;
+            }
         }
 
         buf += len;

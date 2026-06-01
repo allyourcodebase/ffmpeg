@@ -24,23 +24,15 @@
  */
 
 #include "libavutil/internal.h"
-#include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 typedef struct FlipContext {
-    const AVClass *class;
     int vsub;   ///< vertical chroma subsampling
     int bayer;
 } FlipContext;
-
-static const AVOption vflip_options[] = {
-    { NULL }
-};
-
-AVFILTER_DEFINE_CLASS(vflip);
 
 static int config_input(AVFilterLink *link)
 {
@@ -135,12 +127,11 @@ static const AVFilterPad avfilter_vf_vflip_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_vflip = {
-    .name        = "vflip",
-    .description = NULL_IF_CONFIG_SMALL("Flip the input video vertically."),
+const FFFilter ff_vf_vflip = {
+    .p.name        = "vflip",
+    .p.description = NULL_IF_CONFIG_SMALL("Flip the input video vertically."),
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size   = sizeof(FlipContext),
-    .priv_class  = &vflip_class,
     FILTER_INPUTS(avfilter_vf_vflip_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

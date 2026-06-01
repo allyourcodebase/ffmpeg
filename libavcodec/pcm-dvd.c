@@ -157,7 +157,7 @@ static void *pcm_dvd_decode_samples(AVCodecContext *avctx, const uint8_t *src,
     switch (avctx->bits_per_coded_sample) {
     case 16: {
 #if HAVE_BIGENDIAN
-        bytestream2_get_buffer(&gb, dst16, blocks * s->block_size);
+        bytestream2_get_buffer(&gb, (uint8_t*)dst16, blocks * s->block_size);
         dst16 += blocks * s->block_size / 2;
 #else
         int samples = blocks * avctx->ch_layout.nb_channels;
@@ -305,7 +305,5 @@ const FFCodec ff_pcm_dvd_decoder = {
     FF_CODEC_DECODE_CB(pcm_dvd_decode_frame),
     .p.capabilities = AV_CODEC_CAP_CHANNEL_CONF |
                       AV_CODEC_CAP_DR1,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) {
-        AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE
-    },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32),
 };

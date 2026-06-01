@@ -31,6 +31,7 @@
 #define UNCHECKED_BITSTREAM_READER 1
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "avcodec.h"
 #include "bswapdsp.h"
@@ -401,7 +402,7 @@ static void restore_median_planar(UtvideoContext *c, uint8_t *src, ptrdiff_t str
         // second line - first element has top prediction, the rest uses median
         C        = bsrc[-stride];
         bsrc[0] += C;
-        A        = bsrc[0];
+        A = B    = bsrc[0];
         for (i = 1; i < FFMIN(width, 16); i++) { /* scalar loop (DSP need align 16) */
             B        = bsrc[i - stride];
             bsrc[i] += mid_pred(A, B, (uint8_t)(A + B - C));
@@ -456,7 +457,7 @@ static void restore_median_planar_il(UtvideoContext *c, uint8_t *src, ptrdiff_t 
         // second line - first element has top prediction, the rest uses median
         C        = bsrc[-stride2];
         bsrc[0] += C;
-        A        = bsrc[0];
+        A = B    = bsrc[0];
         for (i = 1; i < FFMIN(width, 16); i++) { /* scalar loop (DSP need align 16) */
             B        = bsrc[i - stride2];
             bsrc[i] += mid_pred(A, B, (uint8_t)(A + B - C));
@@ -584,7 +585,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     int buf_size = avpkt->size;
     UtvideoContext *c = avctx->priv_data;
     int i, j;
-    const uint8_t *plane_start[5];
+    const uint8_t *plane_start[5] = {NULL};
     int plane_size, max_slice_size = 0, slice_start, slice_end, slice_size;
     int ret;
     GetByteContext gb;
@@ -889,8 +890,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         break;
     }
 
-    frame->flags |= AV_FRAME_FLAG_KEY;
-    frame->pict_type = AV_PICTURE_TYPE_I;
     if (c->interlaced)
         frame->flags |= AV_FRAME_FLAG_INTERLACED;
 

@@ -35,6 +35,7 @@ static VASurfaceID vaapi_vp9_surface_id(const VP9Frame *vf)
 }
 
 static int vaapi_vp9_start_frame(AVCodecContext          *avctx,
+                                 av_unused const AVBufferRef *buffer_ref,
                                  av_unused const uint8_t *buffer,
                                  av_unused uint32_t       size)
 {
@@ -100,7 +101,7 @@ static int vaapi_vp9_start_frame(AVCodecContext          *avctx,
     }
 
     for (i = 0; i < 8; i++) {
-        if (h->refs[i].f->buf[0])
+        if (h->refs[i].f)
             pic_param.reference_frames[i] = ff_vaapi_get_surface_id(h->refs[i].f);
         else
             pic_param.reference_frames[i] = VA_INVALID_ID;
@@ -158,7 +159,7 @@ static int vaapi_vp9_decode_slice(AVCodecContext *avctx,
     }
 
     err = ff_vaapi_decode_make_slice_buffer(avctx, pic,
-                                            &slice_param, sizeof(slice_param),
+                                            &slice_param, 1, sizeof(slice_param),
                                             buffer, size);
     if (err) {
         ff_vaapi_decode_cancel(avctx, pic);

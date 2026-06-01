@@ -21,13 +21,13 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #include "audio.h"
 #include "avfilter.h"
 #include "formats.h"
 #include "filters.h"
-#include "internal.h"
 
 enum OutModes {
     IN_MODE,
@@ -95,9 +95,11 @@ static const AVOption aap_options[] = {
 
 AVFILTER_DEFINE_CLASS(aap);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    AudioAPContext *s = ctx->priv;
+    const AudioAPContext *s = ctx->priv;
     static const enum AVSampleFormat sample_fmts[3][3] = {
         { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP, AV_SAMPLE_FMT_NONE },
         { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
@@ -105,13 +107,11 @@ static int query_formats(AVFilterContext *ctx)
     };
     int ret;
 
-    if ((ret = ff_set_common_all_channel_counts(ctx)) < 0)
+    if ((ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out,
+                                                sample_fmts[s->precision])) < 0)
         return ret;
 
-    if ((ret = ff_set_common_formats_from_list(ctx, sample_fmts[s->precision])) < 0)
-        return ret;
-
-    return ff_set_common_all_samplerates(ctx);
+    return 0;
 }
 
 static int activate(AVFilterContext *ctx)
@@ -315,18 +315,18 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_af_aap = {
-    .name           = "aap",
-    .description    = NULL_IF_CONFIG_SMALL("Apply Affine Projection algorithm to first audio stream."),
+const FFFilter ff_af_aap = {
+    .p.name         = "aap",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply Affine Projection algorithm to first audio stream."),
+    .p.priv_class   = &aap_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                      AVFILTER_FLAG_SLICE_THREADS,
     .priv_size      = sizeof(AudioAPContext),
-    .priv_class     = &aap_class,
     .init           = init,
     .uninit         = uninit,
     .activate       = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                      AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = ff_filter_process_command,
 };

@@ -20,8 +20,10 @@
 
 #include <float.h>
 
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "avfilter.h"
@@ -353,8 +355,9 @@ static void process_frame(AVFilterContext *ctx,
                           double *prior, double *prior_band_excit, int track_noise)
 {
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink      *outl = ff_filter_link(outlink);
     const double *abs_var = dnch->abs_var;
-    const double ratio = outlink->frame_count_out ? s->ratio : 1.0;
+    const double ratio = outl->frame_count_out ? s->ratio : 1.0;
     const double rratio = 1. - ratio;
     const int *bin2band = s->bin2band;
     double *noisy_data = dnch->noisy_data;
@@ -375,6 +378,8 @@ static void process_frame(AVFilterContext *ctx,
         case AV_SAMPLE_FMT_DBLP:
             noisy_data[i] = mag = hypot(fft_data_dbl[i].re, fft_data_dbl[i].im);
             break;
+        default:
+            av_assert0(0);
         }
 
         power = mag * mag;
@@ -969,6 +974,8 @@ static void sample_noise_block(AudioFFTDeNoiseContext *s,
             mag2 = fft_out_dbl[n].re * fft_out_dbl[n].re +
                    fft_out_dbl[n].im * fft_out_dbl[n].im;
             break;
+        default:
+            av_assert2(0);
         }
 
         mag2 = fmax(mag2, s->sample_floor);
@@ -1356,17 +1363,17 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_afftdn = {
-    .name            = "afftdn",
-    .description     = NULL_IF_CONFIG_SMALL("Denoise audio samples using FFT."),
+const FFFilter ff_af_afftdn = {
+    .p.name          = "afftdn",
+    .p.description   = NULL_IF_CONFIG_SMALL("Denoise audio samples using FFT."),
+    .p.priv_class    = &afftdn_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                       AVFILTER_FLAG_SLICE_THREADS,
     .priv_size       = sizeof(AudioFFTDeNoiseContext),
-    .priv_class      = &afftdn_class,
     .activate        = activate,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP),
     .process_command = process_command,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                       AVFILTER_FLAG_SLICE_THREADS,
 };

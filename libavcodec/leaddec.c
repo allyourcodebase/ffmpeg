@@ -30,6 +30,7 @@
 #include "jpegquanttables.h"
 #include "jpegtables.h"
 #include "leaddata.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/thread.h"
 
@@ -156,10 +157,15 @@ static int lead_decode_frame(AVCodecContext *avctx, AVFrame * frame,
         zero = 1;
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
         break;
+    case 0x6:
     case 0x8000:
         yuv20p_half = 1;
         // fall-through
     case 0x1000:
+        avctx->pix_fmt = AV_PIX_FMT_YUV420P;
+        break;
+    case 0x1006:
+        fields = 2;
         avctx->pix_fmt = AV_PIX_FMT_YUV420P;
         break;
     case 0x2000:
@@ -181,9 +187,6 @@ static int lead_decode_frame(AVCodecContext *avctx, AVFrame * frame,
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    frame->flags |= AV_FRAME_FLAG_KEY;
-    frame->pict_type = AV_PICTURE_TYPE_I;
-
     av_fast_padded_malloc(&s->bitstream_buf, &s->bitstream_buf_size, avpkt->size - 8);
     if (!s->bitstream_buf)
         return AVERROR(ENOMEM);
@@ -196,7 +199,9 @@ static int lead_decode_frame(AVCodecContext *avctx, AVFrame * frame,
             i++;
     }
 
-    init_get_bits8(&gb, s->bitstream_buf, size);
+    ret = init_get_bits8(&gb, s->bitstream_buf, size);
+    if (ret < 0)
+        return ret;
 
     if (avctx->pix_fmt == AV_PIX_FMT_YUV420P && zero) {
         for (int mb_y = 0; mb_y < avctx->height / 8; mb_y++)
@@ -236,7 +241,8 @@ static int lead_decode_frame(AVCodecContext *avctx, AVFrame * frame,
                         return ret;
                 }
     } else if (avctx->pix_fmt == AV_PIX_FMT_YUV420P) {
-        for (int mb_y = 0; mb_y < (avctx->height + 15) / 16; mb_y++)
+        for (int f = 0; f < fields; f++)
+        for (int mb_y = 0; mb_y < (avctx->height + 15) / 16 / fields; mb_y++)
             for (int mb_x = 0; mb_x < (avctx->width + 15) / 16; mb_x++)
                 for (int b = 0; b < (yuv20p_half ? 4 : 6); b++) {
                     int luma_block = yuv20p_half ? 2 : 4;
@@ -257,8 +263,8 @@ static int lead_decode_frame(AVCodecContext *avctx, AVFrame * frame,
 
                     ret = decode_block(s, &gb, dc_vlc, dc_bits, ac_vlc, ac_bits,
                         dc_pred + plane, dequant[!(b < 4)],
-                        frame->data[plane] + y*frame->linesize[plane] + x,
-                        (yuv20p_half && b < 2 ? 2 : 1) * frame->linesize[plane]);
+                        frame->data[plane] + (f + y*fields)*frame->linesize[plane] + x,
+                        (yuv20p_half && b < 2 ? 2 : 1) * fields * frame->linesize[plane]);
                     if (ret < 0)
                         return ret;
 

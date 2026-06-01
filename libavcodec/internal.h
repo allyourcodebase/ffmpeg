@@ -54,12 +54,21 @@ typedef struct AVCodecInternal {
     int is_copy;
 
     /**
+     * This field is set to 1 when frame threading is being used and the parent
+     * AVCodecContext of this AVCodecInternal is a worker-thread context (i.e.
+     * one of those actually doing the decoding), 0 otherwise.
+     */
+    int is_frame_mt;
+
+    /**
      * Audio encoders can set this flag during init to indicate that they
      * want the small last frame to be padded to a multiple of pad_samples.
      */
     int pad_samples;
 
     struct FramePool *pool;
+
+    struct AVRefStructPool *progress_frame_pool;
 
     void *thread_ctx;
 
@@ -121,7 +130,11 @@ typedef struct AVCodecInternal {
     void *hwaccel_priv_data;
 
     /**
-     * checks API usage: after codec draining, flush is required to resume operation
+     * decoding: AVERROR_EOF has been returned from ff_decode_get_packet(); must
+     *           not be used by decoders that use the decode() callback, as they
+     *           do not call ff_decode_get_packet() directly.
+     *
+     * encoding: a flush frame has been submitted to avcodec_send_frame().
      */
     int draining;
 
@@ -131,15 +144,6 @@ typedef struct AVCodecInternal {
     AVPacket *buffer_pkt;
     AVFrame *buffer_frame;
     int draining_done;
-
-#if FF_API_DROPCHANGED
-    /* used when avctx flag AV_CODEC_FLAG_DROPCHANGED is set */
-    int changed_frames_dropped;
-    int initial_format;
-    int initial_width, initial_height;
-    int initial_sample_rate;
-    AVChannelLayout initial_ch_layout;
-#endif
 
 #if CONFIG_LCMS2
     FFIccContext icc; /* used to read and write embedded ICC profiles */

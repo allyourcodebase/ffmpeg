@@ -18,14 +18,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
 #define BITSTREAM_READER_LE
 #include "get_bits.h"
-#include "bytestream.h"
 
 typedef struct BitCount {
     uint8_t bit;
@@ -428,11 +427,7 @@ const FFCodec ff_bonk_decoder = {
     FF_CODEC_DECODE_CB(bonk_decode),
     .close            = bonk_close,
     .p.capabilities   = AV_CODEC_CAP_DELAY |
-#if FF_API_SUBFRAMES
-                        AV_CODEC_CAP_SUBFRAMES |
-#endif
                         AV_CODEC_CAP_DR1,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
-    .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P,
-                                                        AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P),
 };

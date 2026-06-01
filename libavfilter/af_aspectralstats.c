@@ -21,12 +21,12 @@
 #include <float.h>
 #include <math.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 #include "window_func.h"
 
 #define MEASURE_ALL       UINT_MAX
@@ -608,15 +608,15 @@ static const AVFilterPad aspectralstats_outputs[] = {
     },
 };
 
-const AVFilter ff_af_aspectralstats = {
-    .name          = "aspectralstats",
-    .description   = NULL_IF_CONFIG_SMALL("Show frequency domain statistics about audio frames."),
+const FFFilter ff_af_aspectralstats = {
+    .p.name        = "aspectralstats",
+    .p.description = NULL_IF_CONFIG_SMALL("Show frequency domain statistics about audio frames."),
+    .p.priv_class  = &aspectralstats_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(AudioSpectralStatsContext),
-    .priv_class    = &aspectralstats_class,
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(aspectralstats_outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

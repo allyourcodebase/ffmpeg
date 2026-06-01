@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "framesync.h"
 
@@ -164,6 +164,8 @@ static int config_output(AVFilterLink *outlink)
     MultiplyContext *s = ctx->priv;
     AVFilterLink *source = ctx->inputs[0];
     AVFilterLink *ref = ctx->inputs[1];
+    FilterLink *il = ff_filter_link(source);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -179,7 +181,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = source->w;
     outlink->h = source->h;
     outlink->sample_aspect_ratio = source->sample_aspect_ratio;
-    outlink->frame_rate = source->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 2)) < 0)
         return ret;
@@ -237,16 +239,16 @@ static const AVFilterPad multiply_outputs[] = {
 
 AVFILTER_DEFINE_CLASS(multiply);
 
-const AVFilter ff_vf_multiply = {
-    .name          = "multiply",
-    .description   = NULL_IF_CONFIG_SMALL("Multiply first video stream with second video stream."),
-    .priv_class    = &multiply_class,
+const FFFilter ff_vf_multiply = {
+    .p.name        = "multiply",
+    .p.description = NULL_IF_CONFIG_SMALL("Multiply first video stream with second video stream."),
+    .p.priv_class  = &multiply_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MultiplyContext),
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(multiply_inputs),
     FILTER_OUTPUTS(multiply_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

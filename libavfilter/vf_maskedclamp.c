@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "framesync.h"
 #include "maskedclamp.h"
@@ -222,6 +222,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *base = ctx->inputs[0];
     AVFilterLink *dark = ctx->inputs[1];
     AVFilterLink *bright = ctx->inputs[2];
+    FilterLink *il = ff_filter_link(base);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -240,7 +242,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = base->w;
     outlink->h = base->h;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    outlink->frame_rate = base->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 3)) < 0)
         return ret;
@@ -304,16 +306,17 @@ static const AVFilterPad maskedclamp_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_maskedclamp = {
-    .name          = "maskedclamp",
-    .description   = NULL_IF_CONFIG_SMALL("Clamp first stream with second stream and third stream."),
+const FFFilter ff_vf_maskedclamp = {
+    .p.name        = "maskedclamp",
+    .p.description = NULL_IF_CONFIG_SMALL("Clamp first stream with second stream and third stream."),
+    .p.priv_class  = &maskedclamp_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MaskedClampContext),
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(maskedclamp_inputs),
     FILTER_OUTPUTS(maskedclamp_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &maskedclamp_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

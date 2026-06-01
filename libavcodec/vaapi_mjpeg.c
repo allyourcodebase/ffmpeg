@@ -24,6 +24,7 @@
 #include "mjpegdec.h"
 
 static int vaapi_mjpeg_start_frame(AVCodecContext          *avctx,
+                                   av_unused const AVBufferRef *buffer_ref,
                                    av_unused const uint8_t *buffer,
                                    av_unused uint32_t       size)
 {
@@ -131,7 +132,7 @@ static int vaapi_mjpeg_decode_slice(AVCodecContext *avctx,
         sp.components[i].ac_table_selector  = s->ac_index[i];
     }
 
-    err = ff_vaapi_decode_make_slice_buffer(avctx, pic, &sp, sizeof(sp), buffer, size);
+    err = ff_vaapi_decode_make_slice_buffer(avctx, pic, &sp, 1, sizeof(sp), buffer, size);
     if (err)
         goto fail;
 

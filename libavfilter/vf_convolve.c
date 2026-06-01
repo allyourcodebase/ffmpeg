@@ -22,13 +22,14 @@
 
 #include <float.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/tx.h"
 
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
-#include "internal.h"
 
 #define MAX_THREADS 16
 
@@ -743,10 +744,12 @@ static int do_convolve(FFFrameSync *fs)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *outl = ff_filter_link(outlink);
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     AVFilterContext *ctx = outlink->src;
     ConvolveContext *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
+    FilterLink         *ml = ff_filter_link(mainlink);
     AVFilterLink *secondlink = ctx->inputs[1];
     int ret, i, j;
 
@@ -768,7 +771,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
-    outlink->frame_rate = mainlink->frame_rate;
+    outl->frame_rate = ml->frame_rate;
 
     if ((ret = ff_framesync_configure(&s->fs)) < 0)
         return ret;
@@ -871,19 +874,19 @@ FRAMESYNC_AUXILIARY_FUNCS(convolve, ConvolveContext, fs)
 
 FRAMESYNC_DEFINE_PURE_CLASS(convolve, "convolve", convolve, convolve_options);
 
-const AVFilter ff_vf_convolve = {
-    .name          = "convolve",
-    .description   = NULL_IF_CONFIG_SMALL("Convolve first video stream with second video stream."),
+const FFFilter ff_vf_convolve = {
+    .p.name        = "convolve",
+    .p.description = NULL_IF_CONFIG_SMALL("Convolve first video stream with second video stream."),
+    .p.priv_class  = &convolve_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .preinit       = convolve_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(ConvolveContext),
-    .priv_class    = &convolve_class,
     FILTER_INPUTS(convolve_inputs),
     FILTER_OUTPUTS(convolve_outputs),
     FILTER_PIXFMTS_ARRAY(pixel_fmts_fftfilt),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
 };
 
 #endif /* CONFIG_CONVOLVE_FILTER */
@@ -901,19 +904,19 @@ static const AVOption deconvolve_options[] = {
 
 FRAMESYNC_DEFINE_PURE_CLASS(deconvolve, "deconvolve", convolve, deconvolve_options);
 
-const AVFilter ff_vf_deconvolve = {
-    .name          = "deconvolve",
-    .description   = NULL_IF_CONFIG_SMALL("Deconvolve first video stream with second video stream."),
+const FFFilter ff_vf_deconvolve = {
+    .p.name        = "deconvolve",
+    .p.description = NULL_IF_CONFIG_SMALL("Deconvolve first video stream with second video stream."),
+    .p.priv_class  = &deconvolve_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .preinit       = convolve_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(ConvolveContext),
-    .priv_class    = &deconvolve_class,
     FILTER_INPUTS(convolve_inputs),
     FILTER_OUTPUTS(convolve_outputs),
     FILTER_PIXFMTS_ARRAY(pixel_fmts_fftfilt),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
 };
 
 #endif /* CONFIG_DECONVOLVE_FILTER */
@@ -957,19 +960,19 @@ static const AVFilterPad xcorrelate_inputs[] = {
 
 #define xcorrelate_outputs convolve_outputs
 
-const AVFilter ff_vf_xcorrelate = {
-    .name          = "xcorrelate",
-    .description   = NULL_IF_CONFIG_SMALL("Cross-correlate first video stream with second video stream."),
+const FFFilter ff_vf_xcorrelate = {
+    .p.name        = "xcorrelate",
+    .p.description = NULL_IF_CONFIG_SMALL("Cross-correlate first video stream with second video stream."),
+    .p.priv_class  = &xcorrelate_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .preinit       = convolve_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(ConvolveContext),
-    .priv_class    = &xcorrelate_class,
     FILTER_INPUTS(xcorrelate_inputs),
     FILTER_OUTPUTS(xcorrelate_outputs),
     FILTER_PIXFMTS_ARRAY(pixel_fmts_fftfilt),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
 };
 
 #endif /* CONFIG_XCORRELATE_FILTER */

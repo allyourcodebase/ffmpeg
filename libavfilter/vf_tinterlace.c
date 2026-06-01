@@ -26,11 +26,12 @@
  * temporal field interlace filter, ported from MPlayer/libmpcodecs
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/avassert.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "tinterlace.h"
 #include "video.h"
 
@@ -211,6 +212,8 @@ static int config_out_props(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = outlink->src->inputs[0];
+    FilterLink *il = ff_filter_link(inlink);
+    FilterLink *ol = ff_filter_link(outlink);
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     TInterlaceContext *tinterlace = ctx->priv;
     int ret, i;
@@ -225,7 +228,11 @@ static int config_out_props(AVFilterLink *outlink)
 
     if (tinterlace->mode == MODE_PAD) {
         uint8_t black[4] = { 0, 0, 0, 16 };
-        ff_draw_init2(&tinterlace->draw, outlink->format, outlink->colorspace, outlink->color_range, 0);
+        ret = ff_draw_init2(&tinterlace->draw, outlink->format, outlink->colorspace, outlink->color_range, 0);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
+            return ret;
+        }
         ff_draw_color(&tinterlace->draw, &tinterlace->color, black);
         /* limited range */
         if (!ff_fmt_is_in(outlink->format, full_scale_yuvj_pix_fmts)) {
@@ -255,13 +262,13 @@ static int config_out_props(AVFilterLink *outlink)
     tinterlace->preout_time_base = inlink->time_base;
     if (tinterlace->mode == MODE_INTERLACEX2) {
         tinterlace->preout_time_base.den *= 2;
-        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2,1});
+        ol->frame_rate = av_mul_q(il->frame_rate, (AVRational){2,1});
         outlink->time_base  = av_mul_q(inlink->time_base , (AVRational){1,2});
     } else if (tinterlace->mode == MODE_MERGEX2) {
-        outlink->frame_rate = inlink->frame_rate;
+        ol->frame_rate = il->frame_rate;
         outlink->time_base  = inlink->time_base;
     } else if (tinterlace->mode != MODE_PAD) {
-        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){1,2});
+        ol->frame_rate = av_mul_q(il->frame_rate, (AVRational){1,2});
         outlink->time_base  = av_mul_q(inlink->time_base , (AVRational){2,1});
     }
 
@@ -292,7 +299,7 @@ static int config_out_props(AVFilterLink *outlink)
 #endif
     }
 
-    ret = ff_ccfifo_init(&tinterlace->cc_fifo, outlink->frame_rate, ctx);
+    ret = ff_ccfifo_init(&tinterlace->cc_fifo, ol->frame_rate, ctx);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
         return ret;
@@ -372,8 +379,10 @@ void copy_picture_field(TInterlaceContext *tinterlace,
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink *l = ff_filter_link(outlink);
     TInterlaceContext *tinterlace = ctx->priv;
     AVFrame *cur, *next, *out;
     int field, tff, full, ret;
@@ -400,12 +409,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, cur);
         out->height = outlink->h;
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 1;
-        out->top_field_first = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags |= AV_FRAME_FLAG_INTERLACED | AV_FRAME_FLAG_TOP_FIELD_FIRST;
         out->sample_aspect_ratio = av_mul_q(cur->sample_aspect_ratio, av_make_q(2, 1));
 
@@ -413,12 +416,12 @@ FF_ENABLE_DEPRECATION_WARNINGS
         copy_picture_field(tinterlace, out->data, out->linesize,
                            (const uint8_t **)cur->data, cur->linesize,
                            inlink->format, inlink->w, inlink->h,
-                           FIELD_UPPER_AND_LOWER, 1, tinterlace->mode == MODE_MERGEX2 ? (1 + inlink->frame_count_out) & 1 ? FIELD_LOWER : FIELD_UPPER : FIELD_UPPER, tinterlace->flags);
+                           FIELD_UPPER_AND_LOWER, 1, tinterlace->mode == MODE_MERGEX2 ? (1 + inl->frame_count_out) & 1 ? FIELD_LOWER : FIELD_UPPER : FIELD_UPPER, tinterlace->flags);
         /* write even frame lines into the lower field of the new frame */
         copy_picture_field(tinterlace, out->data, out->linesize,
                            (const uint8_t **)next->data, next->linesize,
                            inlink->format, inlink->w, inlink->h,
-                           FIELD_UPPER_AND_LOWER, 1, tinterlace->mode == MODE_MERGEX2 ? (1 + inlink->frame_count_out) & 1 ? FIELD_UPPER : FIELD_LOWER : FIELD_LOWER, tinterlace->flags);
+                           FIELD_UPPER_AND_LOWER, 1, tinterlace->mode == MODE_MERGEX2 ? (1 + inl->frame_count_out) & 1 ? FIELD_UPPER : FIELD_LOWER : FIELD_LOWER, tinterlace->flags);
         if (tinterlace->mode != MODE_MERGEX2)
             av_frame_free(&tinterlace->next);
         break;
@@ -440,7 +443,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         out->height = outlink->h;
         out->sample_aspect_ratio = av_mul_q(cur->sample_aspect_ratio, av_make_q(2, 1));
 
-        field = (1 + outlink->frame_count_in) & 1 ? FIELD_UPPER : FIELD_LOWER;
+        field = (1 + l->frame_count_in) & 1 ? FIELD_UPPER : FIELD_LOWER;
         full = out->color_range == AVCOL_RANGE_JPEG || ff_fmt_is_in(out->format, full_scale_yuvj_pix_fmts);
         /* copy upper and lower fields */
         copy_picture_field(tinterlace, out->data, out->linesize,
@@ -474,12 +477,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if (!out)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, cur);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 1;
-        out->top_field_first = tff;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags |= AV_FRAME_FLAG_INTERLACED;
         if (tff)
             out->flags |= AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -505,11 +502,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         out = av_frame_clone(cur);
         if (!out)
             return AVERROR(ENOMEM);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags |= AV_FRAME_FLAG_INTERLACED;
         if (cur->pts != AV_NOPTS_VALUE)
             out->pts = cur->pts*2;
@@ -525,12 +517,6 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if (!out)
             return AVERROR(ENOMEM);
         av_frame_copy_props(out, next);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        out->interlaced_frame = 1;
-        out->top_field_first = !tff;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         out->flags |= AV_FRAME_FLAG_INTERLACED;
         if (tff)
             out->flags &= ~AV_FRAME_FLAG_TOP_FIELD_FIRST;
@@ -559,7 +545,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
     }
 
     out->pts = av_rescale_q(out->pts, tinterlace->preout_time_base, outlink->time_base);
-    out->duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+    out->duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
     ff_ccfifo_inject(&tinterlace->cc_fifo, out);
     ret = ff_filter_frame(outlink, out);
 
@@ -598,26 +584,26 @@ static const AVFilterPad tinterlace_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_tinterlace = {
-    .name          = "tinterlace",
-    .description   = NULL_IF_CONFIG_SMALL("Perform temporal field interlacing."),
+const FFFilter ff_vf_tinterlace = {
+    .p.name        = "tinterlace",
+    .p.description = NULL_IF_CONFIG_SMALL("Perform temporal field interlacing."),
+    .p.priv_class  = &tinterlace_class,
     .priv_size     = sizeof(TInterlaceContext),
     .uninit        = uninit,
     FILTER_INPUTS(tinterlace_inputs),
     FILTER_OUTPUTS(tinterlace_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &tinterlace_class,
 };
 
 
-const AVFilter ff_vf_interlace = {
-    .name          = "interlace",
-    .description   = NULL_IF_CONFIG_SMALL("Convert progressive video into interlaced."),
+const FFFilter ff_vf_interlace = {
+    .p.name        = "interlace",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert progressive video into interlaced."),
+    .p.priv_class  = &interlace_class,
     .priv_size     = sizeof(TInterlaceContext),
     .init          = init_interlace,
     .uninit        = uninit,
     FILTER_INPUTS(tinterlace_inputs),
     FILTER_OUTPUTS(tinterlace_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &interlace_class,
 };

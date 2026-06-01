@@ -70,8 +70,8 @@
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
-#include "mxf.h"
 #include <inttypes.h>
 #include <libxml/parser.h>
 
@@ -139,15 +139,15 @@ static int imf_uri_is_unix_abs_path(const char *string)
 
 static int imf_uri_is_dos_abs_path(const char *string)
 {
-    /* Absolute path case: `C:\path\to\somwhere` */
+    /* Absolute path case: `C:\path\to\somewhere` */
     if (string[1] == ':' && string[2] == '\\')
         return 1;
 
-    /* Absolute path case: `C:/path/to/somwhere` */
+    /* Absolute path case: `C:/path/to/somewhere` */
     if (string[1] == ':' && string[2] == '/')
         return 1;
 
-    /* Network path case: `\\path\to\somwhere` */
+    /* Network path case: `\\path\to\somewhere` */
     if (string[0] == '\\' && string[1] == '\\')
         return 1;
 
@@ -380,6 +380,7 @@ static int open_track_resource_context(AVFormatContext *s,
 
     track_resource->ctx->io_open = s->io_open;
     track_resource->ctx->io_close2 = s->io_close2;
+    track_resource->ctx->opaque = s->opaque;
     track_resource->ctx->flags |= s->flags & ~AVFMT_FLAG_CUSTOM_IO;
 
     if ((ret = ff_copy_whiteblacklists(track_resource->ctx, s)) < 0)
@@ -695,11 +696,8 @@ static int imf_read_header(AVFormatContext *s)
 static IMFVirtualTrackPlaybackCtx *get_next_track_with_minimum_timestamp(AVFormatContext *s)
 {
     IMFContext *c = s->priv_data;
-    IMFVirtualTrackPlaybackCtx *track;
+    IMFVirtualTrackPlaybackCtx *track = NULL;
     AVRational minimum_timestamp = av_make_q(INT32_MAX, 1);
-
-    if (!c->track_count)
-        return NULL;
 
     for (uint32_t i = c->track_count; i > 0; i--) {
         av_log(s, AV_LOG_TRACE, "Compare track %d timestamp " AVRATIONAL_FORMAT

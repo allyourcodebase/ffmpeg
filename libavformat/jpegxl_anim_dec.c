@@ -43,7 +43,7 @@ typedef struct JXLAnimDemuxContext {
 
 static int jpegxl_anim_probe(const AVProbeData *p)
 {
-    uint8_t buffer[4096 + AV_INPUT_BUFFER_PADDING_SIZE];
+    uint8_t buffer[4096 + AV_INPUT_BUFFER_PADDING_SIZE] = {0};
     int copied = 0, ret;
     FFJXLMetadata meta = { 0 };
 
@@ -124,6 +124,8 @@ static int jpegxl_anim_read_header(AVFormatContext *s)
         }
     }
 
+    memset(head + headsize, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+
     /* offset in bits of the animation header */
     ret = ff_jpegxl_parse_codestream_header(head, headsize, &meta, 0);
     if (ret < 0 || meta.animation_offset <= 0)
@@ -134,7 +136,7 @@ static int jpegxl_anim_read_header(AVFormatContext *s)
         return AVERROR(ENOMEM);
 
     st->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-    st->codecpar->codec_id   = AV_CODEC_ID_JPEGXL;
+    st->codecpar->codec_id   = AV_CODEC_ID_JPEGXL_ANIM;
     avpriv_set_pts_info(st, 1, meta.timebase.num, meta.timebase.den);
     ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL;
 

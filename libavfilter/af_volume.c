@@ -29,14 +29,14 @@
 #include "libavutil/eval.h"
 #include "libavutil/ffmath.h"
 #include "libavutil/float_dsp.h"
-#include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/replaygain.h"
 
 #include "audio.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "af_volume.h"
 
 static const char * const precision_str[] = {
@@ -48,9 +48,6 @@ static const char *const var_names[] = {
     "nb_channels",         ///< number of channels
     "nb_consumed_samples", ///< number of samples consumed by the filter
     "nb_samples",          ///< number of samples in the current frame
-#if FF_API_FRAME_PKT
-    "pos",                 ///< position in the file of the frame
-#endif
     "pts",                 ///< frame presentation timestamp
     "sample_rate",         ///< sample rate
     "startpts",            ///< PTS at start of stream
@@ -127,13 +124,14 @@ static av_cold void uninit(AVFilterContext *ctx)
 {
     VolumeContext *vol = ctx->priv;
     av_expr_free(vol->volume_pexpr);
-    av_opt_free(vol);
     av_freep(&vol->fdsp);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    VolumeContext *vol = ctx->priv;
+    const VolumeContext *vol = ctx->priv;
     static const enum AVSampleFormat sample_fmts[][7] = {
         [PRECISION_FIXED] = {
             AV_SAMPLE_FMT_U8,
@@ -155,15 +153,13 @@ static int query_formats(AVFilterContext *ctx)
             AV_SAMPLE_FMT_NONE
         }
     };
-    int ret = ff_set_common_all_channel_counts(ctx);
+    int ret;
+
+    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts[vol->precision]);
     if (ret < 0)
         return ret;
 
-    ret = ff_set_common_formats_from_list(ctx, sample_fmts[vol->precision]);
-    if (ret < 0)
-        return ret;
-
-    return ff_set_common_all_samplerates(ctx);
+    return 0;
 }
 
 static inline void scale_samples_u8(uint8_t *dst, const uint8_t *src,
@@ -290,9 +286,6 @@ static int config_output(AVFilterLink *outlink)
     vol->var_values[VAR_N] =
     vol->var_values[VAR_NB_CONSUMED_SAMPLES] =
     vol->var_values[VAR_NB_SAMPLES] =
-#if FF_API_FRAME_PKT
-    vol->var_values[VAR_POS] =
-#endif
     vol->var_values[VAR_PTS] =
     vol->var_values[VAR_STARTPTS] =
     vol->var_values[VAR_STARTT] =
@@ -329,6 +322,7 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
 {
+    FilterLink      *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     VolumeContext *vol    = inlink->dst->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
@@ -381,17 +375,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *buf)
     }
     vol->var_values[VAR_PTS] = TS2D(buf->pts);
     vol->var_values[VAR_T  ] = TS2T(buf->pts, inlink->time_base);
-    vol->var_values[VAR_N  ] = inlink->frame_count_out;
+    vol->var_values[VAR_N  ] = inl->frame_count_out;
 
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
-    {
-        int64_t pos;
-        pos = buf->pkt_pos;
-        vol->var_values[VAR_POS] = pos == -1 ? NAN : pos;
-    }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     if (vol->eval_mode == EVAL_MODE_FRAME)
         set_volume(ctx);
 
@@ -471,16 +456,16 @@ static const AVFilterPad avfilter_af_volume_outputs[] = {
     },
 };
 
-const AVFilter ff_af_volume = {
-    .name           = "volume",
-    .description    = NULL_IF_CONFIG_SMALL("Change input volume."),
+const FFFilter ff_af_volume = {
+    .p.name         = "volume",
+    .p.description  = NULL_IF_CONFIG_SMALL("Change input volume."),
+    .p.priv_class   = &volume_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size      = sizeof(VolumeContext),
-    .priv_class     = &volume_class,
     .init           = init,
     .uninit         = uninit,
     FILTER_INPUTS(avfilter_af_volume_inputs),
     FILTER_OUTPUTS(avfilter_af_volume_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
 };

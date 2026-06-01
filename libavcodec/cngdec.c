@@ -23,7 +23,7 @@
 
 #include "libavutil/common.h"
 #include "libavutil/ffmath.h"
-#include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "celp_filters.h"
 #include "codec_internal.h"
@@ -173,8 +173,7 @@ const FFCodec ff_comfortnoise_decoder = {
     FF_CODEC_DECODE_CB(cng_decode_frame),
     .flush          = cng_decode_flush,
     .close          = cng_decode_close,
-    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_S16,
-                                                     AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

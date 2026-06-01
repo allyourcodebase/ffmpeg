@@ -175,7 +175,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     int height = avctx->height; // Real image height
     unsigned int mszh_dlen;
     unsigned char yq, y1q, uq, vq;
-    int uqvq, ret;
+    int ret;
     unsigned int mthread_inlen, mthread_outlen;
     unsigned int len = buf_size;
     int linesize, offset;
@@ -306,7 +306,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
             for (row = 0; row < height; row++) {
                 pixel_ptr = row * width * 3;
                 yq = encoded[pixel_ptr++];
-                uqvq = AV_RL16(encoded+pixel_ptr);
+                unsigned uqvq = AV_RL16(encoded+pixel_ptr);
                 pixel_ptr += 2;
                 for (col = 1; col < width; col++) {
                     encoded[pixel_ptr] = yq -= encoded[pixel_ptr];
@@ -480,9 +480,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         av_log(avctx, AV_LOG_ERROR, "BUG! Unknown imagetype in image decoder.\n");
         return AVERROR_INVALIDDATA;
     }
-
-    frame->flags |= AV_FRAME_FLAG_KEY;
-    frame->pict_type = AV_PICTURE_TYPE_I;
 
     *got_frame = 1;
 

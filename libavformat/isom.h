@@ -54,6 +54,12 @@ struct AVAESCTR;
  * Here we just use what is needed to read the chunks
  */
 
+typedef struct MOVTimeToSample {
+    unsigned int count;
+    unsigned int duration;
+    int offset;
+} MOVTimeToSample;
+
 typedef struct MOVStts {
     unsigned int count;
     unsigned int duration;
@@ -61,7 +67,7 @@ typedef struct MOVStts {
 
 typedef struct MOVCtts {
     unsigned int count;
-    int duration;
+    int offset;
 } MOVCtts;
 
 typedef struct MOVStsc {
@@ -173,7 +179,11 @@ typedef struct MOVStreamContext {
     int next_chunk;
     unsigned int chunk_count;
     int64_t *chunk_offsets;
+    unsigned int tts_count;
+    unsigned int tts_allocated_size;
+    MOVTimeToSample *tts_data;
     unsigned int stts_count;
+    unsigned int stts_allocated_size;
     MOVStts *stts_data;
     unsigned int sdtp_count;
     uint8_t *sdtp_data;
@@ -188,12 +198,12 @@ typedef struct MOVStreamContext {
     unsigned *stps_data;  ///< partial sync sample for mpeg-2 open gop
     MOVElst *elst_data;
     unsigned int elst_count;
-    int ctts_index;
-    int ctts_sample;
+    int tts_index;
+    int tts_sample;
     unsigned int sample_size; ///< may contain value calculated from stsd or value from stsz atom
     unsigned int stsz_sample_size; ///< always contains sample size from stsz atom
     unsigned int sample_count;
-    int *sample_sizes;
+    unsigned int *sample_sizes;
     int keyframe_absent;
     unsigned int keyframe_count;
     int *keyframes;
@@ -212,9 +222,13 @@ typedef struct MOVStreamContext {
     unsigned drefs_count;
     MOVDref *drefs;
     int dref_id;
+    unsigned tref_flags;
+    int tref_id;
     int timecode_track;
     int width;            ///< tkhd width
     int height;           ///< tkhd height
+    int h_spacing;        ///< pasp hSpacing
+    int v_spacing;        ///< pasp vSpacing
     int dts_shift;        ///< dts shift when ctts is negative
     uint32_t palette[256];
     int has_palette;
@@ -247,9 +261,11 @@ typedef struct MOVStreamContext {
 
     int32_t *display_matrix;
     AVStereo3D *stereo3d;
+    size_t stereo3d_size;
     AVSphericalMapping *spherical;
     size_t spherical_size;
     AVMasteringDisplayMetadata *mastering;
+    size_t mastering_size;
     AVContentLightMetadata *coll;
     size_t coll_size;
     AVAmbientViewingEnvironment *ambient;
@@ -267,24 +283,38 @@ typedef struct MOVStreamContext {
     } cenc;
 
     struct IAMFDemuxContext *iamf;
+    int iamf_stream_offset;
 } MOVStreamContext;
+
+typedef struct HEIFItemRef {
+    uint32_t type;
+    int item_id;
+} HEIFItemRef;
 
 typedef struct HEIFItem {
     AVStream *st;
+    HEIFItemRef *iref_list;
+    int nb_iref_list;
     char *name;
     int item_id;
     int64_t extent_length;
     int64_t extent_offset;
     int width;
     int height;
+    int rotation;
+    int hflip;
+    int vflip;
     int type;
     int is_idat_relative;
+    uint8_t *icc_profile;
+    size_t icc_profile_size;
 } HEIFItem;
 
 typedef struct HEIFGrid {
     HEIFItem *item;
     HEIFItem **tile_item_list;
     int16_t *tile_id_list;
+    unsigned *tile_idx_list;
     int nb_tiles;
 } HEIFGrid;
 
@@ -349,18 +379,17 @@ typedef struct MOVContext {
     uint32_t max_stts_delta;
     int primary_item_id;
     int cur_item_id;
-    HEIFItem *heif_item;
+    HEIFItem **heif_item;
     int nb_heif_item;
     HEIFGrid *heif_grid;
     int nb_heif_grid;
-    int thmb_item_id;
     int64_t idat_offset;
     int interleaved_read;
 } MOVContext;
 
 int ff_mp4_read_descr_len(AVIOContext *pb);
-int ff_mp4_read_descr(AVFormatContext *fc, AVIOContext *pb, int *tag);
-int ff_mp4_read_dec_config_descr(AVFormatContext *fc, AVStream *st, AVIOContext *pb);
+int ff_mp4_read_descr(void *logctx, AVIOContext *pb, int *tag);
+int ff_mp4_read_dec_config_descr(void *logctx, AVStream *st, AVIOContext *pb);
 void ff_mp4_parse_es_descr(AVIOContext *pb, int *es_id);
 
 #define MP4ODescrTag                    0x01
@@ -404,6 +433,7 @@ void ff_mp4_parse_es_descr(AVIOContext *pb, int *es_id);
 #define MOV_SAMPLE_DEPENDENCY_YES     0x1
 #define MOV_SAMPLE_DEPENDENCY_NO      0x2
 
+#define MOV_TREF_FLAG_ENHANCEMENT     0x1
 
 #define TAG_IS_AVCI(tag)                    \
     ((tag) == MKTAG('a', 'i', '5', 'p') ||  \

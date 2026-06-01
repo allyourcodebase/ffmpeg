@@ -33,6 +33,7 @@
  */
 
 #include "libavutil/crc.h"
+#include "libavutil/mem.h"
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
@@ -693,6 +694,11 @@ static int svq1_decode_frame(AVCodecContext *avctx, AVFrame *cur,
          cur->pict_type != AV_PICTURE_TYPE_I) ||
         avctx->skip_frame >= AVDISCARD_ALL)
         return buf_size;
+
+    // Reject obviously too-small packets early: require at least one remaining bit per aligned luma macroblock.
+    // FFALIGN(s->width,  16) * FFALIGN(s->height, 16) / 256 represent the number of Macroblocks
+    if (get_bits_left(&s->gb) < FFALIGN(s->width,  16) * FFALIGN(s->height, 16) / 256)
+        return AVERROR_INVALIDDATA;
 
     result = ff_get_buffer(avctx, cur, s->nonref ? 0 : AV_GET_BUFFER_FLAG_REF);
     if (result < 0)

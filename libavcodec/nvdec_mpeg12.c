@@ -25,11 +25,14 @@
 #include "avcodec.h"
 #include "hwaccel_internal.h"
 #include "internal.h"
+#include "mpegutils.h"
 #include "mpegvideo.h"
 #include "nvdec.h"
 #include "decode.h"
 
-static int nvdec_mpeg12_start_frame(AVCodecContext *avctx, const uint8_t *buffer, uint32_t size)
+static int nvdec_mpeg12_start_frame(AVCodecContext *avctx,
+                                    const AVBufferRef *buffer_ref,
+                                    const uint8_t *buffer, uint32_t size)
 {
     MpegEncContext *s = avctx->priv_data;
 
@@ -38,7 +41,7 @@ static int nvdec_mpeg12_start_frame(AVCodecContext *avctx, const uint8_t *buffer
     CUVIDMPEG2PICPARAMS *ppc = &pp->CodecSpecific.mpeg2;
     FrameDecodeData *fdd;
     NVDECFrame *cf;
-    AVFrame *cur_frame = s->current_picture.f;
+    AVFrame *cur_frame = s->cur_pic.ptr->f;
 
     int ret, i;
 
@@ -46,7 +49,7 @@ static int nvdec_mpeg12_start_frame(AVCodecContext *avctx, const uint8_t *buffer
     if (ret < 0)
         return ret;
 
-    fdd = (FrameDecodeData*)cur_frame->private_ref->data;
+    fdd = cur_frame->private_ref;
     cf  = (NVDECFrame*)fdd->hwaccel_priv;
 
     *pp = (CUVIDPICPARAMS) {
@@ -63,8 +66,8 @@ static int nvdec_mpeg12_start_frame(AVCodecContext *avctx, const uint8_t *buffer
                              s->pict_type == AV_PICTURE_TYPE_P,
 
         .CodecSpecific.mpeg2 = {
-            .ForwardRefIdx     = ff_nvdec_get_ref_idx(s->last_picture.f),
-            .BackwardRefIdx    = ff_nvdec_get_ref_idx(s->next_picture.f),
+            .ForwardRefIdx     = ff_nvdec_get_ref_idx(s->last_pic.ptr ? s->last_pic.ptr->f : NULL),
+            .BackwardRefIdx    = ff_nvdec_get_ref_idx(s->next_pic.ptr ? s->next_pic.ptr->f : NULL),
 
             .picture_coding_type        = s->pict_type,
             .full_pel_forward_vector    = s->full_pel[0],

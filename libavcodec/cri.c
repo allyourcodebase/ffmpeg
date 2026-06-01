@@ -27,6 +27,7 @@
 
 #define BITSTREAM_READER_LE
 
+#include "libavutil/attributes_internal.h"
 #include "libavutil/intfloat.h"
 #include "libavutil/display.h"
 #include "avcodec.h"
@@ -51,7 +52,6 @@ typedef struct CRIContext {
 static av_cold int cri_decode_init(AVCodecContext *avctx)
 {
     CRIContext *s = avctx->priv_data;
-    const AVCodec *codec;
     int ret;
 
     s->jpgframe = av_frame_alloc();
@@ -62,16 +62,14 @@ static av_cold int cri_decode_init(AVCodecContext *avctx)
     if (!s->jpkt)
         return AVERROR(ENOMEM);
 
-    codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
-    if (!codec)
-        return AVERROR_BUG;
-    s->jpeg_avctx = avcodec_alloc_context3(codec);
+    EXTERN const FFCodec ff_mjpeg_decoder;
+    s->jpeg_avctx = avcodec_alloc_context3(&ff_mjpeg_decoder.p);
     if (!s->jpeg_avctx)
         return AVERROR(ENOMEM);
     s->jpeg_avctx->flags = avctx->flags;
     s->jpeg_avctx->flags2 = avctx->flags2;
     s->jpeg_avctx->idct_algo = avctx->idct_algo;
-    ret = avcodec_open2(s->jpeg_avctx, codec, NULL);
+    ret = avcodec_open2(s->jpeg_avctx, NULL, NULL);
     if (ret < 0)
         return ret;
 
@@ -220,10 +218,12 @@ static int cri_decode_frame(AVCodecContext *avctx, AVFrame *p,
             if (bytestream2_get_le32(gb) != 0)
                 return AVERROR_INVALIDDATA;
             break;
-        case 102:
-            bytestream2_get_buffer(gb, codec_name, FFMIN(length, sizeof(codec_name) - 1));
-            length -= FFMIN(length, sizeof(codec_name) - 1);
-            if (strncmp(codec_name, "cintel_craw", FFMIN(length, sizeof(codec_name) - 1)))
+        case 102:;
+            int read_len = FFMIN(length, sizeof(codec_name) - 1);
+            if (read_len != bytestream2_get_buffer(gb, codec_name, read_len))
+                return AVERROR_INVALIDDATA;
+            length -= read_len;
+            if (strncmp(codec_name, "cintel_craw", read_len))
                 return AVERROR_INVALIDDATA;
             compressed = 1;
             goto skip;
@@ -234,10 +234,14 @@ static int cri_decode_frame(AVCodecContext *avctx, AVFrame *p,
             s->data_size = length;
             goto skip;
         case 105:
+            if (length <= 0)
+                return AVERROR_INVALIDDATA;
             hflip = bytestream2_get_byte(gb) != 0;
             length--;
             goto skip;
         case 106:
+            if (length <= 0)
+                return AVERROR_INVALIDDATA;
             vflip = bytestream2_get_byte(gb) != 0;
             length--;
             goto skip;
@@ -405,9 +409,6 @@ skip:
             av_display_matrix_flip((int32_t *)rotation->data, hflip, vflip);
         }
     }
-
-    p->pict_type = AV_PICTURE_TYPE_I;
-    p->flags |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 

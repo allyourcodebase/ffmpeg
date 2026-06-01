@@ -162,10 +162,14 @@ static void libdav1d_init_params(AVCodecContext *c, const Dav1dSequenceHeader *s
                                     (unsigned)seq->num_units_in_tick,
                                     (unsigned)seq->time_scale);
 
+#if FF_API_CODEC_PROPS
+FF_DISABLE_DEPRECATION_WARNINGS
    if (seq->film_grain_present)
        c->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
    else
        c->properties &= ~FF_CODEC_PROPERTY_FILM_GRAIN;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
 }
 
 static av_cold int libdav1d_parse_extradata(AVCodecContext *c)
@@ -290,10 +294,10 @@ static av_cold int libdav1d_init(AVCodecContext *c)
 #endif
 
     dav1d->dovi.logctx = c;
-    dav1d->dovi.dv_profile = 10; // default for AV1
+    dav1d->dovi.cfg.dv_profile = 10; // default for AV1
     sd = ff_get_coded_side_data(c, AV_PKT_DATA_DOVI_CONF);
-    if (sd && sd->size > 0)
-        ff_dovi_update_cfg(&dav1d->dovi, (AVDOVIDecoderConfigurationRecord *) sd->data);
+    if (sd && sd->size >= sizeof(dav1d->dovi.cfg))
+        dav1d->dovi.cfg = *(AVDOVIDecoderConfigurationRecord *) sd->data;
     return 0;
 }
 
@@ -372,20 +376,95 @@ static int libdav1d_receive_frame_internal(AVCodecContext *c, Dav1dPicture *p)
 
     res = dav1d_get_picture(dav1d->c, p);
     if (res < 0) {
-        if (res == AVERROR(EINVAL))
+        if (res == AVERROR(EINVAL)) {
+            dav1d_data_unref(data);
             res = AVERROR_INVALIDDATA;
-        else if (res == AVERROR(EAGAIN))
+        } else if (res == AVERROR(EAGAIN))
             res = c->internal->draining ? AVERROR_EOF : 1;
     }
 
     return res;
 }
 
+static int parse_itut_t35_metadata(Libdav1dContext *dav1d, Dav1dPicture *p,
+                                   const Dav1dITUTT35 *itut_t35, AVCodecContext *c,
+                                   AVFrame *frame) {
+    GetByteContext gb;
+    int provider_code, country_code;
+    int res;
+
+    bytestream2_init(&gb, itut_t35->payload, itut_t35->payload_size);
+
+    provider_code = bytestream2_get_be16(&gb);
+    country_code = itut_t35->country_code;
+    if (country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_ATSC) {
+        uint32_t user_identifier = bytestream2_get_be32(&gb);
+        switch (user_identifier) {
+        case MKBETAG('G', 'A', '9', '4'): { // closed captions
+            AVBufferRef *buf = NULL;
+
+            res = ff_parse_a53_cc(&buf, gb.buffer, bytestream2_get_bytes_left(&gb));
+            if (res < 0)
+                return res;
+            if (!res)
+                return 0;  // no cc found, ignore
+
+            res = ff_frame_new_side_data_from_buf(c, frame, AV_FRAME_DATA_A53_CC, &buf);
+            if (res < 0)
+                return res;
+
+#if FF_API_CODEC_PROPS
+FF_DISABLE_DEPRECATION_WARNINGS
+            c->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
+            break;
+        }
+        default: // ignore unsupported identifiers
+            break;
+        }
+    } else if (country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_SAMSUNG) {
+        AVDynamicHDRPlus *hdrplus;
+        int provider_oriented_code = bytestream2_get_be16(&gb);
+        int application_identifier = bytestream2_get_byte(&gb);
+
+        if (provider_oriented_code != 1 || application_identifier != 4)
+            return 0; // ignore
+
+        hdrplus = av_dynamic_hdr_plus_create_side_data(frame);
+        if (!hdrplus)
+            return AVERROR(ENOMEM);
+
+        res = av_dynamic_hdr_plus_from_t35(hdrplus, gb.buffer,
+                                            bytestream2_get_bytes_left(&gb));
+        if (res < 0)
+            return res;
+    } else if (country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_DOLBY) {
+        int provider_oriented_code = bytestream2_get_be32(&gb);
+        if (provider_oriented_code != 0x800)
+            return 0; // ignore
+
+        res = ff_dovi_rpu_parse(&dav1d->dovi, gb.buffer, gb.buffer_end - gb.buffer,
+                                c->err_recognition);
+        if (res < 0) {
+            av_log(c, AV_LOG_WARNING, "Error parsing DOVI OBU.\n");
+            return 0; // ignore
+        }
+
+        res = ff_dovi_attach_side_data(&dav1d->dovi, frame);
+        if (res < 0)
+            return res;
+    } else {
+        // ignore unsupported provider codes
+    }
+    return 0;
+}
+
 static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
 {
     Libdav1dContext *dav1d = c->priv_data;
     Dav1dPicture pic = { 0 }, *p = &pic;
-    AVPacket *pkt;
+    const AVPacket *pkt;
 #if FF_DAV1D_VERSION_AT_LEAST(5,1)
     enum Dav1dEventFlags event_flags = 0;
 #endif
@@ -439,7 +518,7 @@ static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
               INT_MAX);
     ff_set_sar(c, frame->sample_aspect_ratio);
 
-    pkt = (AVPacket *)p->m.user_data.data;
+    pkt = (const AVPacket *)p->m.user_data.data;
 
     // match timestamps and packet size
     res = ff_decode_frame_props_from_pkt(c, frame, pkt);
@@ -509,78 +588,9 @@ static int libdav1d_receive_frame(AVCodecContext *c, AVFrame *frame)
 #else
         const Dav1dITUTT35 *itut_t35 = p->itut_t35;
 #endif
-        GetByteContext gb;
-        int provider_code;
-
-        bytestream2_init(&gb, itut_t35->payload, itut_t35->payload_size);
-
-        provider_code = bytestream2_get_be16(&gb);
-        switch (provider_code) {
-        case ITU_T_T35_PROVIDER_CODE_ATSC: {
-            uint32_t user_identifier = bytestream2_get_be32(&gb);
-            switch (user_identifier) {
-            case MKBETAG('G', 'A', '9', '4'): { // closed captions
-                AVBufferRef *buf = NULL;
-
-                res = ff_parse_a53_cc(&buf, gb.buffer, bytestream2_get_bytes_left(&gb));
-                if (res < 0)
-                    goto fail;
-                if (!res)
-                    break;
-
-                res = ff_frame_new_side_data_from_buf(c, frame, AV_FRAME_DATA_A53_CC, &buf, NULL);
-                if (res < 0)
-                    goto fail;
-
-                c->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
-                break;
-            }
-            default: // ignore unsupported identifiers
-                break;
-            }
-            break;
-        }
-        case ITU_T_T35_PROVIDER_CODE_SMTPE: {
-            AVDynamicHDRPlus *hdrplus;
-            int provider_oriented_code = bytestream2_get_be16(&gb);
-            int application_identifier = bytestream2_get_byte(&gb);
-
-            if (itut_t35->country_code != ITU_T_T35_COUNTRY_CODE_US ||
-                provider_oriented_code != 1 || application_identifier != 4)
-                break;
-
-            hdrplus = av_dynamic_hdr_plus_create_side_data(frame);
-            if (!hdrplus) {
-                res = AVERROR(ENOMEM);
-                goto fail;
-            }
-
-            res = av_dynamic_hdr_plus_from_t35(hdrplus, gb.buffer,
-                                               bytestream2_get_bytes_left(&gb));
-            if (res < 0)
-                goto fail;
-            break;
-        }
-        case ITU_T_T35_PROVIDER_CODE_DOLBY: {
-            int provider_oriented_code = bytestream2_get_be32(&gb);
-            if (itut_t35->country_code != ITU_T_T35_COUNTRY_CODE_US ||
-                provider_oriented_code != 0x800)
-                break;
-
-            res = ff_dovi_rpu_parse(&dav1d->dovi, gb.buffer, gb.buffer_end - gb.buffer);
-            if (res < 0) {
-                av_log(c, AV_LOG_WARNING, "Error parsing DOVI OBU.\n");
-                break; // ignore
-            }
-
-            res = ff_dovi_attach_side_data(&dav1d->dovi, frame);
-            if (res < 0)
-                goto fail;
-            break;
-        }
-        default: // ignore unsupported provider codes
-            break;
-        }
+        res = parse_itut_t35_metadata(dav1d, p, itut_t35, c, frame);
+        if (res < 0)
+            goto fail;
 #if FF_DAV1D_VERSION_AT_LEAST(6,9)
         }
 #endif

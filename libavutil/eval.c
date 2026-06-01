@@ -32,14 +32,15 @@
 #include "common.h"
 #include "eval.h"
 #include "ffmath.h"
-#include "internal.h"
 #include "log.h"
 #include "mathematics.h"
+#include "mem.h"
 #include "sfc64.h"
 #include "time.h"
 #include "avstring.h"
-#include "timer.h"
 #include "reverse.h"
+
+#define MAX_DEPTH 100
 
 typedef struct Parser {
     const AVClass *class;
@@ -177,6 +178,7 @@ struct AVExpr {
     struct AVExpr *param[3];
     double *var;
     FFSFC64 *prng_state;
+    int depth;
 };
 
 static double etime(double v)
@@ -446,6 +448,14 @@ static int parse_primary(AVExpr **e, Parser *p)
     }
     p->s++; // ")"
 
+    for (int i = 0; i<3; i++)
+        if (d->param[i])
+            d->depth = FFMAX(d->depth, d->param[i]->depth+1);
+    if (d->depth > MAX_DEPTH) {
+        av_expr_free(d);
+        return AVERROR(EINVAL);
+    }
+
     d->type = e_func0;
          if (strmatch(next, "sinh"  )) d->a.func0 = sinh;
     else if (strmatch(next, "cosh"  )) d->a.func0 = cosh;
@@ -530,6 +540,9 @@ static int parse_primary(AVExpr **e, Parser *p)
 
 static AVExpr *make_eval_expr(int type, int value, AVExpr *p0, AVExpr *p1)
 {
+    int depth = FFMAX(p0->depth, p1->depth) + 1;
+    if (depth > MAX_DEPTH)
+        return NULL;
     AVExpr *e = av_mallocz(sizeof(AVExpr));
     if (!e)
         return NULL;
@@ -537,6 +550,7 @@ static AVExpr *make_eval_expr(int type, int value, AVExpr *p0, AVExpr *p1)
     e->value    =value  ;
     e->param[0] =p0     ;
     e->param[1] =p1     ;
+    e->depth    = depth;
     return e;
 }
 
@@ -792,12 +806,14 @@ int av_expr_count_func(AVExpr *e, unsigned *counter, int size, int arg)
 
 double av_expr_eval(AVExpr *e, const double *const_values, void *opaque)
 {
-    Parser p = { 0 };
-    p.var= e->var;
-    p.prng_state= e->prng_state;
+    Parser p = {
+        .class        = &eval_class,
+        .const_values = const_values,
+        .opaque       = opaque,
+        .var          = e->var,
+        .prng_state   = e->prng_state,
+    };
 
-    p.const_values = const_values;
-    p.opaque     = opaque;
     return eval_expr(&p, e);
 }
 

@@ -25,11 +25,12 @@
 #include "libavutil/file_open.h"
 #include "libavutil/float_dsp.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 static const size_t NNEDI_WEIGHTS_SIZE = 13574928;
@@ -172,9 +173,11 @@ static int config_output(AVFilterLink *outlink)
     outlink->w             = ctx->inputs[0]->w;
     outlink->h             = ctx->inputs[0]->h;
 
-    if (s->field == -2 || s->field > 1)
-        outlink->frame_rate = av_mul_q(ctx->inputs[0]->frame_rate,
-                                       (AVRational){2, 1});
+    if (s->field == -2 || s->field > 1) {
+        FilterLink *il = ff_filter_link(ctx->inputs[0]);
+        FilterLink *ol = ff_filter_link(outlink);
+        ol->frame_rate = av_mul_q(il->frame_rate, (AVRational){2, 1});
+    }
 
     return 0;
 }
@@ -665,11 +668,6 @@ static int get_frame(AVFilterContext *ctx, int is_second)
     if (!dst)
         return AVERROR(ENOMEM);
     av_frame_copy_props(dst, s->prev);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    dst->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     dst->flags &= ~AV_FRAME_FLAG_INTERLACED;
     dst->pts = s->pts;
 
@@ -728,11 +726,12 @@ static int request_frame(AVFilterLink *link)
 
     if (ret == AVERROR_EOF && s->prev) {
         AVFrame *next = av_frame_clone(s->prev);
+        FilterLink *l = ff_filter_link(ctx->outputs[0]);
 
         if (!next)
             return AVERROR(ENOMEM);
 
-        next->pts = s->prev->pts + av_rescale_q(1, av_inv_q(ctx->outputs[0]->frame_rate),
+        next->pts = s->prev->pts + av_rescale_q(1, av_inv_q(l->frame_rate),
                                                 ctx->outputs[0]->time_base);
         s->eof = 1;
 
@@ -1154,16 +1153,16 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_vf_nnedi = {
-    .name          = "nnedi",
-    .description   = NULL_IF_CONFIG_SMALL("Apply neural network edge directed interpolation intra-only deinterlacer."),
+const FFFilter ff_vf_nnedi = {
+    .p.name        = "nnedi",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply neural network edge directed interpolation intra-only deinterlacer."),
+    .p.priv_class  = &nnedi_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(NNEDIContext),
-    .priv_class    = &nnedi_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

@@ -23,6 +23,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/ffmath.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/tx.h"
 
@@ -1022,6 +1023,5 @@ const FFCodec ff_on2avc_decoder = {
     .close          = on2avc_decode_close,
     .p.capabilities = AV_CODEC_CAP_DR1,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_FLTP,
-                                                      AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
 };

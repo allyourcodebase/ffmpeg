@@ -23,10 +23,11 @@
 
 #include "libavutil/common.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "w3fdif.h"
 
@@ -327,11 +328,13 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink *il = ff_filter_link(inlink);
+    FilterLink *ol = ff_filter_link(outlink);
     W3FDIFContext *s = ctx->priv;
 
     outlink->time_base = av_mul_q(inlink->time_base, (AVRational){1, 2});
     if (s->mode)
-        outlink->frame_rate = av_mul_q(inlink->frame_rate, (AVRational){2, 1});
+        ol->frame_rate = av_mul_q(il->frame_rate, (AVRational){2, 1});
 
     return 0;
 }
@@ -485,11 +488,6 @@ static int filter(AVFilterContext *ctx, int is_second)
     if (!out)
         return AVERROR(ENOMEM);
     av_frame_copy_props(out, s->cur);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    out->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     out->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     if (!is_second) {
@@ -613,15 +611,15 @@ static const AVFilterPad w3fdif_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_w3fdif = {
-    .name          = "w3fdif",
-    .description   = NULL_IF_CONFIG_SMALL("Apply Martin Weston three field deinterlace."),
+const FFFilter ff_vf_w3fdif = {
+    .p.name        = "w3fdif",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply Martin Weston three field deinterlace."),
+    .p.priv_class  = &w3fdif_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(W3FDIFContext),
-    .priv_class    = &w3fdif_class,
     .uninit        = uninit,
     FILTER_INPUTS(w3fdif_inputs),
     FILTER_OUTPUTS(w3fdif_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

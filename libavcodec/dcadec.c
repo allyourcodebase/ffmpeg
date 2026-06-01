@@ -18,6 +18,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/thread.h"
@@ -415,8 +416,7 @@ const FFCodec ff_dca_decoder = {
     .close          = dcadec_close,
     .flush          = dcadec_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .p.sample_fmts  = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P,
-                                                      AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_FLTP),
     .p.priv_class   = &dcadec_class,
     .p.profiles     = NULL_IF_CONFIG_SMALL(ff_dca_profiles),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,

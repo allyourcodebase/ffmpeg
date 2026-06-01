@@ -19,6 +19,7 @@
 #include "avassert.h"
 #include "intmath.h"
 #include "cpu.h"
+#include "mem.h"
 #include "qsort.h"
 #include "bprint.h"
 
@@ -283,7 +284,7 @@ static void reset_ctx(AVTXContext *s, int free_sub)
      * ff_tx_init_subtx() call is made. */
     s->nb_sub = 0;
     s->opaque = NULL;
-    memset(s->fn, 0, sizeof(*s->fn));
+    memset(s->fn, 0, sizeof(s->fn));
 }
 
 void ff_tx_clear_ctx(AVTXContext *s)

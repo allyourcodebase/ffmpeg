@@ -28,11 +28,12 @@
 
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 typedef struct KerndeintContext {
@@ -84,6 +85,12 @@ static int config_props(AVFilterLink *inlink)
 
     kerndeint->is_packed_rgb = av_pix_fmt_desc_get(inlink->format)->flags & AV_PIX_FMT_FLAG_RGB;
     kerndeint->vsub = desc->log2_chroma_h;
+    if (AV_CEIL_RSHIFT(inlink->h, kerndeint->vsub) < 4) {
+        av_log(inlink->dst, AV_LOG_ERROR,
+               "Input height %d is too small; minimum chroma plane height is 4\n",
+               inlink->h);
+        return AVERROR(EINVAL);
+    }
 
     ret = av_image_alloc(kerndeint->tmp_data, kerndeint->tmp_linesize,
                          inlink->w, inlink->h, inlink->format, 16);
@@ -141,11 +148,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpic)
         return AVERROR(ENOMEM);
     }
     av_frame_copy_props(outpic, inpic);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    outpic->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     outpic->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     for (plane = 0; plane < 4 && inpic->data[plane] && inpic->linesize[plane]; plane++) {
@@ -295,11 +297,11 @@ static const AVFilterPad kerndeint_inputs[] = {
 };
 
 
-const AVFilter ff_vf_kerndeint = {
-    .name          = "kerndeint",
-    .description   = NULL_IF_CONFIG_SMALL("Apply kernel deinterlacing to the input."),
+const FFFilter ff_vf_kerndeint = {
+    .p.name        = "kerndeint",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply kernel deinterlacing to the input."),
+    .p.priv_class  = &kerndeint_class,
     .priv_size     = sizeof(KerndeintContext),
-    .priv_class    = &kerndeint_class,
     .uninit        = uninit,
     FILTER_INPUTS(kerndeint_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),

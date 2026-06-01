@@ -43,6 +43,7 @@
 #include <inttypes.h>
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "avformat.h"
 #include "demux.h"
 #include "internal.h"
@@ -510,6 +511,7 @@ static int oma_read_header(AVFormatContext *s)
         st->codecpar->bit_rate    = samplerate * framesize / (2048 / 8);
         avpriv_set_pts_info(st, 64, 1, samplerate);
         break;
+    case OMA_CODECID_AAC:
     case OMA_CODECID_MP3:
         ffstream(st)->need_parsing = AVSTREAM_PARSE_FULL_RAW;
         framesize = 1024;

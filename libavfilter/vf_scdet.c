@@ -53,8 +53,8 @@ typedef struct SCDetContext {
 static const AVOption scdet_options[] = {
     { "threshold",   "set scene change detect threshold",        OFFSET(threshold),  AV_OPT_TYPE_DOUBLE,   {.dbl = 10.},     0,  100., V|F },
     { "t",           "set scene change detect threshold",        OFFSET(threshold),  AV_OPT_TYPE_DOUBLE,   {.dbl = 10.},     0,  100., V|F },
-    { "sc_pass",     "Set the flag to pass scene change frames", OFFSET(sc_pass),    AV_OPT_TYPE_BOOL,     {.dbl =  0  },    0,    1,  V|F },
-    { "s",           "Set the flag to pass scene change frames", OFFSET(sc_pass),    AV_OPT_TYPE_BOOL,     {.dbl =  0  },    0,    1,  V|F },
+    { "sc_pass",     "Set the flag to pass scene change frames", OFFSET(sc_pass),    AV_OPT_TYPE_BOOL,     {.i64 = 0  },     0,    1,  V|F },
+    { "s",           "Set the flag to pass scene change frames", OFFSET(sc_pass),    AV_OPT_TYPE_BOOL,     {.i64 = 0  },     0,    1,  V|F },
     {NULL}
 };
 
@@ -91,7 +91,7 @@ static int config_input(AVFilterLink *inlink)
         s->height[plane] = inlink->h >> ((plane == 1 || plane == 2) ? desc->log2_chroma_h : 0);
     }
 
-    s->sad = ff_scene_sad_get_fn(s->bitdepth == 8 ? 8 : 16);
+    s->sad = ff_scene_sad_get_fn(s->bitdepth);
     if (!s->sad)
         return AVERROR(EINVAL);
 
@@ -193,13 +193,13 @@ static const AVFilterPad scdet_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_scdet = {
-    .name          = "scdet",
-    .description   = NULL_IF_CONFIG_SMALL("Detect video scene change"),
+const FFFilter ff_vf_scdet = {
+    .p.name        = "scdet",
+    .p.description = NULL_IF_CONFIG_SMALL("Detect video scene change"),
+    .p.priv_class  = &scdet_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(SCDetContext),
-    .priv_class    = &scdet_class,
     .uninit        = uninit,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(scdet_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),

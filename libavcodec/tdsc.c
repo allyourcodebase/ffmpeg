@@ -36,7 +36,9 @@
 #include <stdint.h>
 #include <zlib.h>
 
+#include "libavutil/attributes_internal.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
@@ -94,7 +96,6 @@ static av_cold int tdsc_close(AVCodecContext *avctx)
 static av_cold int tdsc_init(AVCodecContext *avctx)
 {
     TDSCContext *ctx = avctx->priv_data;
-    const AVCodec *codec;
     int ret;
 
     avctx->pix_fmt = AV_PIX_FMT_BGR24;
@@ -119,16 +120,14 @@ static av_cold int tdsc_init(AVCodecContext *avctx)
         return AVERROR(ENOMEM);
 
     /* Prepare everything needed for JPEG decoding */
-    codec = avcodec_find_decoder(AV_CODEC_ID_MJPEG);
-    if (!codec)
-        return AVERROR_BUG;
-    ctx->jpeg_avctx = avcodec_alloc_context3(codec);
+    EXTERN const FFCodec ff_mjpeg_decoder;
+    ctx->jpeg_avctx = avcodec_alloc_context3(&ff_mjpeg_decoder.p);
     if (!ctx->jpeg_avctx)
         return AVERROR(ENOMEM);
     ctx->jpeg_avctx->flags = avctx->flags;
     ctx->jpeg_avctx->flags2 = avctx->flags2;
     ctx->jpeg_avctx->idct_algo = avctx->idct_algo;
-    ret = avcodec_open2(ctx->jpeg_avctx, codec, NULL);
+    ret = avcodec_open2(ctx->jpeg_avctx, NULL, NULL);
     if (ret < 0)
         return ret;
 
@@ -241,7 +240,6 @@ static int tdsc_load_cursor(AVCodecContext *avctx)
                     bits <<= 1;
                 }
             }
-            dst += ctx->cursor_stride - ctx->cursor_w * 4;
         }
 
         dst = ctx->cursor;
@@ -273,7 +271,6 @@ static int tdsc_load_cursor(AVCodecContext *avctx)
                     bits <<= 1;
                 }
             }
-            dst += ctx->cursor_stride - ctx->cursor_w * 4;
         }
         break;
     case CUR_FMT_BGRA:
@@ -359,7 +356,8 @@ static int tdsc_decode_jpeg_tile(AVCodecContext *avctx, int tile_size,
     }
 
     ret = avcodec_receive_frame(ctx->jpeg_avctx, ctx->jpgframe);
-    if (ret < 0 || ctx->jpgframe->format != AV_PIX_FMT_YUVJ420P) {
+    if (ret < 0 || ctx->jpgframe->format != AV_PIX_FMT_YUVJ420P ||
+        w > ctx->jpgframe->width || h > ctx->jpgframe->height) {
         av_log(avctx, AV_LOG_ERROR,
                "JPEG decoding error (%d).\n", ret);
 
@@ -403,7 +401,7 @@ static int tdsc_decode_tiles(AVCodecContext *avctx, int number_tiles)
         }
 
         tile_size = bytestream2_get_le32(&ctx->gbc);
-        if (bytestream2_get_bytes_left(&ctx->gbc) < tile_size)
+        if (bytestream2_get_bytes_left(&ctx->gbc) < tile_size + 24LL)
             return AVERROR_INVALIDDATA;
 
         tile_mode = bytestream2_get_le32(&ctx->gbc);
@@ -436,6 +434,9 @@ static int tdsc_decode_tiles(AVCodecContext *avctx, int number_tiles)
             if (ret < 0)
                 return ret;
         } else if (tile_mode == MKTAG(' ','W','A','R')) {
+            if (3LL * w * h > tile_size)
+                return AVERROR_INVALIDDATA;
+
             /* Just copy the buffer to output */
             av_image_copy_plane(ctx->refframe->data[0] + x * 3 +
                                 ctx->refframe->linesize[0] * y,

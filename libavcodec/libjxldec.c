@@ -483,7 +483,7 @@ static int libjxl_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             /* full image is one frame, even if animated */
             av_log(avctx, AV_LOG_DEBUG, "FULL_IMAGE event emitted\n");
             if (ctx->iccp) {
-                ret = ff_frame_new_side_data_from_buf(avctx, ctx->frame, AV_FRAME_DATA_ICC_PROFILE, &ctx->iccp, NULL);
+                ret = ff_frame_new_side_data_from_buf(avctx, ctx->frame, AV_FRAME_DATA_ICC_PROFILE, &ctx->iccp);
                 if (ret < 0)
                     return ret;
             }
@@ -539,6 +539,22 @@ const FFCodec ff_libjxl_decoder = {
     CODEC_LONG_NAME("libjxl JPEG XL"),
     .p.type           = AVMEDIA_TYPE_VIDEO,
     .p.id             = AV_CODEC_ID_JPEGXL,
+    .priv_data_size   = sizeof(LibJxlDecodeContext),
+    .init             = libjxl_decode_init,
+    FF_CODEC_RECEIVE_FRAME_CB(libjxl_receive_frame),
+    .close            = libjxl_decode_close,
+    .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_OTHER_THREADS,
+    .caps_internal    = FF_CODEC_CAP_NOT_INIT_THREADSAFE |
+                        FF_CODEC_CAP_AUTO_THREADS | FF_CODEC_CAP_INIT_CLEANUP |
+                        FF_CODEC_CAP_ICC_PROFILES,
+    .p.wrapper_name   = "libjxl",
+};
+
+const FFCodec ff_libjxl_anim_decoder = {
+    .p.name           = "libjxl_anim",
+    CODEC_LONG_NAME("libjxl JPEG XL animated"),
+    .p.type           = AVMEDIA_TYPE_VIDEO,
+    .p.id             = AV_CODEC_ID_JPEGXL_ANIM,
     .priv_data_size   = sizeof(LibJxlDecodeContext),
     .init             = libjxl_decode_init,
     FF_CODEC_RECEIVE_FRAME_CB(libjxl_receive_frame),

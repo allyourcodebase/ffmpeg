@@ -26,6 +26,7 @@
 #include "libavutil/dict.h"
 #include "libavutil/internal.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/time_internal.h"
 
 #include "avformat.h"
@@ -865,6 +866,9 @@ static int asf_read_simple_index(AVFormatContext *s, const GUIDParseTable *g)
     int i;
     int64_t offset;
     uint64_t size = avio_rl64(pb);
+
+    if (size < 24)
+        return AVERROR_INVALIDDATA;
 
     // simple index objects should be ordered by stream number, this loop tries to find
     // the first not indexed video stream

@@ -32,11 +32,12 @@
 #include "vdpau_internal.h"
 
 static int vdpau_vc1_start_frame(AVCodecContext *avctx,
+                                 const AVBufferRef *buffer_ref,
                                  const uint8_t *buffer, uint32_t size)
 {
     VC1Context * const v  = avctx->priv_data;
     MpegEncContext * const s = &v->s;
-    Picture *pic          = s->current_picture_ptr;
+    MPVPicture *pic          = s->cur_pic.ptr;
     struct vdpau_picture_context *pic_ctx = pic->hwaccel_picture_private;
     VdpPictureInfoVC1 *info = &pic_ctx->info.vc1;
     VdpVideoSurface ref;
@@ -47,15 +48,15 @@ static int vdpau_vc1_start_frame(AVCodecContext *avctx,
 
     switch (s->pict_type) {
     case AV_PICTURE_TYPE_B:
-        if (s->next_picture_ptr) {
-            ref = ff_vdpau_get_surface_id(s->next_picture.f);
+        if (s->next_pic.ptr) {
+            ref = ff_vdpau_get_surface_id(s->next_pic.ptr->f);
             assert(ref != VDP_INVALID_HANDLE);
             info->backward_reference = ref;
         }
         /* fall-through */
     case AV_PICTURE_TYPE_P:
-        if (s->last_picture_ptr) {
-            ref = ff_vdpau_get_surface_id(s->last_picture.f);
+        if (s->last_pic.ptr) {
+            ref = ff_vdpau_get_surface_id(s->last_pic.ptr->f);
             assert(ref != VDP_INVALID_HANDLE);
             info->forward_reference  = ref;
         }
@@ -82,7 +83,7 @@ static int vdpau_vc1_start_frame(AVCodecContext *avctx,
     info->extended_dmv      = v->extended_dmv;
     info->overlap           = v->overlap;
     info->vstransform       = v->vstransform;
-    info->loopfilter        = v->s.loop_filter;
+    info->loopfilter        = v->loop_filter;
     info->fastuvmc          = v->fastuvmc;
     info->range_mapy_flag   = v->range_mapy_flag;
     info->range_mapy        = v->range_mapy;
@@ -92,7 +93,7 @@ static int vdpau_vc1_start_frame(AVCodecContext *avctx,
     info->multires          = v->multires;
     info->syncmarker        = v->resync_marker;
     info->rangered          = v->rangered | (v->rangeredfrm << 1);
-    info->maxbframes        = v->s.max_b_frames;
+    info->maxbframes        = v->max_b_frames;
     info->deblockEnable     = v->postprocflag & 1;
     info->pquant            = v->pq;
 
@@ -104,7 +105,7 @@ static int vdpau_vc1_decode_slice(AVCodecContext *avctx,
 {
     VC1Context * const v  = avctx->priv_data;
     MpegEncContext * const s = &v->s;
-    Picture *pic          = s->current_picture_ptr;
+    MPVPicture *pic          = s->cur_pic.ptr;
     struct vdpau_picture_context *pic_ctx = pic->hwaccel_picture_private;
     int val;
 
@@ -116,7 +117,7 @@ static int vdpau_vc1_decode_slice(AVCodecContext *avctx,
     return 0;
 }
 
-static int vdpau_vc1_init(AVCodecContext *avctx)
+static av_cold int vdpau_vc1_init(AVCodecContext *avctx)
 {
     VdpDecoderProfile profile;
 

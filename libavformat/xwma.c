@@ -22,6 +22,7 @@
 #include <inttypes.h>
 #include <stdint.h>
 
+#include "libavutil/mem.h"
 #include "avformat.h"
 #include "demux.h"
 #include "internal.h"
@@ -268,7 +269,7 @@ static int xwma_read_header(AVFormatContext *s)
              * an offset / timestamp pair.
              */
             av_add_index_entry(st,
-                               cur_pos + (i+1) * st->codecpar->block_align, /* pos */
+                               cur_pos + (i+1LL) * st->codecpar->block_align, /* pos */
                                dpds_table[i] / bytes_per_sample,            /* timestamp */
                                st->codecpar->block_align,                   /* size */
                                0,                                           /* duration */

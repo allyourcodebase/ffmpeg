@@ -18,21 +18,19 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <float.h>
 #include <math.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/tx.h"
 #include "libavutil/audio_fifo.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "audio.h"
 #include "formats.h"
 #include "video.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 #include "window_func.h"
 
 typedef struct ShowSpatialContext {
@@ -82,28 +80,26 @@ static av_cold void uninit(AVFilterContext *ctx)
     av_audio_fifo_free(s->fifo);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layout = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_GBRP, AV_PIX_FMT_NONE };
+    static const AVChannelLayout layouts[] = { AV_CHANNEL_LAYOUT_STEREO, { .nb_channels = 0 } };
     int ret;
 
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref         (formats, &inlink->outcfg.formats        )) < 0 ||
-        (ret = ff_add_channel_layout  (&layout, &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) < 0 ||
-        (ret = ff_channel_layouts_ref (layout , &inlink->outcfg.channel_layouts)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0)
         return ret;
 
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
+    ret = ff_set_common_channel_layouts_from_list2(ctx, cfg_in, cfg_out, layouts);
+    if (ret < 0)
         return ret;
 
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -129,6 +125,7 @@ static int run_channel_fft(AVFilterContext *ctx, void *arg, int jobnr, int nb_jo
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
     ShowSpatialContext *s = ctx->priv;
@@ -139,8 +136,8 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = s->h;
     outlink->sample_aspect_ratio = (AVRational){1,1};
 
-    outlink->frame_rate = s->frame_rate;
-    outlink->time_base = av_inv_q(outlink->frame_rate);
+    l->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(l->frame_rate);
 
     /* (re-)configuration if the video output changed (or first init) */
     if (s->win_size != s->buf_size) {
@@ -324,15 +321,15 @@ static const AVFilterPad showspatial_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showspatial = {
-    .name          = "showspatial",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a spatial video output."),
+const FFFilter ff_avf_showspatial = {
+    .p.name        = "showspatial",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a spatial video output."),
+    .p.priv_class  = &showspatial_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowSpatialContext),
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showspatial_outputs),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .activate      = spatial_activate,
-    .priv_class    = &showspatial_class,
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

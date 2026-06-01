@@ -23,6 +23,7 @@
 #include "config.h"
 #include "videotoolbox.h"
 #include "libavutil/hwcontext_videotoolbox.h"
+#include "libavutil/mem.h"
 #include "vt_internal.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avutil.h"
@@ -70,11 +71,11 @@ CFDataRef ff_videotoolbox_vpcc_extradata_create(AVCodecContext *avctx)
     uint8_t *vt_extradata;
     int subsampling = get_vpx_chroma_subsampling(avctx->sw_pix_fmt, avctx->chroma_sample_location);
 
-    vt_extradata_size = 1 + 3 + 6 + 2;
-    vt_extradata = av_malloc(vt_extradata_size);
-
     if (subsampling < 0)
         return NULL;
+
+    vt_extradata_size = 1 + 3 + 6 + 2;
+    vt_extradata = av_malloc(vt_extradata_size);
 
     if (!vt_extradata)
         return NULL;
@@ -82,7 +83,7 @@ CFDataRef ff_videotoolbox_vpcc_extradata_create(AVCodecContext *avctx)
     p = vt_extradata;
 
     *p++ = 1; /* version */
-    AV_WB24(p + 1, 0); /* flags */
+    AV_WB24(p, 0); /* flags */
     p += 3;
 
    *p++ = h->h.profile;
@@ -103,6 +104,7 @@ CFDataRef ff_videotoolbox_vpcc_extradata_create(AVCodecContext *avctx)
 }
 
 static int videotoolbox_vp9_start_frame(AVCodecContext *avctx,
+                                        const AVBufferRef *buffer_ref,
                                         const uint8_t *buffer,
                                         uint32_t size)
 {

@@ -23,8 +23,8 @@
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "drawutils.h"
+#include "filters.h"
 #include "framesync.h"
-#include "internal.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -233,6 +233,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *srclink = ctx->inputs[0];
     AVFilterLink *xlink = ctx->inputs[1];
     AVFilterLink *ylink = ctx->inputs[2];
+    FilterLink *il = ff_filter_link(srclink);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -248,7 +250,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = xlink->w;
     outlink->h = xlink->h;
     outlink->sample_aspect_ratio = srclink->sample_aspect_ratio;
-    outlink->frame_rate = srclink->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     ret = ff_framesync_init(&s->fs, ctx, 3);
     if (ret < 0)
@@ -337,9 +339,11 @@ static const AVFilterPad remap_opencl_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_remap_opencl = {
-    .name          = "remap_opencl",
-    .description   = NULL_IF_CONFIG_SMALL("Remap pixels using OpenCL."),
+const FFFilter ff_vf_remap_opencl = {
+    .p.name        = "remap_opencl",
+    .p.description = NULL_IF_CONFIG_SMALL("Remap pixels using OpenCL."),
+    .p.priv_class  = &remap_opencl_class,
+    .p.flags       = AVFILTER_FLAG_HWDEVICE,
     .priv_size     = sizeof(RemapOpenCLContext),
     .init          = remap_opencl_init,
     .uninit        = remap_opencl_uninit,
@@ -347,7 +351,5 @@ const AVFilter ff_vf_remap_opencl = {
     FILTER_INPUTS(remap_opencl_inputs),
     FILTER_OUTPUTS(remap_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
-    .priv_class    = &remap_opencl_class,
     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

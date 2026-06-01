@@ -26,11 +26,13 @@
 #include "config_components.h"
 
 #include "libavutil/ambient_viewing_environment.h"
+#include "libavutil/buffer.h"
 #include "libavutil/display.h"
 #include "libavutil/hdr_dynamic_metadata.h"
 #include "libavutil/film_grain_params.h"
 #include "libavutil/mastering_display_metadata.h"
-#include "libavutil/pixdesc.h"
+#include "libavutil/mem.h"
+#include "libavutil/refstruct.h"
 #include "libavutil/stereo3d.h"
 
 #include "atsc_a53.h"
@@ -42,8 +44,9 @@
 #include "h2645_sei.h"
 #include "itut35.h"
 
-#define IS_H264(codec_id) (CONFIG_H264_SEI && CONFIG_HEVC_SEI ? codec_id == AV_CODEC_ID_H264 : CONFIG_H264_SEI)
-#define IS_HEVC(codec_id) (CONFIG_H264_SEI && CONFIG_HEVC_SEI ? codec_id == AV_CODEC_ID_HEVC : CONFIG_HEVC_SEI)
+#define IS_H264(codec_id) (CONFIG_H264_SEI && (CONFIG_HEVC_SEI || CONFIG_VVC_SEI ) ? codec_id == AV_CODEC_ID_H264 : CONFIG_H264_SEI)
+#define IS_HEVC(codec_id) (CONFIG_HEVC_SEI && (CONFIG_H264_SEI || CONFIG_VVC_SEI ) ? codec_id == AV_CODEC_ID_HEVC : CONFIG_HEVC_SEI)
+#define IS_VVC(codec_id)  (CONFIG_VVC_SEI  && (CONFIG_H264_SEI || CONFIG_HEVC_SEI) ? codec_id == AV_CODEC_ID_VVC  : CONFIG_VVC_SEI )
 
 #if CONFIG_HEVC_SEI
 static int decode_registered_user_data_dynamic_hdr_plus(HEVCSEIDynamicHDRPlus *s,
@@ -99,6 +102,20 @@ static int decode_registered_user_data_dynamic_hdr_vivid(HEVCSEIDynamicHDRVivid 
 }
 #endif
 
+static int decode_registered_user_data_lcevc(HEVCSEILCEVC *s,
+                                             GetByteContext *gb)
+{
+    int size = bytestream2_get_bytes_left(gb);
+
+    av_buffer_unref(&s->info);
+    s->info = av_buffer_alloc(size);
+    if (!s->info)
+        return AVERROR(ENOMEM);
+
+    bytestream2_get_bufferu(gb, s->info->data, size);
+    return 0;
+}
+
 static int decode_registered_user_data_afd(H2645SEIAFD *h, GetByteContext *gb)
 {
     int flag;
@@ -128,7 +145,7 @@ static int decode_registered_user_data_closed_caption(H2645SEIA53Caption *h,
 static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
                                        enum AVCodecID codec_id, void *logctx)
 {
-    int country_code, provider_code;
+    int country_code, provider_code = -1;
 
     if (bytestream2_get_bytes_left(gb) < 3)
         return AVERROR_INVALIDDATA;
@@ -141,19 +158,10 @@ static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
         bytestream2_skipu(gb, 1);  // itu_t_t35_country_code_extension_byte
     }
 
-    if (country_code != ITU_T_T35_COUNTRY_CODE_US &&
-        country_code != ITU_T_T35_COUNTRY_CODE_CN) {
-        av_log(logctx, AV_LOG_VERBOSE,
-               "Unsupported User Data Registered ITU-T T35 SEI message (country_code = %d)\n",
-               country_code);
-        return 0;
-    }
-
     /* itu_t_t35_payload_byte follows */
     provider_code = bytestream2_get_be16u(gb);
 
-    switch (provider_code) {
-    case ITU_T_T35_PROVIDER_CODE_ATSC: {
+    if (country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_ATSC) {
         uint32_t user_identifier;
 
         if (bytestream2_get_bytes_left(gb) < 4)
@@ -171,10 +179,15 @@ static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
                    user_identifier);
             break;
         }
-        break;
+    } else if (country_code == ITU_T_T35_COUNTRY_CODE_UK && provider_code == ITU_T_T35_PROVIDER_CODE_VNOVA) {
+        if (bytestream2_get_bytes_left(gb) < 2)
+            return AVERROR_INVALIDDATA;
+
+        bytestream2_skipu(gb, 1); // user_data_type_code
+        return decode_registered_user_data_lcevc(&h->lcevc, gb);
     }
 #if CONFIG_HEVC_SEI
-    case ITU_T_T35_PROVIDER_CODE_CUVA: {
+    else if (country_code == ITU_T_T35_COUNTRY_CODE_CN && provider_code == ITU_T_T35_PROVIDER_CODE_HDR_VIVID) {
         const uint16_t cuva_provider_oriented_code = 0x0005;
         uint16_t provider_oriented_code;
 
@@ -188,9 +201,7 @@ static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
         if (provider_oriented_code == cuva_provider_oriented_code) {
             return decode_registered_user_data_dynamic_hdr_vivid(&h->dynamic_hdr_vivid, gb);
         }
-        break;
-    }
-    case ITU_T_T35_PROVIDER_CODE_SMTPE: {
+    } else if(country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_SAMSUNG) {
         // A/341 Amendment - 2094-40
         const uint16_t smpte2094_40_provider_oriented_code = 0x0001;
         const uint8_t smpte2094_40_application_identifier = 0x04;
@@ -209,9 +220,7 @@ static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
             application_identifier == smpte2094_40_application_identifier) {
             return decode_registered_user_data_dynamic_hdr_plus(&h->dynamic_hdr_plus, gb);
         }
-        break;
-    }
-    case 0x5890: { // aom_provider_code
+    } else if (country_code == ITU_T_T35_COUNTRY_CODE_US && provider_code == ITU_T_T35_PROVIDER_CODE_AOM) {
         const uint16_t aom_grain_provider_oriented_code = 0x0001;
         uint16_t provider_oriented_code;
 
@@ -227,15 +236,13 @@ static int decode_registered_user_data(H2645SEI *h, GetByteContext *gb,
                                                 gb->buffer,
                                                 bytestream2_get_bytes_left(gb));
         }
-        break;
     }
-    unsupported_provider_code:
 #endif
-    default:
+    else {
+        unsupported_provider_code:
         av_log(logctx, AV_LOG_VERBOSE,
-               "Unsupported User Data Registered ITU-T T35 SEI message (provider_code = %d)\n",
-               provider_code);
-        break;
+               "Unsupported User Data Registered ITU-T T35 SEI message (country_code = %d, provider_code = %d)\n",
+               country_code, provider_code);
     }
 
     return 0;
@@ -403,7 +410,7 @@ static int decode_film_grain_characteristics(H2645SEIFilmGrainCharacteristics *h
                 }
             }
         }
-        if (IS_HEVC(codec_id))
+        if (!IS_H264(codec_id))
             h->persistence_flag = get_bits1(gb);
         else
             h->repetition_period = get_ue_golomb_long(gb);
@@ -472,7 +479,11 @@ int ff_h2645_sei_message_decode(H2645SEI *h, enum SEIType type,
     case SEI_TYPE_DISPLAY_ORIENTATION:
         return decode_display_orientation(&h->display_orientation, gb);
     case SEI_TYPE_FILM_GRAIN_CHARACTERISTICS:
-        return decode_film_grain_characteristics(&h->film_grain_characteristics, codec_id, gb);
+        av_refstruct_unref(&h->film_grain_characteristics);
+        h->film_grain_characteristics = av_refstruct_allocz(sizeof(*h->film_grain_characteristics));
+        if (!h->film_grain_characteristics)
+            return AVERROR(ENOMEM);
+        return decode_film_grain_characteristics(h->film_grain_characteristics, codec_id, gb);
     case SEI_TYPE_FRAME_PACKING_ARRANGEMENT:
         return decode_frame_packing_arrangement(&h->frame_packing, gb, codec_id);
     case SEI_TYPE_ALTERNATIVE_TRANSFER_CHARACTERISTICS:
@@ -501,6 +512,10 @@ int ff_h2645_sei_ctx_replace(H2645SEI *dst, const H2645SEI *src)
         av_buffer_unref(&dst->unregistered.buf_ref[i]);
     dst->unregistered.nb_buf_ref = 0;
 
+    ret = av_buffer_replace(&dst->lcevc.info, src->lcevc.info);
+    if (ret < 0)
+        return ret;
+
     if (src->unregistered.nb_buf_ref) {
         ret = av_reallocp_array(&dst->unregistered.buf_ref,
                                 src->unregistered.nb_buf_ref,
@@ -516,6 +531,20 @@ int ff_h2645_sei_ctx_replace(H2645SEI *dst, const H2645SEI *src)
         }
     }
 
+    for (unsigned i = 0; i < FF_ARRAY_ELEMS(dst->aom_film_grain.sets); i++) {
+        ret = av_buffer_replace(&dst->aom_film_grain.sets[i],
+                                 src->aom_film_grain.sets[i]);
+        if (ret < 0)
+            return ret;
+    }
+    dst->aom_film_grain.enable = src->aom_film_grain.enable;
+
+    dst->mastering_display     = src->mastering_display;
+    dst->content_light         = src->content_light;
+
+    av_refstruct_replace(&dst->film_grain_characteristics,
+                          src->film_grain_characteristics);
+
     return 0;
 }
 
@@ -527,6 +556,146 @@ static int is_frame_packing_type_valid(SEIFpaType type, enum AVCodecID codec_id)
     else
         return type <= SEI_FPA_TYPE_INTERLEAVE_TEMPORAL &&
                type >= SEI_FPA_TYPE_SIDE_BY_SIDE;
+}
+
+static int h2645_sei_to_side_data(AVCodecContext *avctx, H2645SEI *sei,
+                                  AVFrameSideData ***sd, int *nb_sd)
+{
+    int ret;
+
+    for (unsigned i = 0; i < sei->unregistered.nb_buf_ref; i++) {
+        H2645SEIUnregistered *unreg = &sei->unregistered;
+
+        if (unreg->buf_ref[i]) {
+            AVFrameSideData *entry =
+                av_frame_side_data_add(sd, nb_sd, AV_FRAME_DATA_SEI_UNREGISTERED,
+                                       &unreg->buf_ref[i], 0);
+            if (!entry)
+                av_buffer_unref(&unreg->buf_ref[i]);
+        }
+    }
+    sei->unregistered.nb_buf_ref = 0;
+
+    if (sei->ambient_viewing_environment.present) {
+        H2645SEIAmbientViewingEnvironment *env = &sei->ambient_viewing_environment;
+        AVBufferRef *buf;
+        size_t size;
+
+        AVAmbientViewingEnvironment *dst_env =
+            av_ambient_viewing_environment_alloc(&size);
+        if (!dst_env)
+            return AVERROR(ENOMEM);
+
+        buf = av_buffer_create((uint8_t *)dst_env, size, NULL, NULL, 0);
+        if (!buf) {
+            av_free(dst_env);
+            return AVERROR(ENOMEM);
+        }
+
+        ret = ff_frame_new_side_data_from_buf_ext(avctx, sd, nb_sd,
+                                                  AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT, &buf);
+
+        if (ret < 0)
+            return ret;
+
+        dst_env->ambient_illuminance = av_make_q(env->ambient_illuminance, 10000);
+        dst_env->ambient_light_x     = av_make_q(env->ambient_light_x,     50000);
+        dst_env->ambient_light_y     = av_make_q(env->ambient_light_y,     50000);
+    }
+
+    if (sei->mastering_display.present) {
+        // HEVC uses a g,b,r ordering, which we convert to a more natural r,g,b
+        const int mapping[3] = {2, 0, 1};
+        const int chroma_den = 50000;
+        const int luma_den = 10000;
+        int i;
+        AVMasteringDisplayMetadata *metadata;
+
+        ret = ff_decode_mastering_display_new_ext(avctx, sd, nb_sd, &metadata);
+        if (ret < 0)
+            return ret;
+
+        if (metadata) {
+            metadata->has_luminance = 1;
+            metadata->has_primaries = 1;
+
+            for (i = 0; i < 3; i++) {
+                const int j = mapping[i];
+                metadata->display_primaries[i][0].num = sei->mastering_display.display_primaries[j][0];
+                metadata->display_primaries[i][0].den = chroma_den;
+                metadata->has_primaries &= sei->mastering_display.display_primaries[j][0] >= 5 &&
+                                           sei->mastering_display.display_primaries[j][0] <= 37000;
+
+                metadata->display_primaries[i][1].num = sei->mastering_display.display_primaries[j][1];
+                metadata->display_primaries[i][1].den = chroma_den;
+                metadata->has_primaries &= sei->mastering_display.display_primaries[j][1] >= 5 &&
+                                           sei->mastering_display.display_primaries[j][1] <= 42000;
+            }
+            metadata->white_point[0].num = sei->mastering_display.white_point[0];
+            metadata->white_point[0].den = chroma_den;
+            metadata->has_primaries &= sei->mastering_display.white_point[0] >= 5 &&
+                                       sei->mastering_display.white_point[0] <= 37000;
+
+            metadata->white_point[1].num = sei->mastering_display.white_point[1];
+            metadata->white_point[1].den = chroma_den;
+            metadata->has_primaries &= sei->mastering_display.white_point[1] >= 5 &&
+                                       sei->mastering_display.white_point[1] <= 42000;
+
+            metadata->max_luminance.num = sei->mastering_display.max_luminance;
+            metadata->max_luminance.den = luma_den;
+            metadata->has_luminance &= sei->mastering_display.max_luminance >= 50000 &&
+                                       sei->mastering_display.max_luminance <= 100000000;
+
+            metadata->min_luminance.num = sei->mastering_display.min_luminance;
+            metadata->min_luminance.den = luma_den;
+            metadata->has_luminance &= sei->mastering_display.min_luminance <= 50000 &&
+                                       sei->mastering_display.min_luminance <
+                                       sei->mastering_display.max_luminance;
+
+            /* Real (blu-ray) releases in the wild come with minimum luminance
+             * values of 0.000 cd/m2, so permit this edge case */
+            if (avctx->strict_std_compliance >= FF_COMPLIANCE_STRICT)
+                metadata->has_luminance &= sei->mastering_display.min_luminance >= 1;
+
+            if (metadata->has_luminance || metadata->has_primaries)
+                av_log(avctx, AV_LOG_DEBUG, "Mastering Display Metadata:\n");
+            if (metadata->has_primaries) {
+                av_log(avctx, AV_LOG_DEBUG,
+                       "r(%5.4f,%5.4f) g(%5.4f,%5.4f) b(%5.4f %5.4f) wp(%5.4f, %5.4f)\n",
+                       av_q2d(metadata->display_primaries[0][0]),
+                       av_q2d(metadata->display_primaries[0][1]),
+                       av_q2d(metadata->display_primaries[1][0]),
+                       av_q2d(metadata->display_primaries[1][1]),
+                       av_q2d(metadata->display_primaries[2][0]),
+                       av_q2d(metadata->display_primaries[2][1]),
+                       av_q2d(metadata->white_point[0]), av_q2d(metadata->white_point[1]));
+            }
+            if (metadata->has_luminance) {
+                av_log(avctx, AV_LOG_DEBUG,
+                       "min_luminance=%f, max_luminance=%f\n",
+                       av_q2d(metadata->min_luminance), av_q2d(metadata->max_luminance));
+            }
+        }
+    }
+
+    if (sei->content_light.present) {
+        AVContentLightMetadata *metadata;
+
+        ret = ff_decode_content_light_new_ext(avctx, sd, nb_sd, &metadata);
+        if (ret < 0)
+            return ret;
+
+        if (metadata) {
+            metadata->MaxCLL  = sei->content_light.max_content_light_level;
+            metadata->MaxFALL = sei->content_light.max_pic_average_light_level;
+
+            av_log(avctx, AV_LOG_DEBUG, "Content Light Level Metadata:\n");
+            av_log(avctx, AV_LOG_DEBUG, "MaxCLL=%d, MaxFALL=%d\n",
+                   metadata->MaxCLL, metadata->MaxFALL);
+        }
+    }
+
+    return 0;
 }
 
 int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
@@ -621,23 +790,16 @@ int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
         if (!sd)
             av_buffer_unref(&a53->buf_ref);
         a53->buf_ref = NULL;
-        if (avctx)
-            avctx->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+#if FF_API_CODEC_PROPS
+FF_DISABLE_DEPRECATION_WARNINGS
+        avctx->properties |= FF_CODEC_PROPERTY_CLOSED_CAPTIONS;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
-    for (unsigned i = 0; i < sei->unregistered.nb_buf_ref; i++) {
-        H2645SEIUnregistered *unreg = &sei->unregistered;
-
-        if (unreg->buf_ref[i]) {
-            AVFrameSideData *sd = av_frame_new_side_data_from_buf(frame,
-                    AV_FRAME_DATA_SEI_UNREGISTERED,
-                    unreg->buf_ref[i]);
-            if (!sd)
-                av_buffer_unref(&unreg->buf_ref[i]);
-            unreg->buf_ref[i] = NULL;
-        }
-    }
-    sei->unregistered.nb_buf_ref = 0;
+    ret = h2645_sei_to_side_data(avctx, sei, &frame->side_data, &frame->nb_side_data);
+    if (ret < 0)
+        return ret;
 
     if (sei->afd.present) {
         AVFrameSideData *sd = av_frame_new_side_data(frame, AV_FRAME_DATA_AFD,
@@ -649,8 +811,15 @@ int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
         }
     }
 
-    if (sei->film_grain_characteristics.present) {
-        H2645SEIFilmGrainCharacteristics *fgc = &sei->film_grain_characteristics;
+    if (sei->lcevc.info) {
+        HEVCSEILCEVC *lcevc = &sei->lcevc;
+        ret = ff_frame_new_side_data_from_buf(avctx, frame, AV_FRAME_DATA_LCEVC, &lcevc->info);
+        if (ret < 0)
+            return ret;
+    }
+
+    if (sei->film_grain_characteristics && sei->film_grain_characteristics->present) {
+        H2645SEIFilmGrainCharacteristics *fgc = sei->film_grain_characteristics;
         AVFilmGrainParams *fgp = av_film_grain_params_create_side_data(frame);
         AVFilmGrainH274Params *h274;
 
@@ -668,7 +837,7 @@ int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
         fgp->subsampling_x = fgp->subsampling_y = 0;
 
         h274->model_id = fgc->model_id;
-        if (fgc->separate_colour_description_present_flag) {
+        if (IS_VVC(codec_id) || fgc->separate_colour_description_present_flag) {
             fgp->bit_depth_luma   = fgc->bit_depth_luma;
             fgp->bit_depth_chroma = fgc->bit_depth_chroma;
             fgp->color_range      = fgc->full_range + 1;
@@ -689,17 +858,6 @@ int ff_h2645_sei_to_frame(AVFrame *frame, H2645SEI *sei,
         h274->blending_mode_id  = fgc->blending_mode_id;
         h274->log2_scale_factor = fgc->log2_scale_factor;
 
-#if FF_API_H274_FILM_GRAIN_VCS
-FF_DISABLE_DEPRECATION_WARNINGS
-        h274->bit_depth_luma   = fgp->bit_depth_luma;
-        h274->bit_depth_chroma = fgp->bit_depth_chroma;
-        h274->color_range      = fgp->color_range;
-        h274->color_primaries  = fgp->color_primaries;
-        h274->color_trc        = fgp->color_trc;
-        h274->color_space      = fgp->color_space;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
         memcpy(&h274->component_model_present, &fgc->comp_model_present_flag,
                sizeof(h274->component_model_present));
         memcpy(&h274->num_intensity_intervals, &fgc->num_intensity_intervals,
@@ -718,8 +876,11 @@ FF_ENABLE_DEPRECATION_WARNINGS
         else
             fgc->present = fgc->persistence_flag;
 
-        if (avctx)
-            avctx->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
+#if FF_API_CODEC_PROPS
+FF_DISABLE_DEPRECATION_WARNINGS
+        avctx->properties |= FF_CODEC_PROPERTY_FILM_GRAIN;
+FF_ENABLE_DEPRECATION_WARNINGS
+#endif
     }
 
 #if CONFIG_HEVC_SEI
@@ -728,86 +889,13 @@ FF_ENABLE_DEPRECATION_WARNINGS
         return ret;
 #endif
 
-    if (sei->ambient_viewing_environment.present) {
-        H2645SEIAmbientViewingEnvironment *env =
-            &sei->ambient_viewing_environment;
-
-        AVAmbientViewingEnvironment *dst_env =
-            av_ambient_viewing_environment_create_side_data(frame);
-        if (!dst_env)
-            return AVERROR(ENOMEM);
-
-        dst_env->ambient_illuminance = av_make_q(env->ambient_illuminance, 10000);
-        dst_env->ambient_light_x     = av_make_q(env->ambient_light_x,     50000);
-        dst_env->ambient_light_y     = av_make_q(env->ambient_light_y,     50000);
-    }
-
-    if (sei->mastering_display.present) {
-        // HEVC uses a g,b,r ordering, which we convert to a more natural r,g,b
-        const int mapping[3] = {2, 0, 1};
-        const int chroma_den = 50000;
-        const int luma_den = 10000;
-        int i;
-        AVMasteringDisplayMetadata *metadata;
-
-        ret = ff_decode_mastering_display_new(avctx, frame, &metadata);
-        if (ret < 0)
-            return ret;
-
-        if (metadata) {
-            for (i = 0; i < 3; i++) {
-                const int j = mapping[i];
-                metadata->display_primaries[i][0].num = sei->mastering_display.display_primaries[j][0];
-                metadata->display_primaries[i][0].den = chroma_den;
-                metadata->display_primaries[i][1].num = sei->mastering_display.display_primaries[j][1];
-                metadata->display_primaries[i][1].den = chroma_den;
-            }
-            metadata->white_point[0].num = sei->mastering_display.white_point[0];
-            metadata->white_point[0].den = chroma_den;
-            metadata->white_point[1].num = sei->mastering_display.white_point[1];
-            metadata->white_point[1].den = chroma_den;
-
-            metadata->max_luminance.num = sei->mastering_display.max_luminance;
-            metadata->max_luminance.den = luma_den;
-            metadata->min_luminance.num = sei->mastering_display.min_luminance;
-            metadata->min_luminance.den = luma_den;
-            metadata->has_luminance = 1;
-            metadata->has_primaries = 1;
-
-            av_log(avctx, AV_LOG_DEBUG, "Mastering Display Metadata:\n");
-            av_log(avctx, AV_LOG_DEBUG,
-                   "r(%5.4f,%5.4f) g(%5.4f,%5.4f) b(%5.4f %5.4f) wp(%5.4f, %5.4f)\n",
-                   av_q2d(metadata->display_primaries[0][0]),
-                   av_q2d(metadata->display_primaries[0][1]),
-                   av_q2d(metadata->display_primaries[1][0]),
-                   av_q2d(metadata->display_primaries[1][1]),
-                   av_q2d(metadata->display_primaries[2][0]),
-                   av_q2d(metadata->display_primaries[2][1]),
-                   av_q2d(metadata->white_point[0]), av_q2d(metadata->white_point[1]));
-            av_log(avctx, AV_LOG_DEBUG,
-                   "min_luminance=%f, max_luminance=%f\n",
-                   av_q2d(metadata->min_luminance), av_q2d(metadata->max_luminance));
-        }
-    }
-
-    if (sei->content_light.present) {
-        AVContentLightMetadata *metadata;
-
-        ret = ff_decode_content_light_new(avctx, frame, &metadata);
-        if (ret < 0)
-            return ret;
-
-        if (metadata) {
-            metadata->MaxCLL  = sei->content_light.max_content_light_level;
-            metadata->MaxFALL = sei->content_light.max_pic_average_light_level;
-
-            av_log(avctx, AV_LOG_DEBUG, "Content Light Level Metadata:\n");
-            av_log(avctx, AV_LOG_DEBUG, "MaxCLL=%d, MaxFALL=%d\n",
-                   metadata->MaxCLL, metadata->MaxFALL);
-        }
-    }
-
     return 0;
+}
+
+int ff_h2645_sei_to_context(AVCodecContext *avctx, H2645SEI *sei)
+{
+    return h2645_sei_to_side_data(avctx, sei, &avctx->decoded_side_data,
+                                  &avctx->nb_decoded_side_data);
 }
 
 void ff_h2645_sei_reset(H2645SEI *s)
@@ -820,9 +908,12 @@ void ff_h2645_sei_reset(H2645SEI *s)
     av_freep(&s->unregistered.buf_ref);
     av_buffer_unref(&s->dynamic_hdr_plus.info);
     av_buffer_unref(&s->dynamic_hdr_vivid.info);
+    av_buffer_unref(&s->lcevc.info);
 
     s->ambient_viewing_environment.present = 0;
     s->mastering_display.present = 0;
     s->content_light.present = 0;
-    s->aom_film_grain.enable = 0;
+
+    av_refstruct_unref(&s->film_grain_characteristics);
+    ff_aom_uninit_film_grain_params(&s->aom_film_grain);
 }

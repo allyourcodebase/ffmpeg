@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Institue of Software Chinese Academy of Sciences (ISCAS).
+ * Copyright (c) 2023 Institute of Software Chinese Academy of Sciences (ISCAS).
  *
  * This file is part of FFmpeg.
  *
@@ -21,7 +21,8 @@
 #include "libavutil/riscv/asm.S"
 
 //  void ff_fcmul_add(float *sum, const float *t, const float *c, int len)
-func ff_fcmul_add_rvv, zve64f
+func ff_fcmul_add_rvv, zve64f, zba
+        lpad    0
         li          t1, 32
 1:
         vsetvli     t0, a3, e32, m4, ta, ma

@@ -30,12 +30,13 @@
 #include "libavutil/bswap.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 static const char *const var_names[] = {
@@ -144,14 +145,16 @@ static const enum AVPixelFormat yuv_pix_fmts[] = { YUV_FORMATS, AV_PIX_FMT_NONE 
 static const enum AVPixelFormat rgb_pix_fmts[] = { RGB_FORMATS, AV_PIX_FMT_NONE };
 static const enum AVPixelFormat all_pix_fmts[] = { RGB_FORMATS, YUV_FORMATS, GRAY_FORMATS, AV_PIX_FMT_NONE };
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    LutContext *s = ctx->priv;
+    const LutContext *s = ctx->priv;
 
     const enum AVPixelFormat *pix_fmts = s->is_rgb ? rgb_pix_fmts :
                                                      s->is_yuv ? yuv_pix_fmts :
                                                                  all_pix_fmts;
-    return ff_set_common_formats_from_list(ctx, pix_fmts);
+    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
 }
 
 /**
@@ -536,6 +539,9 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         av_frame_copy_props(out, in);
     }
 
+    av_frame_side_data_remove_by_props(&out->side_data, &out->nb_side_data,
+                                       AV_SIDE_DATA_PROP_COLOR_DEPENDENT);
+
     if (s->is_rgb && s->is_16bit && !s->is_planar) {
         /* packed, 16-bit */
         PACKED_THREAD_DATA
@@ -584,18 +590,18 @@ static const AVFilterPad inputs[] = {
 };
 
 #define DEFINE_LUT_FILTER(name_, description_, priv_class_)             \
-    const AVFilter ff_vf_##name_ = {                                    \
-        .name          = #name_,                                        \
-        .description   = NULL_IF_CONFIG_SMALL(description_),            \
-        .priv_class    = &priv_class_ ## _class,                        \
+    const FFFilter ff_vf_##name_ = {                                    \
+        .p.name        = #name_,                                        \
+        .p.description = NULL_IF_CONFIG_SMALL(description_),            \
+        .p.priv_class  = &priv_class_ ## _class,                        \
+        .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |       \
+                         AVFILTER_FLAG_SLICE_THREADS,                   \
         .priv_size     = sizeof(LutContext),                            \
         .init          = name_##_init,                                  \
         .uninit        = uninit,                                        \
         FILTER_INPUTS(inputs),                                          \
         FILTER_OUTPUTS(ff_video_default_filterpad),                     \
-        FILTER_QUERY_FUNC(query_formats),                               \
-        .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |       \
-                         AVFILTER_FLAG_SLICE_THREADS,                   \
+        FILTER_QUERY_FUNC2(query_formats),                              \
         .process_command = process_command,                             \
     }
 

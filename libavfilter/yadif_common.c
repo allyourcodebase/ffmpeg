@@ -21,7 +21,7 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/imgutils.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "yadif.h"
 
@@ -44,11 +44,6 @@ static int return_frame(AVFilterContext *ctx, int is_second)
             return AVERROR(ENOMEM);
 
         av_frame_copy_props(yadif->out, yadif->cur);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-        yadif->out->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         yadif->out->flags &= ~AV_FRAME_FLAG_INTERLACED;
         if (yadif->current_field == YADIF_FIELD_BACK_END)
             yadif->current_field = YADIF_FIELD_END;
@@ -164,11 +159,6 @@ int ff_yadif_filter_frame(AVFilterLink *link, AVFrame *frame)
         return AVERROR(ENOMEM);
 
     av_frame_copy_props(yadif->out, yadif->cur);
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    yadif->out->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     yadif->out->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     if (yadif->out->pts != AV_NOPTS_VALUE)
@@ -218,6 +208,8 @@ int ff_yadif_request_frame(AVFilterLink *link)
 int ff_yadif_config_output_common(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
+    FilterLink *il = ff_filter_link(ctx->inputs[0]);
+    FilterLink *ol = ff_filter_link(outlink);
     YADIFContext *yadif = ctx->priv;
     AVRational tb = ctx->inputs[0]->time_base;
     int ret;
@@ -239,12 +231,12 @@ int ff_yadif_config_output_common(AVFilterLink *outlink)
     }
 
     if(yadif->mode & 1)
-        outlink->frame_rate = av_mul_q(ctx->inputs[0]->frame_rate,
+        ol->frame_rate = av_mul_q(il->frame_rate,
                                     (AVRational){2, 1});
     else
-        outlink->frame_rate = ctx->inputs[0]->frame_rate;
+        ol->frame_rate = il->frame_rate;
 
-    ret = ff_ccfifo_init(&yadif->cc_fifo, outlink->frame_rate, ctx);
+    ret = ff_ccfifo_init(&yadif->cc_fifo, ol->frame_rate, ctx);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
         return ret;

@@ -20,9 +20,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config_components.h"
-
-#include "libavutil/intreadwrite.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
@@ -32,6 +29,8 @@ static av_cold int v408_encode_init(AVCodecContext *avctx)
 {
     avctx->bits_per_coded_sample = 32;
     avctx->bit_rate = ff_guess_coded_bitrate(avctx);
+
+    av_log(avctx, AV_LOG_WARNING, "This encoder is deprecated and will be removed.\n");
 
     return 0;
 }
@@ -72,7 +71,6 @@ static int v408_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 
 static const enum AVPixelFormat pix_fmt[] = { AV_PIX_FMT_YUVA444P, AV_PIX_FMT_NONE };
 
-#if CONFIG_V408_ENCODER
 const FFCodec ff_v408_encoder = {
     .p.name       = "v408",
     CODEC_LONG_NAME("Uncompressed packed QT 4:4:4:4"),
@@ -81,6 +79,5 @@ const FFCodec ff_v408_encoder = {
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE,
     .init         = v408_encode_init,
     FF_CODEC_ENCODE_CB(v408_encode_frame),
-    .p.pix_fmts   = pix_fmt,
+    CODEC_PIXFMTS_ARRAY(pix_fmt),
 };
-#endif

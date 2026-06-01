@@ -21,13 +21,16 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
-#include "libavutil/avstring.h"
+
+#include <stddef.h>
+
 #include "libavutil/intreadwrite.h"
 #include "libavutil/internal.h"
 #include "libavutil/macros.h"
-#include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "libavformat/internal.h"
 #include "avformat.h"
+#include "avio_internal.h"
 #include "demux.h"
 
 #define SCD_MAGIC              ((uint64_t)MKBETAG('S', 'E', 'D', 'B') << 32 | \
@@ -49,7 +52,7 @@ typedef struct SCDOffsetTable {
 
 typedef struct SCDHeader {
     uint64_t magic;         /* SEDBSSCF                                     */
-    uint32_t version;       /* Verison number. We only know about 3.        */
+    uint32_t version;       /* Version number. We only know about 3.        */
     uint16_t unk1;          /* Unknown, 260 in Drakengard 3, 1024 in FFXIV. */
     uint16_t header_size;   /* Total size of this header.                   */
     uint32_t file_size;     /* Is often 0, just ignore it.                  */
@@ -119,7 +122,7 @@ static int scd_read_offsets(AVFormatContext *s)
     SCDDemuxContext  *ctx = s->priv_data;
     uint8_t buf[SCD_OFFSET_HEADER_SIZE];
 
-    if ((ret = avio_read(s->pb, buf, SCD_OFFSET_HEADER_SIZE)) < 0)
+    if ((ret = ffio_read_size(s->pb, buf, SCD_OFFSET_HEADER_SIZE)) < 0)
         return ret;
 
     ctx->hdr.table0.count  = AV_RB16(buf +  0);
@@ -241,7 +244,7 @@ static int scd_read_header(AVFormatContext *s)
     SCDDemuxContext *ctx = s->priv_data;
     uint8_t buf[SCD_MIN_HEADER_SIZE];
 
-    if ((ret = avio_read(s->pb, buf, SCD_MIN_HEADER_SIZE)) < 0)
+    if ((ret = ffio_read_size(s->pb, buf, SCD_MIN_HEADER_SIZE)) < 0)
         return ret;
 
     ctx->hdr.magic       = AV_RB64(buf +  0);

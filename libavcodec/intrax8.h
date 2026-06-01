@@ -38,8 +38,7 @@ typedef struct IntraX8Context {
     WMV2DSPContext wdsp;
     uint8_t idct_permutation[64];
     AVCodecContext *avctx;
-    int *block_last_index;  ///< last nonzero coefficient in block
-    int16_t (*block)[64];
+    int16_t *block;
 
     // set by the caller codec
     IntraX8DSPContext dsp;
@@ -77,15 +76,13 @@ typedef struct IntraX8Context {
  * @param avctx pointer to AVCodecContext
  * @param w pointer to IntraX8Context
  * @param block pointer to block array
- * @param block_last_index pointer to index array
  * @param mb_width macroblock width
  * @param mb_height macroblock height
  * @return 0 on success, a negative AVERROR value on error
  */
 int ff_intrax8_common_init(AVCodecContext *avctx,
                            IntraX8Context *w,
-                           int16_t (*block)[64],
-                           int block_last_index[12],
+                           int16_t block[64],
                            int mb_width, int mb_height);
 
 /**
@@ -106,7 +103,7 @@ void ff_intrax8_common_end(IntraX8Context *w);
  * @param quant_offset offset away from zero
  * @param loopfilter enable filter after decoding a block
  */
-int ff_intrax8_decode_picture(IntraX8Context *w, Picture *pict,
+int ff_intrax8_decode_picture(IntraX8Context *w, MPVPicture *pict,
                               GetBitContext *gb, int *mb_x, int *mb_y,
                               int quant, int halfpq,
                               int loopfilter, int lowdelay);

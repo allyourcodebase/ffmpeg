@@ -35,6 +35,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/internal.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/avstring.h"
 #include "libavutil/parseutils.h"
@@ -71,7 +72,7 @@ typedef struct SegmentContext {
     const AVClass *class;  /**< Class for private options. */
     int segment_idx;       ///< index of the segment file to write, starting from 0
     int segment_idx_wrap;  ///< number after which the index wraps
-    int segment_idx_wrap_nb;  ///< number of time the index has wraped
+    int segment_idx_wrap_nb;  ///< number of time the index has wrapped
     int segment_count;     ///< number of segment files already written
     const AVOutputFormat *oformat;
     AVFormatContext *avf;
@@ -99,11 +100,11 @@ typedef struct SegmentContext {
 
     char *times_str;       ///< segment times specification string
     int64_t *times;        ///< list of segment interval specification
-    int nb_times;          ///< number of elments in the times array
+    int nb_times;          ///< number of elements in the times array
 
     char *frames_str;      ///< segment frame numbers specification string
     int *frames;           ///< list of frame number specification
-    int nb_frames;         ///< number of elments in the frames array
+    int nb_frames;         ///< number of elements in the frames array
     int frame_count;       ///< total number of reference frames
     int segment_frame_count; ///< number of reference frames in the segment
 

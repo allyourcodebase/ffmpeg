@@ -21,19 +21,17 @@
  * A hardware accelerated overlay filter based on Intel Quick Sync Video VPP
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/common.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/eval.h"
 #include "libavutil/hwcontext.h"
-#include "libavutil/avstring.h"
-#include "libavutil/imgutils.h"
 #include "libavutil/mathematics.h"
 
-#include "internal.h"
+#include "filters.h"
 #include "avfilter.h"
 #include "formats.h"
-#include "video.h"
 
 #include "framesync.h"
 #include "qsvvpp.h"
@@ -139,7 +137,7 @@ static int eval_expr(AVFilterContext *ctx)
     var_values[VAR_OVERLAY_X] =
     var_values[VAR_OX]        = av_expr_eval(ox_expr, var_values, NULL);
 
-    /* calc overlay_w and overlay_h again incase relative to ox,oy */
+    /* calc overlay_w and overlay_h again in case relative to ox,oy */
     var_values[VAR_OVERLAY_W] =
     var_values[VAR_OW]        = av_expr_eval(ow_expr, var_values, NULL);
     var_values[VAR_OVERLAY_H] =
@@ -158,12 +156,13 @@ release:
 
 static int have_alpha_planar(AVFilterLink *link)
 {
+    FilterLink              *l = ff_filter_link(link);
     enum AVPixelFormat pix_fmt = link->format;
     const AVPixFmtDescriptor *desc;
     AVHWFramesContext *fctx;
 
     if (link->format == AV_PIX_FMT_QSV) {
-        fctx    = (AVHWFramesContext *)link->hw_frames_ctx->data;
+        fctx    = (AVHWFramesContext *)l->hw_frames_ctx->data;
         pix_fmt = fctx->sw_format;
     }
 
@@ -230,13 +229,16 @@ static int process_frame(FFFrameSync *fs)
 {
     AVFilterContext  *ctx = fs->parent;
     QSVVPPContext    *qsv = fs->opaque;
-    AVFrame        *frame = NULL;
+    AVFrame        *frame = NULL, *propref = NULL;
     int               ret = 0, i;
 
     for (i = 0; i < ctx->nb_inputs; i++) {
         ret = ff_framesync_get_frame(fs, i, &frame, 0);
-        if (ret == 0)
-            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame);
+        if (ret == 0) {
+            if (i == 0)
+                propref = frame;
+            ret = ff_qsvvpp_filter_frame(qsv, ctx->inputs[i], frame, propref);
+        }
         if (ret < 0 && ret != AVERROR(EAGAIN))
             break;
     }
@@ -272,6 +274,9 @@ static int config_output(AVFilterLink *outlink)
     QSVOverlayContext *vpp = ctx->priv;
     AVFilterLink      *in0 = ctx->inputs[0];
     AVFilterLink      *in1 = ctx->inputs[1];
+    FilterLink         *l0 = ff_filter_link(in0);
+    FilterLink         *l1 = ff_filter_link(in1);
+    FilterLink         *ol = ff_filter_link(outlink);
     int ret;
 
     av_log(ctx, AV_LOG_DEBUG, "Output is of %s.\n", av_get_pix_fmt_name(outlink->format));
@@ -281,8 +286,8 @@ static int config_output(AVFilterLink *outlink)
         av_log(ctx, AV_LOG_ERROR, "Mixing hardware and software pixel formats is not supported.\n");
         return AVERROR(EINVAL);
     } else if (in0->format == AV_PIX_FMT_QSV) {
-        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)in0->hw_frames_ctx->data;
-        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)in1->hw_frames_ctx->data;
+        AVHWFramesContext *hw_frame0 = (AVHWFramesContext *)l0->hw_frames_ctx->data;
+        AVHWFramesContext *hw_frame1 = (AVHWFramesContext *)l1->hw_frames_ctx->data;
 
         if (hw_frame0->device_ctx != hw_frame1->device_ctx) {
             av_log(ctx, AV_LOG_ERROR, "Inputs with different underlying QSV devices are forbidden.\n");
@@ -293,8 +298,8 @@ static int config_output(AVFilterLink *outlink)
 
     outlink->w          = vpp->var_values[VAR_MW];
     outlink->h          = vpp->var_values[VAR_MH];
-    outlink->frame_rate = in0->frame_rate;
-    outlink->time_base  = av_inv_q(outlink->frame_rate);
+    ol->frame_rate      = l0->frame_rate;
+    outlink->time_base  = av_inv_q(ol->frame_rate);
 
     ret = init_framesync(ctx);
     if (ret < 0)
@@ -361,7 +366,9 @@ static int activate(AVFilterContext *ctx)
     return ff_framesync_activate(&s->fs);
 }
 
-static int overlay_qsv_query_formats(AVFilterContext *ctx)
+static int overlay_qsv_query_formats(const AVFilterContext *ctx,
+                                     AVFilterFormatsConfig **cfg_in,
+                                     AVFilterFormatsConfig **cfg_out)
 {
     int i;
     int ret;
@@ -381,12 +388,12 @@ static int overlay_qsv_query_formats(AVFilterContext *ctx)
     };
 
     for (i = 0; i < ctx->nb_inputs; i++) {
-        ret = ff_formats_ref(ff_make_format_list(main_in_fmts), &ctx->inputs[i]->outcfg.formats);
+        ret = ff_formats_ref(ff_make_format_list(main_in_fmts), &cfg_in[i]->formats);
         if (ret < 0)
             return ret;
     }
 
-    ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats);
+    ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &cfg_out[0]->formats);
     if (ret < 0)
         return ret;
 
@@ -416,9 +423,11 @@ static const AVFilterPad overlay_qsv_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_overlay_qsv = {
-    .name           = "overlay_qsv",
-    .description    = NULL_IF_CONFIG_SMALL("Quick Sync Video overlay."),
+const FFFilter ff_vf_overlay_qsv = {
+    .p.name         = "overlay_qsv",
+    .p.description  = NULL_IF_CONFIG_SMALL("Quick Sync Video overlay."),
+    .p.priv_class   = &overlay_qsv_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(QSVOverlayContext),
     .preinit        = overlay_qsv_framesync_preinit,
     .init           = overlay_qsv_init,
@@ -426,8 +435,6 @@ const AVFilter ff_vf_overlay_qsv = {
     .activate       = activate,
     FILTER_INPUTS(overlay_qsv_inputs),
     FILTER_OUTPUTS(overlay_qsv_outputs),
-    FILTER_QUERY_FUNC(overlay_qsv_query_formats),
-    .priv_class     = &overlay_qsv_class,
+    FILTER_QUERY_FUNC2(overlay_qsv_query_formats),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

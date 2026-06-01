@@ -22,10 +22,11 @@
 #include "libavutil/avassert.h"
 #include "libavutil/eval.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 #define SUB_PIXEL_BITS  8
@@ -121,13 +122,15 @@ enum                                   { VAR_W, VAR_H, VAR_IN, VAR_ON, VAR_VARS_
 
 static int calc_persp_luts(AVFilterContext *ctx, AVFilterLink *inlink)
 {
+    FilterLink *inl       = ff_filter_link(inlink);
     PerspectiveContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink *outl      = ff_filter_link(outlink);
     double (*ref)[2]      = s->ref;
 
     double values[VAR_VARS_NB] = { [VAR_W] = inlink->w, [VAR_H] = inlink->h,
-                                   [VAR_IN] = inlink->frame_count_out + 1,
-                                   [VAR_ON] = outlink->frame_count_in + 1 };
+                                   [VAR_IN] = inl->frame_count_out + 1,
+                                   [VAR_ON] = outl->frame_count_in + 1 };
     const int h = values[VAR_H];
     const int w = values[VAR_W];
     double x0, x1, x2, x3, x4, x5, x6, x7, x8, q;
@@ -494,15 +497,15 @@ static const AVFilterPad perspective_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_perspective = {
-    .name          = "perspective",
-    .description   = NULL_IF_CONFIG_SMALL("Correct the perspective of video."),
+const FFFilter ff_vf_perspective = {
+    .p.name        = "perspective",
+    .p.description = NULL_IF_CONFIG_SMALL("Correct the perspective of video."),
+    .p.priv_class  = &perspective_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(PerspectiveContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(perspective_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &perspective_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

@@ -33,7 +33,7 @@
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 #include <float.h>
@@ -288,7 +288,9 @@ static int config_props(AVFilterLink *outlink)
     double res;
     char *expr;
 
-    ff_draw_init2(&rot->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
+    ret = ff_draw_init2(&rot->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
+    if (ret < 0)
+        return ret;
     ff_draw_color(&rot->draw, &rot->color, rot->fillcolor);
 
     rot->hsub = pixdesc->log2_chroma_w;
@@ -499,6 +501,7 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int job, int nb_jobs)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     AVFrame *out;
@@ -513,7 +516,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     }
     av_frame_copy_props(out, in);
 
-    rot->var_values[VAR_N] = inlink->frame_count_out;
+    rot->var_values[VAR_N] = inl->frame_count_out;
     rot->var_values[VAR_T] = TS2T(in->pts, inlink->time_base);
     rot->angle = res = av_expr_eval(rot->angle_expr, rot->var_values, rot);
 
@@ -590,9 +593,11 @@ static const AVFilterPad rotate_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_rotate = {
-    .name          = "rotate",
-    .description   = NULL_IF_CONFIG_SMALL("Rotate the input image."),
+const FFFilter ff_vf_rotate = {
+    .p.name        = "rotate",
+    .p.description = NULL_IF_CONFIG_SMALL("Rotate the input image."),
+    .p.priv_class  = &rotate_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(RotContext),
     .init          = init,
     .uninit        = uninit,
@@ -600,6 +605,4 @@ const AVFilter ff_vf_rotate = {
     FILTER_INPUTS(rotate_inputs),
     FILTER_OUTPUTS(rotate_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &rotate_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

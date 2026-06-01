@@ -18,6 +18,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/opt.h"
 #include "url.h"
@@ -117,24 +118,24 @@ static int64_t subfile_seek(URLContext *h, int64_t pos, int whence)
     int64_t new_pos, end;
     int ret;
 
-    if (whence == AVSEEK_SIZE || whence == SEEK_END) {
         end = c->end;
         if (end == INT64_MAX && (end = ffurl_seek(c->h, 0, AVSEEK_SIZE)) < 0)
             return end;
-    }
 
-    if (whence == AVSEEK_SIZE)
-        return end - c->start;
     switch (whence) {
+    case AVSEEK_SIZE:
+        return end - c->start;
     case SEEK_SET:
-        new_pos = c->start + pos;
+        new_pos = c->start + av_clip(pos, 0, end - c->start);
         break;
     case SEEK_CUR:
-        new_pos = c->pos + pos;
+        new_pos = c->pos + av_clip(pos, -(c->pos - c->start), end - c->pos);
         break;
     case SEEK_END:
-        new_pos = end + pos;
+        new_pos = end + av_clip(pos, -(end - c->start), 0);
         break;
+    default:
+        av_assert0(0);
     }
     if (new_pos < c->start)
         return AVERROR(EINVAL);

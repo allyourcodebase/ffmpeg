@@ -28,17 +28,19 @@
 #include "decode.h"
 #include "hwaccel_internal.h"
 
-static int nvdec_mpeg4_start_frame(AVCodecContext *avctx, const uint8_t *buffer, uint32_t size)
+static int nvdec_mpeg4_start_frame(AVCodecContext *avctx,
+                                   const AVBufferRef *buffer_ref,
+                                   const uint8_t *buffer, uint32_t size)
 {
     Mpeg4DecContext *m = avctx->priv_data;
-    MpegEncContext *s = &m->m;
+    MPVContext *const s = &m->h.c;
 
     NVDECContext      *ctx = avctx->internal->hwaccel_priv_data;
     CUVIDPICPARAMS     *pp = &ctx->pic_params;
     CUVIDMPEG4PICPARAMS *ppc = &pp->CodecSpecific.mpeg4;
     FrameDecodeData *fdd;
     NVDECFrame *cf;
-    AVFrame *cur_frame = s->current_picture.f;
+    AVFrame *cur_frame = s->cur_pic.ptr->f;
 
     int ret, i;
 
@@ -46,7 +48,7 @@ static int nvdec_mpeg4_start_frame(AVCodecContext *avctx, const uint8_t *buffer,
     if (ret < 0)
         return ret;
 
-    fdd = (FrameDecodeData*)cur_frame->private_ref->data;
+    fdd = cur_frame->private_ref;
     cf  = (NVDECFrame*)fdd->hwaccel_priv;
 
     *pp = (CUVIDPICPARAMS) {
@@ -60,26 +62,26 @@ static int nvdec_mpeg4_start_frame(AVCodecContext *avctx, const uint8_t *buffer,
                              s->pict_type == AV_PICTURE_TYPE_S,
 
         .CodecSpecific.mpeg4 = {
-            .ForwardRefIdx                = ff_nvdec_get_ref_idx(s->last_picture.f),
-            .BackwardRefIdx               = ff_nvdec_get_ref_idx(s->next_picture.f),
+            .ForwardRefIdx                = ff_nvdec_get_ref_idx(s->last_pic.ptr ? s->last_pic.ptr->f : NULL),
+            .BackwardRefIdx               = ff_nvdec_get_ref_idx(s->next_pic.ptr ? s->next_pic.ptr->f : NULL),
 
             .video_object_layer_width     = s->width,
             .video_object_layer_height    = s->height,
             .vop_time_increment_bitcount  = m->time_increment_bits,
             .top_field_first              = s->top_field_first,
             .resync_marker_disable        = !m->resync_marker,
-            .quant_type                   = s->mpeg_quant,
+            .quant_type                   = m->mpeg_quant,
             .quarter_sample               = s->quarter_sample,
             .short_video_header           = avctx->codec->id == AV_CODEC_ID_H263,
-            .divx_flags                   = s->divx_packed ? 5 : 0,
+            .divx_flags                   = m->h.divx_packed ? 5 : 0,
 
             .vop_coding_type              = s->pict_type - AV_PICTURE_TYPE_I,
             .vop_coded                    = 1,
             .vop_rounding_type            = s->no_rounding,
             .alternate_vertical_scan_flag = s->alternate_scan,
             .interlaced                   = !s->progressive_sequence,
-            .vop_fcode_forward            = s->f_code,
-            .vop_fcode_backward           = s->b_code,
+            .vop_fcode_forward            = m->f_code,
+            .vop_fcode_backward           = m->b_code,
             .trd                          = { s->pp_time, s->pp_field_time >> 1 },
             .trb                          = { s->pb_time, s->pb_field_time >> 1 },
 

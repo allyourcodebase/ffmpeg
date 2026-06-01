@@ -24,6 +24,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/internal.h"
 #include "libavutil/intreadwrite.h"
@@ -32,7 +33,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "internal.h"
 #include "libopenh264.h"
 
 #if !OPENH264_VER_AT_LEAST(1, 6)
@@ -135,13 +135,7 @@ static av_cold int svc_encode_init(AVCodecContext *avctx)
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
         param.fMaxFrameRate = av_q2d(avctx->framerate);
     } else {
-FF_DISABLE_DEPRECATION_WARNINGS
-        param.fMaxFrameRate = 1.0 / av_q2d(avctx->time_base)
-#if FF_API_TICKS_PER_FRAME
-                                  / FFMAX(avctx->ticks_per_frame, 1)
-#endif
-                                  ;
-FF_ENABLE_DEPRECATION_WARNINGS
+        param.fMaxFrameRate = 1.0 / av_q2d(avctx->time_base);
     }
     param.iPicWidth                  = avctx->width;
     param.iPicHeight                 = avctx->height;
@@ -442,9 +436,8 @@ const FFCodec ff_libopenh264_encoder = {
     .close          = svc_encode_close,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP |
                       FF_CODEC_CAP_AUTO_THREADS,
-    .p.pix_fmts     = (const enum AVPixelFormat[]){ AV_PIX_FMT_YUV420P,
-                                                    AV_PIX_FMT_YUVJ420P,
-                                                    AV_PIX_FMT_NONE },
+    CODEC_PIXFMTS(AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUVJ420P),
+    .color_ranges   = AVCOL_RANGE_MPEG | AVCOL_RANGE_JPEG,
     .defaults       = svc_enc_defaults,
     .p.priv_class   = &class,
     .p.wrapper_name = "libopenh264",

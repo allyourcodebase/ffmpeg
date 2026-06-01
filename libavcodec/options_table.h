@@ -47,7 +47,7 @@
 #define AV_CODEC_DEFAULT_BITRATE 200*1000
 
 static const AVOption avcodec_options[] = {
-{"b", "set bitrate (in bits/s)", OFFSET(bit_rate), AV_OPT_TYPE_INT64, {.i64 = AV_CODEC_DEFAULT_BITRATE }, 0, INT64_MAX, A|V|E},
+{"b", "set bitrate (in bits/s)", OFFSET(bit_rate), AV_OPT_TYPE_INT64, {.i64 = AV_CODEC_DEFAULT_BITRATE }, 0, (double)INT64_MAX, A|V|E},
 {"ab", "set bitrate (in bits/s)", OFFSET(bit_rate), AV_OPT_TYPE_INT64, {.i64 = 128*1000 }, 0, INT_MAX, A|E},
 {"bt", "Set video bitrate tolerance (in bits/s). In 1-pass mode, bitrate tolerance specifies how far "
        "ratecontrol is willing to deviate from the target average bitrate value. This is not related "
@@ -74,9 +74,6 @@ static const AVOption avcodec_options[] = {
 {"ilme", "interlaced motion estimation", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_INTERLACED_ME }, INT_MIN, INT_MAX, V|E, .unit = "flags"},
 {"cgop", "closed GOP", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_CLOSED_GOP }, INT_MIN, INT_MAX, V|E, .unit = "flags"},
 {"output_corrupt", "Output even potentially corrupted frames", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_OUTPUT_CORRUPT }, INT_MIN, INT_MAX, V|D, .unit = "flags"},
-#if FF_API_DROPCHANGED
-{"drop_changed", "Drop frames whose parameters differ from first decoded frame", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG_DROPCHANGED }, INT_MIN, INT_MAX, A|V|D | AV_OPT_FLAG_DEPRECATED, .unit = "flags"},
-#endif
 {"flags2", NULL, OFFSET(flags2), AV_OPT_TYPE_FLAGS, {.i64 = DEFAULT}, 0, UINT_MAX, V|A|E|D|S, .unit = "flags2"},
 {"fast", "allow non-spec-compliant speedup tricks", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_FAST }, INT_MIN, INT_MAX, V|E, .unit = "flags2"},
 {"noout", "skip bitstream encoding", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_FLAG2_NO_OUTPUT }, INT_MIN, INT_MAX, V|E, .unit = "flags2"},
@@ -93,6 +90,7 @@ static const AVOption avcodec_options[] = {
 {"prft", "export Producer Reference Time through packet side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_PRFT}, INT_MIN, INT_MAX, A|V|S|E, .unit = "export_side_data"},
 {"venc_params", "export video encoding parameters through frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_VIDEO_ENC_PARAMS}, INT_MIN, INT_MAX, V|D, .unit = "export_side_data"},
 {"film_grain", "export film grain parameters through frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_FILM_GRAIN}, INT_MIN, INT_MAX, V|D, .unit = "export_side_data"},
+{"enhancements", "export picture enhancement metadata through frame side data", 0, AV_OPT_TYPE_CONST, {.i64 = AV_CODEC_EXPORT_DATA_ENHANCEMENTS}, INT_MIN, INT_MAX, V|D, .unit = "export_side_data"},
 {"time_base", NULL, OFFSET(time_base), AV_OPT_TYPE_RATIONAL, {.dbl = 0}, 0, INT_MAX},
 {"g", "set the group of picture (GOP) size", OFFSET(gop_size), AV_OPT_TYPE_INT, {.i64 = 12 }, INT_MIN, INT_MAX, V|E},
 {"ar", "set audio sampling rate (in Hz)", OFFSET(sample_rate), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, 0, INT_MAX, A|D|E},
@@ -158,6 +156,7 @@ static const AVOption avcodec_options[] = {
 {"mmx", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_DCT_MMX }, INT_MIN, INT_MAX, V|E, .unit = "dct"},
 {"altivec", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_DCT_ALTIVEC }, INT_MIN, INT_MAX, V|E, .unit = "dct"},
 {"faan", "floating point AAN DCT", 0, AV_OPT_TYPE_CONST, {.i64 = FF_DCT_FAAN }, INT_MIN, INT_MAX, V|E, .unit = "dct"},
+{"neon", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_DCT_NEON }, INT_MIN, INT_MAX, V|E, .unit = "dct"},
 {"lumi_mask", "compresses bright areas stronger than medium ones", OFFSET(lumi_masking), AV_OPT_TYPE_FLOAT, {.dbl = 0 }, -FLT_MAX, FLT_MAX, V|E},
 {"tcplx_mask", "temporal complexity masking", OFFSET(temporal_cplx_masking), AV_OPT_TYPE_FLOAT, {.dbl = 0 }, -FLT_MAX, FLT_MAX, V|E},
 {"scplx_mask", "spatial complexity masking", OFFSET(spatial_cplx_masking), AV_OPT_TYPE_FLOAT, {.dbl = 0 }, -FLT_MAX, FLT_MAX, V|E},
@@ -222,8 +221,8 @@ static const AVOption avcodec_options[] = {
 {"profile", NULL, OFFSET(profile), AV_OPT_TYPE_INT, {.i64 = AV_PROFILE_UNKNOWN }, INT_MIN, INT_MAX, V|A|E|CC, .unit = "avctx.profile"},
 {"unknown", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = AV_PROFILE_UNKNOWN }, INT_MIN, INT_MAX, V|A|E, .unit = "avctx.profile"},
 {"main10",  NULL, 0, AV_OPT_TYPE_CONST, {.i64 = AV_PROFILE_HEVC_MAIN_10 }, INT_MIN, INT_MAX, V|E, .unit = "avctx.profile"},
-{"level", "encoding level, usually corresponding to the profile level, codec-specific", OFFSET(level), AV_OPT_TYPE_INT, {.i64 = FF_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E|CC, .unit = "avctx.level"},
-{"unknown", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = FF_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E, .unit = "avctx.level"},
+{"level", "encoding level, usually corresponding to the profile level, codec-specific", OFFSET(level), AV_OPT_TYPE_INT, {.i64 = AV_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E|CC, .unit = "avctx.level"},
+{"unknown", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = AV_LEVEL_UNKNOWN }, INT_MIN, INT_MAX, V|A|E, .unit = "avctx.level"},
 {"lowres", "decode at 1= 1/2, 2=1/4, 3=1/8 resolutions", OFFSET(lowres), AV_OPT_TYPE_INT, {.i64 = 0 }, 0, INT_MAX, V|A|D},
 {"cmp", "full-pel ME compare function", OFFSET(me_cmp), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, INT_MIN, INT_MAX, V|E, .unit = "cmp_func"},
 {"subcmp", "sub-pel ME compare function", OFFSET(me_sub_cmp), AV_OPT_TYPE_INT, {.i64 = DEFAULT }, INT_MIN, INT_MAX, V|E, .unit = "cmp_func"},
@@ -270,9 +269,6 @@ static const AVOption avcodec_options[] = {
 {"ch_layout", NULL, OFFSET(ch_layout), AV_OPT_TYPE_CHLAYOUT, {.str = NULL }, 0, 0, A|E|D, .unit = "ch_layout"},
 {"rc_max_vbv_use", NULL, OFFSET(rc_max_available_vbv_use), AV_OPT_TYPE_FLOAT, {.dbl = 0 }, 0.0, FLT_MAX, V|E},
 {"rc_min_vbv_use", NULL, OFFSET(rc_min_vbv_overflow_use),  AV_OPT_TYPE_FLOAT, {.dbl = 3 },     0.0, FLT_MAX, V|E},
-#if FF_API_TICKS_PER_FRAME
-{"ticks_per_frame", NULL, OFFSET(ticks_per_frame), AV_OPT_TYPE_INT, {.i64 = 1 }, 1, INT_MAX, A|V|E|D},
-#endif
 {"color_primaries", "color primaries", OFFSET(color_primaries), AV_OPT_TYPE_INT, {.i64 = AVCOL_PRI_UNSPECIFIED }, 1, INT_MAX, V|E|D, .unit = "color_primaries_type"},
 {"bt709",       "BT.709",         0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_BT709 },        INT_MIN, INT_MAX, V|E|D, .unit = "color_primaries_type"},
 {"unknown",     "Unspecified",    0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_PRI_UNSPECIFIED },  INT_MIN, INT_MAX, V|E|D, .unit = "color_primaries_type"},
@@ -331,8 +327,11 @@ static const AVOption avcodec_options[] = {
 {"chroma-derived-nc", "Chroma-derived NCL", 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_CHROMA_DERIVED_NCL }, INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"chroma-derived-c",  "Chroma-derived CL",  0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_CHROMA_DERIVED_CL },  INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"ictcp",             "ICtCp",              0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_ICTCP },              INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
+{"ipt-c2",            "IPT-C2",             0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_IPT_C2 },             INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"unspecified",       "Unspecified",        0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_UNSPECIFIED },        INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"ycocg",             "YCGCO",              0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_YCGCO },              INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
+{"ycgco-re",          "YCgCo-R, even add.", 0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_YCGCO_RE },           INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
+{"ycgco-ro",          "YCgCo-R, odd add.",  0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_YCGCO_RO },           INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"bt2020_ncl",        "BT.2020 NCL",        0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT2020_NCL },         INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"bt2020_cl",         "BT.2020 CL",         0, AV_OPT_TYPE_CONST, {.i64 = AVCOL_SPC_BT2020_CL },          INT_MIN, INT_MAX, V|E|D, .unit = "colorspace_type"},
 {"color_range", "color range", OFFSET(color_range), AV_OPT_TYPE_INT, {.i64 = AVCOL_RANGE_UNSPECIFIED }, 0, INT_MAX, V|E|D, .unit = "color_range_type"},

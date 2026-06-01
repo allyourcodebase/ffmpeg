@@ -23,11 +23,12 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/attributes.h"
 #include "libavutil/common.h"
+#include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 typedef struct VagueDenoiserContext {
@@ -592,15 +593,15 @@ static const AVFilterPad vaguedenoiser_inputs[] = {
 };
 
 
-const AVFilter ff_vf_vaguedenoiser = {
-    .name          = "vaguedenoiser",
-    .description   = NULL_IF_CONFIG_SMALL("Apply a Wavelet based Denoiser."),
+const FFFilter ff_vf_vaguedenoiser = {
+    .p.name        = "vaguedenoiser",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply a Wavelet based Denoiser."),
+    .p.priv_class  = &vaguedenoiser_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(VagueDenoiserContext),
-    .priv_class    = &vaguedenoiser_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(vaguedenoiser_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

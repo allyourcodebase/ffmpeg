@@ -28,6 +28,7 @@
 #include <math.h>
 #include <mysofa.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/tx.h"
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
@@ -37,7 +38,6 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "audio.h"
 
 #define TIME_DOMAIN      0
@@ -634,9 +634,11 @@ static int activate(AVFilterContext *ctx)
     return FFERROR_NOT_READY;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    struct SOFAlizerContext *s = ctx->priv;
+    const SOFAlizerContext *s = ctx->priv;
     AVFilterChannelLayouts *layouts = NULL;
     int ret, sample_rates[] = { 48000, -1 };
     static const enum AVSampleFormat sample_fmts[] = {
@@ -644,7 +646,7 @@ static int query_formats(AVFilterContext *ctx)
         AV_SAMPLE_FMT_NONE
     };
 
-    ret = ff_set_common_formats_from_list(ctx, sample_fmts);
+    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret)
         return ret;
 
@@ -652,7 +654,7 @@ static int query_formats(AVFilterContext *ctx)
     if (!layouts)
         return AVERROR(ENOMEM);
 
-    ret = ff_channel_layouts_ref(layouts, &ctx->inputs[0]->outcfg.channel_layouts);
+    ret = ff_channel_layouts_ref(layouts, &cfg_in[0]->channel_layouts);
     if (ret)
         return ret;
 
@@ -661,12 +663,12 @@ static int query_formats(AVFilterContext *ctx)
     if (ret)
         return ret;
 
-    ret = ff_channel_layouts_ref(layouts, &ctx->outputs[0]->incfg.channel_layouts);
+    ret = ff_channel_layouts_ref(layouts, &cfg_out[0]->channel_layouts);
     if (ret)
         return ret;
 
     sample_rates[0] = s->sample_rate;
-    return ff_set_common_samplerates_from_list(ctx, sample_rates);
+    return ff_set_common_samplerates_from_list2(ctx, cfg_in, cfg_out, sample_rates);
 }
 
 static int getfilter_float(AVFilterContext *ctx, float x, float y, float z,
@@ -732,7 +734,7 @@ static int load_data(AVFilterContext *ctx, int azim, int elev, float radius, int
     AVComplexFloat *fft_in_r = NULL;
     float *data_ir_l = NULL;
     float *data_ir_r = NULL;
-    int offset = 0; /* used for faster pointer arithmetics in for-loop */
+    int offset = 0; /* used for faster pointer arithmetic in for-loop */
     int i, j, azim_orig = azim, elev_orig = elev;
     int ret = 0;
     int n_current;
@@ -952,7 +954,7 @@ fail:
     av_freep(&data_hrtf_l); /* free temporary HRTF memory */
     av_freep(&data_hrtf_r);
 
-    av_freep(&data_ir_l); /* free temprary IR memory */
+    av_freep(&data_ir_l); /* free temporary IR memory */
     av_freep(&data_ir_r);
 
     av_freep(&fft_out_l); /* free temporary FFT memory */
@@ -1086,16 +1088,16 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_sofalizer = {
-    .name          = "sofalizer",
-    .description   = NULL_IF_CONFIG_SMALL("SOFAlizer (Spatially Oriented Format for Acoustics)."),
+const FFFilter ff_af_sofalizer = {
+    .p.name        = "sofalizer",
+    .p.description = NULL_IF_CONFIG_SMALL("SOFAlizer (Spatially Oriented Format for Acoustics)."),
+    .p.priv_class  = &sofalizer_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(SOFAlizerContext),
-    .priv_class    = &sofalizer_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

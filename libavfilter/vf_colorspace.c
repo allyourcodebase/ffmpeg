@@ -25,6 +25,8 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/csp.h"
+#include "libavutil/frame.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -32,8 +34,8 @@
 
 #include "avfilter.h"
 #include "colorspacedsp.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 #include "colorspace.h"
 
@@ -432,8 +434,7 @@ static int create_filtergraph(AVFilterContext *ctx,
     if (out->color_trc       != s->out_trc) s->out_txchr     = NULL;
     if (in->colorspace       != s->in_csp ||
         in->color_range      != s->in_rng)  s->in_lumacoef   = NULL;
-    if (out->colorspace      != s->out_csp ||
-        out->color_range     != s->out_rng) s->out_lumacoef  = NULL;
+    if (out->color_range     != s->out_rng) s->rgb2yuv       = NULL;
 
     if (!s->out_primaries || !s->in_primaries) {
         s->in_prm = in->color_primaries;
@@ -562,26 +563,8 @@ static int create_filtergraph(AVFilterContext *ctx,
         redo_yuv2rgb = 1;
     }
 
-    if (!s->out_lumacoef) {
-        s->out_csp = out->colorspace;
+    if (!s->rgb2yuv) {
         s->out_rng = out->color_range;
-        s->out_lumacoef = av_csp_luma_coeffs_from_avcsp(s->out_csp);
-        if (!s->out_lumacoef) {
-            if (s->out_csp == AVCOL_SPC_UNSPECIFIED) {
-                if (s->user_all == CS_UNSPECIFIED) {
-                    av_log(ctx, AV_LOG_ERROR,
-                           "Please specify output colorspace\n");
-                } else {
-                    av_log(ctx, AV_LOG_ERROR,
-                           "Unsupported output color property %d\n", s->user_all);
-                }
-            } else {
-                av_log(ctx, AV_LOG_ERROR,
-                       "Unsupported output colorspace %d (%s)\n", s->out_csp,
-                       av_color_space_name(s->out_csp));
-            }
-            return AVERROR(EINVAL);
-        }
         redo_rgb2yuv = 1;
     }
 
@@ -686,6 +669,26 @@ static av_cold int init(AVFilterContext *ctx)
 {
     ColorSpaceContext *s = ctx->priv;
 
+    s->out_csp  = s->user_csp == AVCOL_SPC_UNSPECIFIED ?
+                  default_csp[FFMIN(s->user_all, CS_NB)] : s->user_csp;
+    s->out_lumacoef = av_csp_luma_coeffs_from_avcsp(s->out_csp);
+    if (!s->out_lumacoef) {
+        if (s->out_csp == AVCOL_SPC_UNSPECIFIED) {
+            if (s->user_all == CS_UNSPECIFIED) {
+                av_log(ctx, AV_LOG_ERROR,
+                       "Please specify output colorspace\n");
+            } else {
+                av_log(ctx, AV_LOG_ERROR,
+                       "Unsupported output color property %d\n", s->user_all);
+            }
+        } else {
+            av_log(ctx, AV_LOG_ERROR,
+                   "Unsupported output colorspace %d (%s)\n", s->out_csp,
+                   av_color_space_name(s->out_csp));
+        }
+        return AVERROR(EINVAL);
+    }
+
     ff_colorspacedsp_init(&s->dsp);
 
     return 0;
@@ -734,6 +737,9 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
         return res;
     }
 
+    out->colorspace =      s->out_csp;
+    out->color_range =     s->user_rng == AVCOL_RANGE_UNSPECIFIED ?
+                           in->color_range : s->user_rng;
     out->color_primaries = s->user_prm == AVCOL_PRI_UNSPECIFIED ?
                            default_prm[FFMIN(s->user_all, CS_NB)] : s->user_prm;
     if (s->user_trc == AVCOL_TRC_UNSPECIFIED) {
@@ -745,10 +751,12 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     } else {
         out->color_trc   = s->user_trc;
     }
-    out->colorspace      = s->user_csp == AVCOL_SPC_UNSPECIFIED ?
-                           default_csp[FFMIN(s->user_all, CS_NB)] : s->user_csp;
-    out->color_range     = s->user_rng == AVCOL_RANGE_UNSPECIFIED ?
-                           in->color_range : s->user_rng;
+
+    if (out->color_primaries != in->color_primaries || out->color_trc != in->color_trc) {
+        av_frame_side_data_remove_by_props(&out->side_data, &out->nb_side_data,
+                                           AV_SIDE_DATA_PROP_COLOR_DEPENDENT);
+    }
+
     if (rgb_sz != s->rgb_sz) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(out->format);
         int uvw = in->width >> desc->log2_chroma_w;
@@ -829,7 +837,9 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
     return ff_filter_frame(outlink, out);
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_YUV420P,   AV_PIX_FMT_YUV422P,   AV_PIX_FMT_YUV444P,
@@ -839,22 +849,34 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
     int res;
-    ColorSpaceContext *s = ctx->priv;
-    AVFilterFormats *formats = ff_make_format_list(pix_fmts);
+    const ColorSpaceContext *s = ctx->priv;
+    AVFilterFormats *formats;
 
+    res = ff_formats_ref(ff_make_formats_list_singleton(s->out_csp), &cfg_out[0]->color_spaces);
+    if (res < 0)
+        return res;
+    if (s->user_rng != AVCOL_RANGE_UNSPECIFIED) {
+        res = ff_formats_ref(ff_make_formats_list_singleton(s->user_rng), &cfg_out[0]->color_ranges);
+        if (res < 0)
+            return res;
+    }
+
+    formats = ff_make_format_list(pix_fmts);
     if (!formats)
         return AVERROR(ENOMEM);
     if (s->user_format == AV_PIX_FMT_NONE)
-        return ff_set_common_formats(ctx, formats);
-    res = ff_formats_ref(formats, &ctx->inputs[0]->outcfg.formats);
+        return ff_set_common_formats2(ctx, cfg_in, cfg_out, formats);
+
+    res = ff_formats_ref(formats, &cfg_in[0]->formats);
     if (res < 0)
         return res;
+
     formats = NULL;
     res = ff_add_format(&formats, s->user_format);
     if (res < 0)
         return res;
 
-    return ff_formats_ref(formats, &ctx->outputs[0]->incfg.formats);
+    return ff_formats_ref(formats, &cfg_out[0]->formats);
 }
 
 static int config_props(AVFilterLink *outlink)
@@ -1015,15 +1037,15 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_vf_colorspace = {
-    .name            = "colorspace",
-    .description     = NULL_IF_CONFIG_SMALL("Convert between colorspaces."),
+const FFFilter ff_vf_colorspace = {
+    .p.name          = "colorspace",
+    .p.description   = NULL_IF_CONFIG_SMALL("Convert between colorspaces."),
+    .p.priv_class    = &colorspace_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .init            = init,
     .uninit          = uninit,
     .priv_size       = sizeof(ColorSpaceContext),
-    .priv_class      = &colorspace_class,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

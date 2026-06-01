@@ -26,7 +26,7 @@
 #include "libavutil/opt.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -47,8 +47,8 @@ typedef struct AverageBlurOpenCLContext {
     FilterParam luma_param;
     FilterParam chroma_param;
     FilterParam alpha_param;
-    int radius[4];
-    int power[4];
+    int radius[AV_VIDEO_MAX_PLANES];
+    int power[AV_VIDEO_MAX_PLANES];
 
 } AverageBlurOpenCLContext;
 
@@ -101,7 +101,7 @@ static int avgblur_opencl_make_filter_params(AVFilterLink *inlink)
         s->radiusV = s->radiusH;
     }
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < AV_VIDEO_MAX_PLANES; i++) {
         s->power[i] = 1;
     }
     return 0;
@@ -133,7 +133,7 @@ static int boxblur_opencl_make_filter_params(AVFilterLink *inlink)
     s->power[U] = s->power[V] = s->chroma_param.power;
     s->power[A] = s->alpha_param.power;
 
-    for (i = 0; i < 4; i++) {
+    for (i = 0; i < AV_VIDEO_MAX_PLANES; i++) {
         if (s->power[i] == 0) {
             s->power[i] = 1;
             s->radius[i] = 0;
@@ -191,7 +191,7 @@ static int avgblur_opencl_filter_frame(AVFilterLink *inlink, AVFrame *input)
         goto fail;
     }
 
-    for (p = 0; p < FF_ARRAY_ELEMS(output->data); p++) {
+    for (p = 0; p < FFMIN(FF_ARRAY_ELEMS(output->data), AV_VIDEO_MAX_PLANES); p++) {
         src = (cl_mem) input->data[p];
         dst = (cl_mem) output->data[p];
         inter = (cl_mem)intermediate->data[p];
@@ -340,11 +340,11 @@ static const AVOption avgblur_opencl_options[] = {
 AVFILTER_DEFINE_CLASS(avgblur_opencl);
 
 
-const AVFilter ff_vf_avgblur_opencl = {
-    .name           = "avgblur_opencl",
-    .description    = NULL_IF_CONFIG_SMALL("Apply average blur filter"),
+const FFFilter ff_vf_avgblur_opencl = {
+    .p.name         = "avgblur_opencl",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply average blur filter"),
+    .p.priv_class   = &avgblur_opencl_class,
     .priv_size      = sizeof(AverageBlurOpenCLContext),
-    .priv_class     = &avgblur_opencl_class,
     .init           = &ff_opencl_filter_init,
     .uninit         = &avgblur_opencl_uninit,
     FILTER_INPUTS(avgblur_opencl_inputs),
@@ -379,18 +379,18 @@ static const AVOption boxblur_opencl_options[] = {
 
 AVFILTER_DEFINE_CLASS(boxblur_opencl);
 
-const AVFilter ff_vf_boxblur_opencl = {
-    .name           = "boxblur_opencl",
-    .description    = NULL_IF_CONFIG_SMALL("Apply boxblur filter to input video"),
+const FFFilter ff_vf_boxblur_opencl = {
+    .p.name         = "boxblur_opencl",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply boxblur filter to input video"),
+    .p.priv_class   = &boxblur_opencl_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(AverageBlurOpenCLContext),
-    .priv_class     = &boxblur_opencl_class,
     .init           = &ff_opencl_filter_init,
     .uninit         = &avgblur_opencl_uninit,
     FILTER_INPUTS(avgblur_opencl_inputs),
     FILTER_OUTPUTS(avgblur_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };
 
 #endif /* CONFIG_BOXBLUR_OPENCL_FILTER */

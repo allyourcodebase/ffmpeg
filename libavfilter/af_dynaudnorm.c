@@ -29,6 +29,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #define MIN_FILTER_SIZE 3
@@ -40,7 +41,6 @@
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 
 static const char * const var_names[] = {
     "ch",           ///< the value of the current channel
@@ -724,6 +724,7 @@ static void perform_compression(DynamicAudioNormalizerContext *s, AVFrame *frame
 
 static int analyze_frame(AVFilterContext *ctx, AVFilterLink *outlink, AVFrame **frame)
 {
+    FilterLink *outl = ff_filter_link(outlink);
     DynamicAudioNormalizerContext *s = ctx->priv;
     AVFrame *analyze_frame;
 
@@ -779,7 +780,7 @@ static int analyze_frame(AVFilterContext *ctx, AVFilterLink *outlink, AVFrame **
         analyze_frame = *frame;
     }
 
-    s->var_values[VAR_SN] = outlink->sample_count_in;
+    s->var_values[VAR_SN] = outl->sample_count_in;
     s->var_values[VAR_T] = s->var_values[VAR_SN] * (double)1/outlink->sample_rate;
 
     if (s->channels_coupled) {
@@ -1019,9 +1020,12 @@ static const AVFilterPad avfilter_af_dynaudnorm_inputs[] = {
     },
 };
 
-const AVFilter ff_af_dynaudnorm = {
-    .name          = "dynaudnorm",
-    .description   = NULL_IF_CONFIG_SMALL("Dynamic Audio Normalizer."),
+const FFFilter ff_af_dynaudnorm = {
+    .p.name        = "dynaudnorm",
+    .p.description = NULL_IF_CONFIG_SMALL("Dynamic Audio Normalizer."),
+    .p.priv_class  = &dynaudnorm_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(DynamicAudioNormalizerContext),
     .init          = init,
     .uninit        = uninit,
@@ -1029,8 +1033,5 @@ const AVFilter ff_af_dynaudnorm = {
     FILTER_INPUTS(avfilter_af_dynaudnorm_inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
-    .priv_class    = &dynaudnorm_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS,
     .process_command = process_command,
 };

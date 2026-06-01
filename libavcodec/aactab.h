@@ -72,10 +72,12 @@ void ff_aac_float_common_init(void);
  */
 extern const uint8_t ff_aac_num_swb_1024[];
 extern const uint8_t ff_aac_num_swb_960 [];
+extern const uint8_t ff_aac_num_swb_768 [];
 extern const uint8_t ff_aac_num_swb_512 [];
 extern const uint8_t ff_aac_num_swb_480 [];
 extern const uint8_t ff_aac_num_swb_128 [];
-extern const uint8_t ff_aac_num_swb_120 [];
+#define ff_aac_num_swb_120 ff_aac_num_swb_128
+extern const uint8_t ff_aac_num_swb_96  [];
 // @}
 
 extern const uint8_t ff_aac_pred_sfb_max [];
@@ -91,16 +93,35 @@ extern const float *const ff_aac_codebook_vectors[];
 extern const float *const ff_aac_codebook_vector_vals[];
 extern const uint16_t *const ff_aac_codebook_vector_idx[];
 
+extern const uint16_t ff_aac_ac_msb_cdfs[64][17];
+extern const uint16_t ff_aac_ac_lsb_cdfs[3][4];
+extern const uint8_t ff_aac_ac_lookup_m[742];
+extern const uint32_t ff_aac_ac_hash_m[742];
+extern const uint16_t ff_aac_ac_cf_m[64][17];
+
 extern const uint16_t * const ff_swb_offset_1024[13];
 extern const uint16_t * const ff_swb_offset_960 [13];
+extern const uint16_t * const ff_swb_offset_768 [13];
 extern const uint16_t * const ff_swb_offset_512 [13];
 extern const uint16_t * const ff_swb_offset_480 [13];
 extern const uint16_t * const ff_swb_offset_128 [13];
 extern const uint16_t * const ff_swb_offset_120 [13];
+extern const uint16_t * const ff_swb_offset_96  [13];
 
 extern const uint8_t ff_tns_max_bands_1024[13];
 extern const uint8_t ff_tns_max_bands_512 [13];
 extern const uint8_t ff_tns_max_bands_480 [13];
 extern const uint8_t ff_tns_max_bands_128 [13];
+
+extern const uint8_t ff_tns_max_bands_usac_1024[13];
+extern const uint8_t ff_tns_max_bands_usac_128[13];
+
+/* [x][y], x == 1 -> frame len is 768 frames, y == 1 -> is eight_short */
+extern const uint8_t ff_usac_noise_fill_start_offset[2][2];
+
+extern const int ff_aac_usac_samplerate[32];
+
+/* Window type (only long+eight, start/stop/stopstart), sine+sine, kbd+kbd, sine+kbd, kbd+sine */
+extern const float ff_aac_usac_mdst_filt_cur[4 /* Window */][4 /* Shape */][7];
 
 #endif /* AVCODEC_AACTAB_H */

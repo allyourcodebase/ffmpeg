@@ -24,7 +24,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -158,7 +158,7 @@ static int tonemap_opencl_init(AVFilterContext *avctx)
     av_log(ctx, AV_LOG_DEBUG, "mapping range from %s to %s\n",
            av_color_range_name(ctx->range_in),
            av_color_range_name(ctx->range_out));
-    // checking valid value just because of limited implementaion
+    // checking valid value just because of limited implementation
     // please remove when more functionalities are implemented
     av_assert0(ctx->trc_out == AVCOL_TRC_BT709 ||
                ctx->trc_out == AVCOL_TRC_BT2020_10);
@@ -343,8 +343,7 @@ static int tonemap_opencl_filter_frame(AVFilterLink *inlink, AVFrame *input)
     int err;
     double peak = ctx->peak;
 
-    AVHWFramesContext *input_frames_ctx =
-        (AVHWFramesContext*)input->hw_frames_ctx->data;
+    AVHWFramesContext *input_frames_ctx;
 
     av_log(ctx, AV_LOG_DEBUG, "Filter input: %s, %ux%u (%"PRId64").\n",
            av_get_pix_fmt_name(input->format),
@@ -352,6 +351,7 @@ static int tonemap_opencl_filter_frame(AVFilterLink *inlink, AVFrame *input)
 
     if (!input->hw_frames_ctx)
         return AVERROR(EINVAL);
+    input_frames_ctx = (AVHWFramesContext*)input->hw_frames_ctx->data;
 
     output = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!output) {
@@ -536,16 +536,16 @@ static const AVFilterPad tonemap_opencl_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_tonemap_opencl = {
-    .name           = "tonemap_opencl",
-    .description    = NULL_IF_CONFIG_SMALL("Perform HDR to SDR conversion with tonemapping."),
+const FFFilter ff_vf_tonemap_opencl = {
+    .p.name         = "tonemap_opencl",
+    .p.description  = NULL_IF_CONFIG_SMALL("Perform HDR to SDR conversion with tonemapping."),
+    .p.priv_class   = &tonemap_opencl_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(TonemapOpenCLContext),
-    .priv_class     = &tonemap_opencl_class,
     .init           = &ff_opencl_filter_init,
     .uninit         = &tonemap_opencl_uninit,
     FILTER_INPUTS(tonemap_opencl_inputs),
     FILTER_OUTPUTS(tonemap_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

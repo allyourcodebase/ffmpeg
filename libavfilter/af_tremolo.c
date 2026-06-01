@@ -18,9 +18,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "audio.h"
 
 typedef struct TremoloContext {
@@ -121,14 +122,14 @@ static const AVFilterPad avfilter_af_tremolo_inputs[] = {
     },
 };
 
-const AVFilter ff_af_tremolo = {
-    .name          = "tremolo",
-    .description   = NULL_IF_CONFIG_SMALL("Apply tremolo effect."),
+const FFFilter ff_af_tremolo = {
+    .p.name        = "tremolo",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply tremolo effect."),
+    .p.priv_class  = &tremolo_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(TremoloContext),
-    .priv_class    = &tremolo_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_tremolo_inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBL),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

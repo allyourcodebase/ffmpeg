@@ -19,11 +19,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "internal.h"
+#include "filters.h"
 #include "metal/utils.h"
 #include "yadif.h"
 #include "libavutil/avassert.h"
 #include "libavutil/hwcontext.h"
+#include "libavutil/hwcontext_videotoolbox.h"
 #include "libavutil/objc.h"
 
 #include <assert.h>
@@ -172,7 +173,6 @@ exit:
 static av_cold void do_uninit(AVFilterContext *ctx) API_AVAILABLE(macos(10.11), ios(8.0))
 {
     YADIFVTContext *s = ctx->priv;
-    YADIFContext *y = &s->yadif;
 
     ff_yadif_uninit(ctx);
 
@@ -288,16 +288,17 @@ static av_cold int yadif_videotoolbox_init(AVFilterContext *ctx)
 
 static int do_config_input(AVFilterLink *inlink) API_AVAILABLE(macos(10.11), ios(8.0))
 {
+    FilterLink *l = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     YADIFVTContext *s = ctx->priv;
 
-    if (!inlink->hw_frames_ctx) {
+    if (!l->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "A hardware frames reference is "
                "required to associate the processing device.\n");
         return AVERROR(EINVAL);
     }
 
-    s->input_frames_ref = av_buffer_ref(inlink->hw_frames_ctx);
+    s->input_frames_ref = av_buffer_ref(l->hw_frames_ctx);
     if (!s->input_frames_ref) {
         av_log(ctx, AV_LOG_ERROR, "A input frames reference create "
                "failed.\n");
@@ -321,7 +322,9 @@ static int config_input(AVFilterLink *inlink)
 
 static int do_config_output(AVFilterLink *link) API_AVAILABLE(macos(10.11), ios(8.0))
 {
-    AVHWFramesContext *output_frames;
+    FilterLink *l = ff_filter_link(link);
+    FilterLink *il = ff_filter_link(link->src->inputs[0]);
+    AVHWFramesContext *output_frames, *input_frames;
     AVFilterContext *ctx = link->src;
     YADIFVTContext *s = ctx->priv;
     YADIFContext *y = &s->yadif;
@@ -335,26 +338,28 @@ static int do_config_output(AVFilterLink *link) API_AVAILABLE(macos(10.11), ios(
         return AVERROR(ENOMEM);
     }
 
-    link->hw_frames_ctx = av_hwframe_ctx_alloc(s->device_ref);
-    if (!link->hw_frames_ctx) {
+    l->hw_frames_ctx = av_hwframe_ctx_alloc(s->device_ref);
+    if (!l->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "Failed to create HW frame context "
                "for output.\n");
         ret = AVERROR(ENOMEM);
         goto exit;
     }
 
-    output_frames = (AVHWFramesContext*)link->hw_frames_ctx->data;
+    input_frames = (AVHWFramesContext*)il->hw_frames_ctx->data;
+    output_frames = (AVHWFramesContext*)l->hw_frames_ctx->data;
 
     output_frames->format    = AV_PIX_FMT_VIDEOTOOLBOX;
     output_frames->sw_format = s->input_frames->sw_format;
     output_frames->width     = ctx->inputs[0]->w;
     output_frames->height    = ctx->inputs[0]->h;
+    ((AVVTFramesContext *)output_frames->hwctx)->color_range = ((AVVTFramesContext *)input_frames->hwctx)->color_range;
 
     ret = ff_filter_init_hw_frames(ctx, link, 10);
     if (ret < 0)
         goto exit;
 
-    ret = av_hwframe_ctx_init(link->hw_frames_ctx);
+    ret = av_hwframe_ctx_init(l->hw_frames_ctx);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Failed to initialise VideoToolbox frame "
                "context for output: %d\n", ret);
@@ -427,16 +432,16 @@ static const AVFilterPad yadif_videotoolbox_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_yadif_videotoolbox = {
-    .name           = "yadif_videotoolbox",
-    .description    = NULL_IF_CONFIG_SMALL("YADIF for VideoToolbox frames using Metal compute"),
+const FFFilter ff_vf_yadif_videotoolbox = {
+    .p.name         = "yadif_videotoolbox",
+    .p.description  = NULL_IF_CONFIG_SMALL("YADIF for VideoToolbox frames using Metal compute"),
+    .p.priv_class   = &yadif_videotoolbox_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size      = YADIF_VT_CTX_SIZE,
-    .priv_class     = &yadif_videotoolbox_class,
     .init           = yadif_videotoolbox_init,
     .uninit         = yadif_videotoolbox_uninit,
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_VIDEOTOOLBOX),
     FILTER_INPUTS(yadif_videotoolbox_inputs),
     FILTER_OUTPUTS(yadif_videotoolbox_outputs),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

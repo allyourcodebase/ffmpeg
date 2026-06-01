@@ -35,6 +35,7 @@
 #include "libavformat/isom.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 
@@ -575,6 +576,7 @@ static int ffat_encode(AVCodecContext *avctx, AVPacket *avpkt,
                                      avctx->frame_size,
                            &avpkt->pts,
                            &avpkt->duration);
+        avpkt->flags |= AV_PKT_FLAG_KEY;
     } else if (ret && ret != 1) {
         av_log(avctx, AV_LOG_ERROR, "Encode error: %i\n", ret);
         return AVERROR_EXTERNAL;
@@ -648,13 +650,10 @@ static const AVOption options[] = {
         .p.priv_class   = &ffat_##NAME##_enc_class, \
         .p.capabilities = AV_CODEC_CAP_DELAY | \
                           AV_CODEC_CAP_ENCODER_FLUSH CAPS, \
-        .p.ch_layouts   = CH_LAYOUTS, \
-        .p.sample_fmts  = (const enum AVSampleFormat[]) { \
-            AV_SAMPLE_FMT_S16, \
-            AV_SAMPLE_FMT_U8,  AV_SAMPLE_FMT_NONE \
-        }, \
         .p.profiles     = PROFILES, \
         .p.wrapper_name = "at", \
+        CODEC_CH_LAYOUTS_ARRAY(CH_LAYOUTS), \
+        CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_U8), \
     };
 
 static const AVChannelLayout aac_at_ch_layouts[] = {

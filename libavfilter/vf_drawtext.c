@@ -48,6 +48,7 @@
 #include "libavutil/bprint.h"
 #include "libavutil/common.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/random_seed.h"
 #include "libavutil/parseutils.h"
@@ -59,8 +60,8 @@
 #include "libavutil/detection_bbox.h"
 #include "avfilter.h"
 #include "drawutils.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "textutils.h"
 #include "video.h"
 
@@ -101,12 +102,6 @@ static const char *const var_names[] = {
     "x",
     "y",
     "pict_type",
-#if FF_API_FRAME_PKT
-    "pkt_pos",
-#endif
-#if FF_API_FRAME_PKT
-    "pkt_size",
-#endif
     "duration",
     NULL
 };
@@ -149,12 +144,6 @@ enum var_name {
     VAR_X,
     VAR_Y,
     VAR_PICT_TYPE,
-#if FF_API_FRAME_PKT
-    VAR_PKT_POS,
-#endif
-#if FF_API_FRAME_PKT
-    VAR_PKT_SIZE,
-#endif
     VAR_DURATION,
     VAR_VARS_NB
 };
@@ -452,6 +441,12 @@ static av_cold int set_fontsize(AVFilterContext *ctx, unsigned int fontsize)
         return AVERROR(EINVAL);
     }
 
+    // Whenever the underlying FT_Face changes, harfbuzz has to be notified of the change.
+    for (int line = 0; line < s->line_count; line++) {
+        TextLine *cur_line = &s->lines[line];
+        hb_ft_font_changed(cur_line->hb_data.font);
+    }
+
     s->fontsize = fontsize;
 
     return 0;
@@ -567,7 +562,7 @@ static int load_font_fontconfig(AVFilterContext *ctx)
     FcDefaultSubstitute(pat);
 
     if (!FcConfigSubstitute(fontconfig, pat, FcMatchPattern)) {
-        av_log(ctx, AV_LOG_ERROR, "could not substitue fontconfig options"); /* very unlikely */
+        av_log(ctx, AV_LOG_ERROR, "could not substitute fontconfig options"); /* very unlikely */
         FcPatternDestroy(pat);
         return AVERROR(ENOMEM);
     }
@@ -871,7 +866,7 @@ static int func_pts(void *ctx, AVBPrint *bp, const char *function_name, unsigned
     if (argc >= 3) {
         if (!strcmp(fmt, "hms")) {
             if (!strcmp(argv[2], "24HH")) {
-                av_log(ctx, AV_LOG_WARNING, "pts third argument 24HH is deprected, use pts:hms24hh instead\n");
+                av_log(ctx, AV_LOG_WARNING, "pts third argument 24HH is deprecated, use pts:hms24hh instead\n");
                 fmt = "hms24";
             } else {
                 av_log(ctx, AV_LOG_ERROR, "Invalid argument '%s', '24HH' was expected\n", argv[2]);
@@ -949,7 +944,7 @@ static int func_eval_expr_int_format(void *ctx, AVBPrint *bp, const char *functi
                                         argv[1][0], positions);
 }
 
-static FFExpandTextFunction expand_text_functions[] = {
+static const FFExpandTextFunction expand_text_functions[] = {
     { "e",               1, 1, func_eval_expr },
     { "eif",             2, 3, func_eval_expr_int_format },
     { "expr",            1, 1, func_eval_expr },
@@ -1016,7 +1011,7 @@ static av_cold int init(AVFilterContext *ctx)
             av_log(ctx, AV_LOG_WARNING, "Multiple texts provided, will use text_source only\n");
             av_free(s->text);
         }
-        s->text = av_mallocz(AV_DETECTION_BBOX_LABEL_NAME_MAX_SIZE *
+        s->text = av_mallocz((AV_DETECTION_BBOX_LABEL_NAME_MAX_SIZE + 1) *
                              (AV_NUM_DETECTION_BBOX_CLASSIFY + 1));
         if (!s->text)
             return AVERROR(ENOMEM);
@@ -1076,9 +1071,12 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_draw_supported_pixel_formats(0));
 }
 
 static int glyph_enu_border_free(void *opaque, void *elem)
@@ -1146,7 +1144,11 @@ static int config_input(AVFilterLink *inlink)
     char *expr;
     int ret;
 
-    ff_draw_init2(&s->dc, inlink->format, inlink->colorspace, inlink->color_range, FF_DRAW_PROCESS_ALPHA);
+    ret = ff_draw_init2(&s->dc, inlink->format, inlink->colorspace, inlink->color_range, FF_DRAW_PROCESS_ALPHA);
+    if (ret < 0) {
+        av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
+        return ret;
+    }
     ff_draw_color(&s->dc, &s->fontcolor,   s->fontcolor.rgba);
     ff_draw_color(&s->dc, &s->shadowcolor, s->shadowcolor.rgba);
     ff_draw_color(&s->dc, &s->bordercolor, s->bordercolor.rgba);
@@ -1216,6 +1218,7 @@ static int command(AVFilterContext *ctx, const char *cmd, const char *arg, char 
 
         ctx->priv = old;
         uninit(ctx);
+        av_opt_free(old);
         av_freep(&old);
 
         ctx->priv = new;
@@ -1365,11 +1368,10 @@ static int shape_text_hb(DrawTextContext *s, HarfbuzzData* hb, const char* text,
     hb_buffer_set_script(hb->buf, HB_SCRIPT_LATIN);
     hb_buffer_set_language(hb->buf, hb_language_from_string("en", -1));
     hb_buffer_guess_segment_properties(hb->buf);
-    hb->font = hb_ft_font_create(s->face, NULL);
+    hb->font = hb_ft_font_create_referenced(s->face);
     if(hb->font == NULL) {
         return AVERROR(ENOMEM);
     }
-    hb_ft_font_set_funcs(hb->font);
     hb_buffer_add_utf8(hb->buf, text, textLen, 0, -1);
     hb_shape(hb->font, hb->buf, NULL, 0);
     hb->glyph_info = hb_buffer_get_glyph_infos(hb->buf, &hb->glyph_count);
@@ -1380,8 +1382,8 @@ static int shape_text_hb(DrawTextContext *s, HarfbuzzData* hb, const char* text,
 
 static void hb_destroy(HarfbuzzData *hb)
 {
-    hb_buffer_destroy(hb->buf);
     hb_font_destroy(hb->font);
+    hb_buffer_destroy(hb->buf);
     hb->buf = NULL;
     hb->font = NULL;
     hb->glyph_info = NULL;
@@ -1392,8 +1394,7 @@ static int measure_text(AVFilterContext *ctx, TextMetrics *metrics)
 {
     DrawTextContext *s = ctx->priv;
     char *text = s->expanded_text.str;
-    char *textdup = NULL, *start = NULL;
-    int num_chars = 0;
+    char *textdup = NULL;
     int width64 = 0, w64 = 0;
     int cur_min_y64 = 0, first_max_y64 = -32000;
     int first_min_x64 = 32000, last_max_x64 = -32000;
@@ -1403,7 +1404,7 @@ static int measure_text(AVFilterContext *ctx, TextMetrics *metrics)
     Glyph *glyph = NULL;
 
     int i, tab_idx = 0, last_tab_idx = 0, line_offset = 0;
-    char* p;
+    uint8_t *start, *p;
     int ret = 0;
 
     // Count the lines and the tab characters
@@ -1433,8 +1434,13 @@ continue_on_failed:
     }
 
     s->line_count = line_count;
-    s->lines = av_mallocz(line_count * sizeof(TextLine));
-    s->tab_clusters = av_mallocz(s->tab_count * sizeof(uint32_t));
+    s->lines = av_calloc(line_count, sizeof(TextLine));
+    s->tab_clusters = av_calloc(s->tab_count, sizeof(uint32_t));
+    if ((line_count > 0 && !s->lines) ||
+        (s->tab_count > 0 && !s->tab_clusters)) {
+        ret = AVERROR(ENOMEM);
+        goto done;
+    }
     for (i = 0; i < s->tab_count; ++i) {
         s->tab_clusters[i] = -1;
     }
@@ -1450,13 +1456,14 @@ continue_on_failed:
             s->tab_clusters[tab_idx++] = i;
             *p = ' ';
         }
+        size_t len = p - start;
         GET_UTF8(code, *p ? *p++ : 0, code = 0xfffd; goto continue_on_failed2;);
 continue_on_failed2:
         if (ff_is_newline(code) || code == 0) {
             TextLine *cur_line = &s->lines[line_count];
             HarfbuzzData *hb = &cur_line->hb_data;
             cur_line->cluster_offset = line_offset;
-            ret = shape_text_hb(s, hb, start, num_chars);
+            ret = shape_text_hb(s, hb, start, len);
             if (ret != 0) {
                 goto done;
             }
@@ -1514,14 +1521,12 @@ continue_on_failed2:
             if (w64 > width64) {
                 width64 = w64;
             }
-            num_chars = -1;
             start = p;
             ++line_count;
             line_offset = i + 1;
         }
 
         if (code == 0) break;
-        ++num_chars;
     }
 
     metrics->line_height64 = s->face->size->metrics.height;
@@ -1552,6 +1557,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame)
 {
     DrawTextContext *s = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink *inl = ff_filter_link(inlink);
     int x = 0, y = 0, ret;
     int shift_x64, shift_y64;
     int x64, y64;
@@ -1595,7 +1601,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame)
 
     if (s->tc_opt_string) {
         char tcbuf[AV_TIMECODE_STR_SIZE];
-        av_timecode_make_string(&s->tc, tcbuf, inlink->frame_count_out);
+        av_timecode_make_string(&s->tc, tcbuf, inl->frame_count_out);
         av_bprint_clear(bp);
         av_bprintf(bp, "%s%s", s->text, tcbuf);
     }
@@ -1827,6 +1833,7 @@ static int draw_text(AVFilterContext *ctx, AVFrame *frame)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     DrawTextContext *s = ctx->priv;
@@ -1847,7 +1854,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         }
     }
 
-    if (s->reload && !(inlink->frame_count_out % s->reload)) {
+    if (s->reload && !(inl->frame_count_out % s->reload)) {
         if ((ret = ff_load_textfile(ctx, (const char *)s->textfile, &s->text, NULL)) < 0) {
             av_frame_free(&frame);
             return ret;
@@ -1861,17 +1868,11 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 #endif
     }
 
-    s->var_values[VAR_N] = inlink->frame_count_out + s->start_number;
+    s->var_values[VAR_N] = inl->frame_count_out + s->start_number;
     s->var_values[VAR_T] = frame->pts == AV_NOPTS_VALUE ?
         NAN : frame->pts * av_q2d(inlink->time_base);
 
     s->var_values[VAR_PICT_TYPE] = frame->pict_type;
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
-    s->var_values[VAR_PKT_POS] = frame->pkt_pos;
-    s->var_values[VAR_PKT_SIZE] = frame->pkt_size;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     s->var_values[VAR_DURATION] = frame->duration * av_q2d(inlink->time_base);
 
     s->metadata = frame->metadata;
@@ -1903,16 +1904,16 @@ static const AVFilterPad avfilter_vf_drawtext_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_drawtext = {
-    .name          = "drawtext",
-    .description   = NULL_IF_CONFIG_SMALL("Draw text on top of video frames using libfreetype library."),
+const FFFilter ff_vf_drawtext = {
+    .p.name        = "drawtext",
+    .p.description = NULL_IF_CONFIG_SMALL("Draw text on top of video frames using libfreetype library."),
+    .p.priv_class  = &drawtext_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(DrawTextContext),
-    .priv_class    = &drawtext_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_drawtext_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = command,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

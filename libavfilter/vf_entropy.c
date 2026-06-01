@@ -18,11 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 typedef struct EntropyContext {
@@ -174,14 +175,14 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_vf_entropy = {
-    .name           = "entropy",
-    .description    = NULL_IF_CONFIG_SMALL("Measure video frames entropy."),
+const FFFilter ff_vf_entropy = {
+    .p.name         = "entropy",
+    .p.description  = NULL_IF_CONFIG_SMALL("Measure video frames entropy."),
+    .p.priv_class   = &entropy_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
     .priv_size      = sizeof(EntropyContext),
     .uninit         = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixfmts),
-    .priv_class     = &entropy_class,
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
 };

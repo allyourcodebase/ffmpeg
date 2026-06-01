@@ -24,8 +24,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "framesync.h"
 #include "video.h"
 
@@ -121,13 +121,14 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    MergePlanesContext *s = ctx->priv;
+    const MergePlanesContext *s = ctx->priv;
     AVFilterFormats *formats = NULL;
     int i, ret;
 
-    s->outdesc = av_pix_fmt_desc_get(s->out_fmt);
     for (i = 0; av_pix_fmt_desc_get(i); i++) {
         const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(i);
         if (desc->comp[0].depth == s->outdesc->comp[0].depth &&
@@ -138,12 +139,12 @@ static int query_formats(AVFilterContext *ctx)
     }
 
     for (i = 0; i < s->nb_inputs; i++)
-        if ((ret = ff_formats_ref(formats, &ctx->inputs[i]->outcfg.formats)) < 0)
+        if ((ret = ff_formats_ref(formats, &cfg_in[i]->formats)) < 0)
             return ret;
 
     formats = NULL;
     if ((ret = ff_add_format(&formats, s->out_fmt)) < 0 ||
-        (ret = ff_formats_ref(formats, &ctx->outputs[0]->incfg.formats)) < 0)
+        (ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -185,6 +186,8 @@ static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
     MergePlanesContext *s = ctx->priv;
+    FilterLink *il = ff_filter_link(ctx->inputs[0]);
+    FilterLink *ol = ff_filter_link(outlink);
     InputParam inputsp[4];
     FFFrameSyncIn *in;
     int i, ret;
@@ -199,7 +202,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = ctx->inputs[0]->w;
     outlink->h = ctx->inputs[0]->h;
     outlink->time_base = ctx->inputs[0]->time_base;
-    outlink->frame_rate = ctx->inputs[0]->frame_rate;
+    ol->frame_rate = il->frame_rate;
     outlink->sample_aspect_ratio = ctx->inputs[0]->sample_aspect_ratio;
 
     s->planewidth[1]  =
@@ -307,16 +310,16 @@ static const AVFilterPad mergeplanes_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_mergeplanes = {
-    .name          = "mergeplanes",
-    .description   = NULL_IF_CONFIG_SMALL("Merge planes."),
+const FFFilter ff_vf_mergeplanes = {
+    .p.name        = "mergeplanes",
+    .p.description = NULL_IF_CONFIG_SMALL("Merge planes."),
+    .p.priv_class  = &mergeplanes_class,
+    .p.inputs      = NULL,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_INPUTS,
     .priv_size     = sizeof(MergePlanesContext),
-    .priv_class    = &mergeplanes_class,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
-    .inputs        = NULL,
     FILTER_OUTPUTS(mergeplanes_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
+    FILTER_QUERY_FUNC2(query_formats),
 };

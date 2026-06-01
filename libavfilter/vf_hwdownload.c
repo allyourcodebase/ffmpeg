@@ -24,8 +24,8 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 typedef struct HWDownloadContext {
@@ -35,14 +35,16 @@ typedef struct HWDownloadContext {
     AVHWFramesContext *hwframes;
 } HWDownloadContext;
 
-static int hwdownload_query_formats(AVFilterContext *avctx)
+static int hwdownload_query_formats(const AVFilterContext *avctx,
+                                    AVFilterFormatsConfig **cfg_in,
+                                    AVFilterFormatsConfig **cfg_out)
 {
     int err;
 
     if ((err = ff_formats_ref(ff_formats_pixdesc_filter(AV_PIX_FMT_FLAG_HWACCEL, 0),
-                              &avctx->inputs[0]->outcfg.formats))  ||
+                              &cfg_in[0]->formats))  ||
         (err = ff_formats_ref(ff_formats_pixdesc_filter(0, AV_PIX_FMT_FLAG_HWACCEL),
-                              &avctx->outputs[0]->incfg.formats)))
+                              &cfg_out[0]->formats)))
         return err;
 
     return 0;
@@ -50,18 +52,19 @@ static int hwdownload_query_formats(AVFilterContext *avctx)
 
 static int hwdownload_config_input(AVFilterLink *inlink)
 {
+    FilterLink          *l = ff_filter_link(inlink);
     AVFilterContext *avctx = inlink->dst;
     HWDownloadContext *ctx = avctx->priv;
 
     av_buffer_unref(&ctx->hwframes_ref);
 
-    if (!inlink->hw_frames_ctx) {
+    if (!l->hw_frames_ctx) {
         av_log(ctx, AV_LOG_ERROR, "The input must have a hardware frame "
                "reference.\n");
         return AVERROR(EINVAL);
     }
 
-    ctx->hwframes_ref = av_buffer_ref(inlink->hw_frames_ctx);
+    ctx->hwframes_ref = av_buffer_ref(l->hw_frames_ctx);
     if (!ctx->hwframes_ref)
         return AVERROR(ENOMEM);
 
@@ -189,14 +192,14 @@ static const AVFilterPad hwdownload_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_hwdownload = {
-    .name          = "hwdownload",
-    .description   = NULL_IF_CONFIG_SMALL("Download a hardware frame to a normal frame"),
+const FFFilter ff_vf_hwdownload = {
+    .p.name        = "hwdownload",
+    .p.description = NULL_IF_CONFIG_SMALL("Download a hardware frame to a normal frame"),
+    .p.priv_class  = &hwdownload_class,
     .uninit        = hwdownload_uninit,
     .priv_size     = sizeof(HWDownloadContext),
-    .priv_class    = &hwdownload_class,
     FILTER_INPUTS(hwdownload_inputs),
     FILTER_OUTPUTS(hwdownload_outputs),
-    FILTER_QUERY_FUNC(hwdownload_query_formats),
+    FILTER_QUERY_FUNC2(hwdownload_query_formats),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

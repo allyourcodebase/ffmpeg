@@ -31,6 +31,7 @@
 #include "libavutil/float_dsp.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avcodec.h"
 #include "audio_frame_queue.h"
@@ -347,15 +348,9 @@ const FFCodec ff_libmp3lame_encoder = {
     .init                  = mp3lame_encode_init,
     FF_CODEC_ENCODE_CB(mp3lame_encode_frame),
     .close                 = mp3lame_encode_close,
-    .p.sample_fmts         = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_S32P,
-                                                             AV_SAMPLE_FMT_FLTP,
-                                                             AV_SAMPLE_FMT_S16P,
-                                                             AV_SAMPLE_FMT_NONE },
-    .p.supported_samplerates = libmp3lame_sample_rates,
-    .p.ch_layouts          = (const AVChannelLayout[]) { AV_CHANNEL_LAYOUT_MONO,
-                                                         AV_CHANNEL_LAYOUT_STEREO,
-                                                         { 0 },
-    },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S32P, AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_S16P),
+    CODEC_SAMPLERATES_ARRAY(libmp3lame_sample_rates),
+    CODEC_CH_LAYOUTS(AV_CHANNEL_LAYOUT_MONO, AV_CHANNEL_LAYOUT_STEREO),
     .p.priv_class          = &libmp3lame_class,
     .defaults              = libmp3lame_defaults,
     .p.wrapper_name        = "libmp3lame",

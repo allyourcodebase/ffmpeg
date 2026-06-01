@@ -22,12 +22,12 @@
 
 #include "libavutil/eval.h"
 #include "libavutil/ffmath.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/tx.h"
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 
 static const char * const var_names[] = {
     "ch",           ///< the value of the current channel
@@ -362,6 +362,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink *outl = ff_filter_link(outlink);
     AudioDRCContext *s = ctx->priv;
     AVFrame *out;
     int ret;
@@ -372,7 +373,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         goto fail;
     }
 
-    s->var_values[VAR_SN] = outlink->sample_count_in;
+    s->var_values[VAR_SN] = outl->sample_count_in;
     s->var_values[VAR_T] = s->var_values[VAR_SN] * (double)1/outlink->sample_rate;
 
     s->in = in;
@@ -485,17 +486,17 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_adrc = {
-    .name            = "adrc",
-    .description     = NULL_IF_CONFIG_SMALL("Audio Spectral Dynamic Range Controller."),
+const FFFilter ff_af_adrc = {
+    .p.name          = "adrc",
+    .p.description   = NULL_IF_CONFIG_SMALL("Audio Spectral Dynamic Range Controller."),
+    .p.priv_class    = &adrc_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                       AVFILTER_FLAG_SLICE_THREADS,
     .priv_size       = sizeof(AudioDRCContext),
-    .priv_class      = &adrc_class,
     .uninit          = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                       AVFILTER_FLAG_SLICE_THREADS,
     .activate        = activate,
     .process_command = process_command,
 };

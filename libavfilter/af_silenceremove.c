@@ -24,11 +24,11 @@
 #include <float.h> /* DBL_MAX */
 
 #include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "filters.h"
 #include "avfilter.h"
-#include "internal.h"
 
 enum SilenceDetect {
     D_AVG,
@@ -478,11 +478,12 @@ static const AVFilterPad silenceremove_outputs[] = {
     },
 };
 
-const AVFilter ff_af_silenceremove = {
-    .name          = "silenceremove",
-    .description   = NULL_IF_CONFIG_SMALL("Remove silence."),
+const FFFilter ff_af_silenceremove = {
+    .p.name        = "silenceremove",
+    .p.description = NULL_IF_CONFIG_SMALL("Remove silence."),
+    .p.priv_class  = &silenceremove_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size     = sizeof(SilenceRemoveContext),
-    .priv_class    = &silenceremove_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
@@ -491,5 +492,4 @@ const AVFilter ff_af_silenceremove = {
     FILTER_SAMPLEFMTS(AV_SAMPLE_FMT_FLT,
                       AV_SAMPLE_FMT_DBL),
     .process_command = ff_filter_process_command,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

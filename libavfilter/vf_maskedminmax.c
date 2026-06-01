@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "framesync.h"
 
@@ -220,6 +220,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *source = ctx->inputs[0];
     AVFilterLink *f1 = ctx->inputs[1];
     AVFilterLink *f2 = ctx->inputs[2];
+    FilterLink *il = ff_filter_link(source);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -238,7 +240,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = source->w;
     outlink->h = source->h;
     outlink->sample_aspect_ratio = source->sample_aspect_ratio;
-    outlink->frame_rate = source->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 3)) < 0)
         return ret;
@@ -304,10 +306,12 @@ static const AVFilterPad maskedminmax_outputs[] = {
 
 AVFILTER_DEFINE_CLASS_EXT(maskedminmax, "masked(min|max)", maskedminmax_options);
 
-const AVFilter ff_vf_maskedmin = {
-    .name          = "maskedmin",
-    .description   = NULL_IF_CONFIG_SMALL("Apply filtering with minimum difference of two streams."),
-    .priv_class    = &maskedminmax_class,
+const FFFilter ff_vf_maskedmin = {
+    .p.name        = "maskedmin",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply filtering with minimum difference of two streams."),
+    .p.priv_class  = &maskedminmax_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MaskedMinMaxContext),
     .init          = maskedmin_init,
     .uninit        = uninit,
@@ -315,20 +319,20 @@ const AVFilter ff_vf_maskedmin = {
     FILTER_INPUTS(maskedminmax_inputs),
     FILTER_OUTPUTS(maskedminmax_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };
 
-const AVFilter ff_vf_maskedmax = {
-    .name          = "maskedmax",
-    .description   = NULL_IF_CONFIG_SMALL("Apply filtering with maximum difference of two streams."),
-    .priv_class    = &maskedminmax_class,
+const FFFilter ff_vf_maskedmax = {
+    .p.name        = "maskedmax",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply filtering with maximum difference of two streams."),
+    .p.priv_class  = &maskedminmax_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MaskedMinMaxContext),
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(maskedminmax_inputs),
     FILTER_OUTPUTS(maskedminmax_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

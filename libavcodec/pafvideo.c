@@ -20,6 +20,7 @@
  */
 
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
@@ -327,11 +328,6 @@ static int paf_video_decode(AVCodecContext *avctx, AVFrame *rframe,
             b = b << 2 | b >> 4;
             *out++ = (0xFFU << 24) | (r << 16) | (g << 8) | b;
         }
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-        c->pic->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     }
 
     c->dirty[c->current_frame] = 1;

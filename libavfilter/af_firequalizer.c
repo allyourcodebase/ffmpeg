@@ -20,12 +20,13 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/file_open.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/eval.h"
 #include "libavutil/avassert.h"
 #include "libavutil/tx.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "audio.h"
 
 #define RDFT_BITS_MIN 4
@@ -724,6 +725,7 @@ static int generate_kernel(AVFilterContext *ctx, const char *gain, const char *g
 
 static int config_input(AVFilterLink *inlink)
 {
+    FilterLink *l = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     FIREqualizerContext *s = ctx->priv;
     float iscale, scale = 1.f;
@@ -806,6 +808,8 @@ static int config_input(AVFilterLink *inlink)
         if ((ret = av_tx_init(&s->analysis_rdft, &s->analysis_rdft_fn, AV_TX_FLOAT_RDFT, 0, 1 << rdft_bits, &scale, 0)) < 0)
             return ret;
         s->dump_buf = av_malloc_array(s->analysis_rdft_len + 2, sizeof(*s->dump_buf));
+        if (!s->dump_buf)
+            return AVERROR(ENOMEM);
     }
 
     s->analysis_buf = av_malloc_array((s->analysis_rdft_len + 2), sizeof(*s->analysis_buf));
@@ -823,7 +827,7 @@ static int config_input(AVFilterLink *inlink)
            inlink->sample_rate, inlink->ch_layout.nb_channels, s->analysis_rdft_len, s->rdft_len, s->fir_len, s->nsamples_max);
 
     if (s->fixed)
-        inlink->min_samples = inlink->max_samples = s->nsamples_max;
+        l->min_samples = l->max_samples = s->nsamples_max;
 
     return generate_kernel(ctx, SELECT_GAIN(s), SELECT_GAIN_ENTRY(s));
 }
@@ -953,14 +957,14 @@ static const AVFilterPad firequalizer_outputs[] = {
     },
 };
 
-const AVFilter ff_af_firequalizer = {
-    .name               = "firequalizer",
-    .description        = NULL_IF_CONFIG_SMALL("Finite Impulse Response Equalizer."),
+const FFFilter ff_af_firequalizer = {
+    .p.name             = "firequalizer",
+    .p.description      = NULL_IF_CONFIG_SMALL("Finite Impulse Response Equalizer."),
+    .p.priv_class       = &firequalizer_class,
     .uninit             = uninit,
     .process_command    = process_command,
     .priv_size          = sizeof(FIREqualizerContext),
     FILTER_INPUTS(firequalizer_inputs),
     FILTER_OUTPUTS(firequalizer_outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
-    .priv_class         = &firequalizer_class,
 };

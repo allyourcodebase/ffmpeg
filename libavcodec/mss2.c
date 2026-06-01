@@ -24,12 +24,12 @@
  */
 
 #include "libavutil/avassert.h"
+#include "libavutil/mem.h"
 #include "codec_internal.h"
 #include "decode.h"
 #include "error_resilience.h"
 #include "mpeg_er.h"
 #include "mpegvideodec.h"
-#include "qpeldsp.h"
 #include "vc1.h"
 #include "wmv2data.h"
 #include "mss12.h"
@@ -382,17 +382,17 @@ static int decode_wmv9(AVCodecContext *avctx, const uint8_t *buf, int buf_size,
     MSS12Context *c   = &ctx->c;
     VC1Context *v     = avctx->priv_data;
     MpegEncContext *s = &v->s;
-    AVFrame *f;
+    MPVWorkPicture *f;
     int ret;
 
     ff_mpeg_flush(avctx);
 
-    if ((ret = init_get_bits8(&s->gb, buf, buf_size)) < 0)
+    if ((ret = init_get_bits8(&v->gb, buf, buf_size)) < 0)
         return ret;
 
-    s->loop_filter = avctx->skip_loop_filter < AVDISCARD_ALL;
+    v->loop_filter = avctx->skip_loop_filter < AVDISCARD_ALL;
 
-    if (ff_vc1_parse_frame_header(v, &s->gb) < 0) {
+    if (ff_vc1_parse_frame_header(v, &v->gb) < 0) {
         av_log(v->s.avctx, AV_LOG_ERROR, "header error\n");
         return AVERROR_INVALIDDATA;
     }
@@ -431,7 +431,7 @@ static int decode_wmv9(AVCodecContext *avctx, const uint8_t *buf, int buf_size,
 
     ff_mpv_frame_end(s);
 
-    f = s->current_picture.f;
+    f = &s->cur_pic;
 
     if (v->respic == 3) {
         ctx->dsp.upsample_plane(f->data[0], f->linesize[0], w,      h);
@@ -844,7 +844,7 @@ static av_cold int wmv9_init(AVCodecContext *avctx)
     v->resync_marker   = 0;
     v->rangered        = 0;
 
-    v->s.max_b_frames = avctx->max_b_frames = 0;
+    v->max_b_frames    = avctx->max_b_frames = 0;
     v->quantizer_mode = 0;
 
     v->finterpflag = 0;

@@ -24,6 +24,7 @@
 #include "libavutil/dict.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/avassert.h"
 #include "libavcodec/defs.h"
@@ -307,7 +308,7 @@ int64_t avio_seek(AVIOContext *s, int64_t offset, int whence)
         ctx->seek_count++;
         if (!s->write_flag)
             s->buf_end = s->buffer;
-        s->buf_ptr = s->buf_ptr_max = s->buffer;
+        s->checksum_ptr = s->buf_ptr = s->buf_ptr_max = s->buffer;
         s->pos = offset;
     }
     s->eof_reached = 0;

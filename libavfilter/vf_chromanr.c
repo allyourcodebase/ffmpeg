@@ -23,7 +23,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 typedef struct ChromaNRContext {
@@ -289,14 +289,14 @@ static const AVFilterPad inputs[] = {
 
 AVFILTER_DEFINE_CLASS(chromanr);
 
-const AVFilter ff_vf_chromanr = {
-    .name          = "chromanr",
-    .description   = NULL_IF_CONFIG_SMALL("Reduce chrominance noise."),
+const FFFilter ff_vf_chromanr = {
+    .p.name        = "chromanr",
+    .p.description = NULL_IF_CONFIG_SMALL("Reduce chrominance noise."),
+    .p.priv_class  = &chromanr_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ChromaNRContext),
-    .priv_class    = &chromanr_class,
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_INPUTS(inputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

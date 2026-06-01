@@ -25,14 +25,32 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/fifo.h"
+#include "libavutil/mem.h"
 #include "libavutil/tree.h"
 
+<<<<<<< HEAD
 #include "libavcodec/bsf.h"
 #include "libavcodec/bsf_internal.h"
 #include "libavcodec/cbs.h"
 #include "libavcodec/cbs_h264.h"
 #include "libavcodec/h264_parse.h"
 #include "libavcodec/h264_ps.h"
+||||||| e7d938073e
+#include "bsf.h"
+#include "bsf_internal.h"
+#include "cbs.h"
+#include "cbs_h264.h"
+#include "h264_parse.h"
+#include "h264_ps.h"
+=======
+#include "bsf.h"
+#include "bsf_internal.h"
+#include "cbs.h"
+#include "cbs_h264.h"
+#include "h264_parse.h"
+#include "h264_ps.h"
+#include "libavutil/refstruct.h"
+>>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 
 typedef struct DTS2PTSNode {
     int64_t      dts;
@@ -60,6 +78,7 @@ typedef struct DTS2PTSH264Context {
 typedef struct DTS2PTSContext {
     struct AVTreeNode *root;
     AVFifo *fifo;
+    AVRefStructPool *node_pool;
 
     // Codec specific function pointers and constants
     int (*init)(AVBSFContext *ctx);
@@ -109,7 +128,7 @@ static int dec_poc(void *opaque, void *elem)
 static int free_node(void *opaque, void *elem)
 {
     DTS2PTSNode *node = elem;
-    av_free(node);
+    av_refstruct_unref(&node);
     return 0;
 }
 
@@ -123,7 +142,7 @@ static int alloc_and_insert_node(AVBSFContext *ctx, int64_t ts, int64_t duration
         DTS2PTSNode *poc_node, *ret;
         if (!node)
             return AVERROR(ENOMEM);
-        poc_node = av_malloc(sizeof(*poc_node));
+        poc_node = av_refstruct_pool_get(s->node_pool);
         if (!poc_node) {
             av_free(node);
             return AVERROR(ENOMEM);
@@ -134,7 +153,7 @@ static int alloc_and_insert_node(AVBSFContext *ctx, int64_t ts, int64_t duration
         ret = av_tree_insert(&s->root, poc_node, cmp_insert, &node);
         if (ret && ret != poc_node) {
             *ret = *poc_node;
-            av_free(poc_node);
+            av_refstruct_unref(&poc_node);
             av_free(node);
         }
     }
@@ -268,8 +287,8 @@ static int h264_filter(AVBSFContext *ctx)
             h264->sps.offset_for_non_ref_pic         = sps->offset_for_non_ref_pic;
             h264->sps.offset_for_top_to_bottom_field = sps->offset_for_top_to_bottom_field;
             h264->sps.poc_cycle_length               = sps->num_ref_frames_in_pic_order_cnt_cycle;
-            for (int i = 0; i < h264->sps.poc_cycle_length; i++)
-                h264->sps.offset_for_ref_frame[i] = sps->offset_for_ref_frame[i];
+            for (int j = 0; j < h264->sps.poc_cycle_length; j++)
+                h264->sps.offset_for_ref_frame[j] = sps->offset_for_ref_frame[j];
 
             h264->picture_structure = sps->frame_mbs_only_flag ? 3 :
                                       (header->field_pic_flag ?
@@ -393,6 +412,12 @@ static int dts2pts_init(AVBSFContext *ctx)
     if (!s->fifo)
         return AVERROR(ENOMEM);
 
+    s->node_pool = av_refstruct_pool_alloc(sizeof(DTS2PTSNode),
+                                           AV_REFSTRUCT_POOL_FLAG_NO_ZEROING);
+
+    if (!s->node_pool)
+        return AVERROR(ENOMEM);
+
     ret = ff_cbs_init(&s->cbc, ctx->par_in->codec_id, ctx);
     if (ret < 0)
         return ret;
@@ -458,7 +483,7 @@ static int dts2pts_filter(AVBSFContext *ctx, AVPacket *out)
                 if (!poc_node || poc_node->dts != out->pts)
                     continue;
                 av_tree_insert(&s->root, poc_node, cmp_insert, &node);
-                av_free(poc_node);
+                av_refstruct_unref(&poc_node);
                 av_free(node);
                 poc_node = av_tree_find(s->root, &dup, cmp_find, NULL);
             }
@@ -520,6 +545,7 @@ static void dts2pts_close(AVBSFContext *ctx)
     dts2pts_flush(ctx);
 
     av_fifo_freep2(&s->fifo);
+    av_refstruct_pool_uninit(&s->node_pool);
     ff_cbs_fragment_free(&s->au);
     ff_cbs_close(&s->cbc);
 }

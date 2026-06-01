@@ -27,6 +27,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/error.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavformat/avio.h"
 #include "video.h"
@@ -223,6 +224,7 @@ end:
 static int fsync_config_props(AVFilterLink* outlink)
 {
     AVFilterContext *ctx = outlink->src;
+    FilterLink      *l   = ff_filter_link(outlink);
     FsyncContext    *s   = ctx->priv;
     int ret;
 
@@ -234,7 +236,7 @@ static int fsync_config_props(AVFilterLink* outlink)
         return AVERROR_INVALIDDATA;
     }
 
-    outlink->frame_rate = av_make_q(1, 0); // unknown or dynamic
+    l->frame_rate = av_make_q(1, 0); // unknown or dynamic
     outlink->time_base  = av_make_q(s->tb_num, s->tb_den);
 
     return 0;
@@ -286,16 +288,16 @@ static const AVFilterPad fsync_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_fsync = {
-    .name          = "fsync",
-    .description   = NULL_IF_CONFIG_SMALL("Synchronize video frames from external source."),
+const FFFilter ff_vf_fsync = {
+    .p.name        = "fsync",
+    .p.description = NULL_IF_CONFIG_SMALL("Synchronize video frames from external source."),
+    .p.priv_class  = &fsync_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .init          = fsync_init,
     .uninit        = fsync_uninit,
     .priv_size     = sizeof(FsyncContext),
-    .priv_class    = &fsync_class,
     .activate      = activate,
     .formats_state = FF_FILTER_FORMATS_PASSTHROUGH,
     FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(fsync_outputs),
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
 };

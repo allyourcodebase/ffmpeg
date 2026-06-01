@@ -29,10 +29,12 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 #define MAX_NB_THREADS 32
@@ -111,8 +113,12 @@ static inline double getpix(void *priv, double x, double y, int plane)
         return 0;
 
     if (geq->interpolation == INTERP_BILINEAR) {
-        xi = x = av_clipd(x, 0, w - 2);
-        yi = y = av_clipd(y, 0, h - 2);
+        int xn, yn;
+
+        xi = x = av_clipd(x, 0, w - 1);
+        yi = y = av_clipd(y, 0, h - 1);
+        xn = FFMIN(xi + 1, w - 1);
+        yn = FFMIN(yi + 1, h - 1);
 
         x -= xi;
         y -= yi;
@@ -121,17 +127,17 @@ static inline double getpix(void *priv, double x, double y, int plane)
             const uint16_t *src16 = (const uint16_t*)src;
             linesize /= 2;
 
-            return (1-y)*((1-x)*src16[xi +  yi    * linesize] + x*src16[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src16[xi + (yi+1) * linesize] + x*src16[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src16[xi + yi * linesize] + x*src16[xn + yi * linesize])
+                  +   y *((1-x)*src16[xi + yn * linesize] + x*src16[xn + yn * linesize]);
         } else if (geq->bps == 32) {
             const float *src32 = (const float*)src;
             linesize /= 4;
 
-            return (1-y)*((1-x)*src32[xi +  yi    * linesize] + x*src32[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src32[xi + (yi+1) * linesize] + x*src32[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src32[xi + yi * linesize] + x*src32[xn + yi * linesize])
+                  +   y *((1-x)*src32[xi + yn * linesize] + x*src32[xn + yn * linesize]);
         } else if (geq->bps == 8) {
-            return (1-y)*((1-x)*src[xi +  yi    * linesize] + x*src[xi + 1 +  yi    * linesize])
-                  +   y *((1-x)*src[xi + (yi+1) * linesize] + x*src[xi + 1 + (yi+1) * linesize]);
+            return (1-y)*((1-x)*src[xi + yi * linesize] + x*src[xn + yi * linesize])
+                  +   y *((1-x)*src[xi + yn * linesize] + x*src[xn + yn * linesize]);
         }
     } else {
         xi = av_clipd(x, 0, w - 1);
@@ -330,9 +336,11 @@ end:
     return ret;
 }
 
-static int geq_query_formats(AVFilterContext *ctx)
+static int geq_query_formats(const AVFilterContext *ctx,
+                             AVFilterFormatsConfig **cfg_in,
+                             AVFilterFormatsConfig **cfg_out)
 {
-    GEQContext *geq = ctx->priv;
+    const GEQContext *geq = ctx->priv;
     static const enum AVPixelFormat yuv_pix_fmts[] = {
         AV_PIX_FMT_YUV444P,  AV_PIX_FMT_YUV422P,  AV_PIX_FMT_YUV420P,
         AV_PIX_FMT_YUV411P,  AV_PIX_FMT_YUV410P,  AV_PIX_FMT_YUV440P,
@@ -365,7 +373,7 @@ static int geq_query_formats(AVFilterContext *ctx)
     };
     const enum AVPixelFormat *pix_fmts = geq->is_rgb ? rgb_pix_fmts : yuv_pix_fmts;
 
-    return ff_set_common_formats_from_list(ctx, pix_fmts);
+    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
 }
 
 static int geq_config_props(AVFilterLink *inlink)
@@ -448,13 +456,14 @@ static int slice_geq_filter(AVFilterContext *ctx, void *arg, int jobnr, int nb_j
 static int geq_filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
     int plane;
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     const int nb_threads = FFMIN(MAX_NB_THREADS, ff_filter_get_nb_threads(ctx));
     GEQContext *geq = ctx->priv;
     AVFilterLink *outlink = inlink->dst->outputs[0];
     AVFrame *out;
 
-    geq->values[VAR_N] = inlink->frame_count_out,
+    geq->values[VAR_N] = inl->frame_count_out,
     geq->values[VAR_T] = in->pts == AV_NOPTS_VALUE ? NAN : in->pts * av_q2d(inlink->time_base),
 
     geq->picref = in;
@@ -517,15 +526,15 @@ static const AVFilterPad geq_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_geq = {
-    .name          = "geq",
-    .description   = NULL_IF_CONFIG_SMALL("Apply generic equation to each pixel."),
+const FFFilter ff_vf_geq = {
+    .p.name        = "geq",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply generic equation to each pixel."),
+    .p.priv_class  = &geq_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(GEQContext),
     .init          = geq_init,
     .uninit        = geq_uninit,
     FILTER_INPUTS(geq_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(geq_query_formats),
-    .priv_class    = &geq_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(geq_query_formats),
 };

@@ -19,6 +19,7 @@
  */
 
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
 #include "snow_dwt.h"
@@ -427,7 +428,7 @@ av_cold int ff_snow_common_init(AVCodecContext *avctx){
         !FF_ALLOCZ_TYPED_ARRAY(s->spatial_dwt_buffer,  width * height) ||  //FIXME this does not belong here
         !FF_ALLOCZ_TYPED_ARRAY(s->temp_dwt_buffer,     width)          ||
         !FF_ALLOCZ_TYPED_ARRAY(s->temp_idwt_buffer,    width)          ||
-        !FF_ALLOCZ_TYPED_ARRAY(s->run_buffer, ((width + 1) >> 1) * ((height + 1) >> 1)))
+        !FF_ALLOCZ_TYPED_ARRAY(s->run_buffer, ((width + 1) >> 1) * ((height + 1) >> 1) + 1))
         return AVERROR(ENOMEM);
 
     for(i=0; i<MAX_REF_FRAMES; i++) {
@@ -510,26 +511,17 @@ int ff_snow_common_init_after_header(AVCodecContext *avctx) {
     return 0;
 }
 
-void ff_snow_release_buffer(AVCodecContext *avctx)
-{
-    SnowContext *s = avctx->priv_data;
-
-    if(s->last_picture[s->max_ref_frames-1]->data[0]){
-        av_frame_unref(s->last_picture[s->max_ref_frames-1]);
-    }
-}
-
 int ff_snow_frames_prepare(SnowContext *s)
 {
    AVFrame *tmp;
-
-    ff_snow_release_buffer(s->avctx);
 
     tmp= s->last_picture[s->max_ref_frames-1];
     for (int i = s->max_ref_frames - 1; i > 0; i--)
         s->last_picture[i] = s->last_picture[i-1];
     s->last_picture[0] = s->current_picture;
     s->current_picture = tmp;
+
+    av_frame_unref(s->current_picture);
 
     if(s->keyframe){
         s->ref_frames= 0;
@@ -565,9 +557,6 @@ av_cold void ff_snow_common_end(SnowContext *s)
     av_freep(&s->emu_edge_buffer);
 
     for(i=0; i<MAX_REF_FRAMES; i++){
-        if(s->last_picture[i] && s->last_picture[i]->data[0]) {
-            av_assert0(s->last_picture[i]->data[0] != s->current_picture->data[0]);
-        }
         av_frame_free(&s->last_picture[i]);
     }
 

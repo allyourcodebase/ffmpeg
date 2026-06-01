@@ -23,7 +23,6 @@
 #include "avfilter.h"
 #include "audio.h"
 #include "filters.h"
-#include "internal.h"
 #include "formats.h"
 #include "drawutils.h"
 #include "video.h"
@@ -77,19 +76,24 @@ static int needs_drawing(const TPadContext *s) {
     );
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    TPadContext *s = ctx->priv;
+    const TPadContext *s = ctx->priv;
     if (needs_drawing(s))
-        return ff_set_common_formats(ctx, ff_draw_supported_pixel_formats(0));
+        return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                      ff_draw_supported_pixel_formats(0));
 
-    return ff_set_common_formats(ctx, ff_all_formats(AVMEDIA_TYPE_VIDEO));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_all_formats(AVMEDIA_TYPE_VIDEO));
 }
 
 static int activate(AVFilterContext *ctx)
 {
     AVFilterLink *inlink = ctx->inputs[0];
     AVFilterLink *outlink = ctx->outputs[0];
+    FilterLink *l = ff_filter_link(outlink);
     TPadContext *s = ctx->priv;
     AVFrame *frame = NULL;
     int ret, status;
@@ -116,7 +120,7 @@ static int activate(AVFilterContext *ctx)
         ff_fill_rectangle(&s->draw, &s->color,
                           frame->data, frame->linesize,
                           0, 0, frame->width, frame->height);
-        duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+        duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
         frame->pts = s->pts;
         frame->duration = duration;
         s->pts += duration;
@@ -136,7 +140,7 @@ static int activate(AVFilterContext *ctx)
         frame = av_frame_clone(s->cache_start);
         if (!frame)
             return AVERROR(ENOMEM);
-        duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+        duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
         frame->pts = s->pts;
         frame->duration = duration;
         s->pts += duration;
@@ -182,7 +186,7 @@ static int activate(AVFilterContext *ctx)
             if (!frame)
                 return AVERROR(ENOMEM);
         }
-        duration = av_rescale_q(1, av_inv_q(outlink->frame_rate), outlink->time_base);
+        duration = av_rescale_q(1, av_inv_q(l->frame_rate), outlink->time_base);
         frame->pts = s->pts;
         frame->duration = duration;
         s->pts += duration;
@@ -200,17 +204,23 @@ static int activate(AVFilterContext *ctx)
 static int config_input(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
+    FilterLink *l = ff_filter_link(inlink);
     TPadContext *s = ctx->priv;
+    int ret;
 
     if (needs_drawing(s)) {
-        ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
+        ret = ff_draw_init2(&s->draw, inlink->format, inlink->colorspace, inlink->color_range, 0);
+        if (ret < 0) {
+            av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
+            return ret;
+        }
         ff_draw_color(&s->draw, &s->color, s->rgba_color);
     }
 
     if (s->start_duration)
-        s->pad_start = av_rescale_q(s->start_duration, inlink->frame_rate, av_inv_q(AV_TIME_BASE_Q));
+        s->pad_start = av_rescale_q(s->start_duration, l->frame_rate, av_inv_q(AV_TIME_BASE_Q));
     if (s->stop_duration)
-        s->pad_stop = av_rescale_q(s->stop_duration, inlink->frame_rate, av_inv_q(AV_TIME_BASE_Q));
+        s->pad_stop = av_rescale_q(s->stop_duration, l->frame_rate, av_inv_q(AV_TIME_BASE_Q));
 
     return 0;
 }
@@ -230,14 +240,14 @@ static const AVFilterPad tpad_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_tpad = {
-    .name          = "tpad",
-    .description   = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
+const FFFilter ff_vf_tpad = {
+    .p.name        = "tpad",
+    .p.description = NULL_IF_CONFIG_SMALL("Temporarily pad video frames."),
+    .p.priv_class  = &tpad_class,
     .priv_size     = sizeof(TPadContext),
-    .priv_class    = &tpad_class,
     .activate      = activate,
     .uninit        = uninit,
     FILTER_INPUTS(tpad_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };

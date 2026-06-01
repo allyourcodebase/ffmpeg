@@ -50,8 +50,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     if ((ret = ff_get_buffer(avctx, p, 0)) < 0)
         return ret;
-    p->pict_type = AV_PICTURE_TYPE_I;
-    p->flags |= AV_FRAME_FLAG_KEY;
 
     init_get_bits(&gb, buf, buf_size * 8);
 
@@ -90,4 +88,3 @@ const FFCodec ff_cljr_decoder = {
     FF_CODEC_DECODE_CB(decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1,
 };
-

@@ -46,6 +46,8 @@ static av_cold int v410_decode_init(AVCodecContext *avctx)
         }
     }
 
+    av_log(avctx, AV_LOG_WARNING, "This decoder is deprecated and will be removed.\n");
+
     return 0;
 }
 
@@ -101,9 +103,6 @@ static int v410_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
     if ((ret = ff_thread_get_buffer(avctx, pic, 0)) < 0)
         return ret;
-
-    pic->flags |= AV_FRAME_FLAG_KEY;
-    pic->pict_type = AV_PICTURE_TYPE_I;
 
     td.buf = src;
     td.frame = pic;

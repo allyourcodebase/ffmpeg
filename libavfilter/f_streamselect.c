@@ -18,13 +18,13 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
 #include "filters.h"
 #include "formats.h"
 #include "framesync.h"
-#include "internal.h"
 #include "video.h"
 
 typedef struct StreamSelectContext {
@@ -64,11 +64,12 @@ static int process_frame(FFFrameSync *fs)
 
     for (j = 0; j < ctx->nb_inputs; j++) {
         for (i = 0; i < s->nb_map; i++) {
+            FilterLink *outl = ff_filter_link(ctx->outputs[i]);
             if (s->map[i] == j) {
                 AVFrame *out;
 
                 if (s->is_audio && s->last_pts[j] == in[j]->pts &&
-                    ctx->outputs[i]->frame_count_in > 0)
+                    outl->frame_count_in > 0)
                     continue;
                 out = av_frame_clone(in[j]);
                 if (!out)
@@ -97,11 +98,13 @@ static int activate(AVFilterContext *ctx)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *outl     = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     StreamSelectContext *s = ctx->priv;
     const int outlink_idx = FF_OUTLINK_IDX(outlink);
     const int inlink_idx  = s->map[outlink_idx];
     AVFilterLink *inlink = ctx->inputs[inlink_idx];
+    FilterLink      *inl = ff_filter_link(inlink);
     FFFrameSyncIn *in;
     int i, ret;
 
@@ -114,7 +117,7 @@ static int config_output(AVFilterLink *outlink)
         outlink->w = inlink->w;
         outlink->h = inlink->h;
         outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-        outlink->frame_rate = inlink->frame_rate;
+        outl->frame_rate = inl->frame_rate;
         break;
     case AVMEDIA_TYPE_AUDIO:
         outlink->sample_rate    = inlink->sample_rate;
@@ -245,7 +248,7 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
 
         if (ret < 0)
             return ret;
-        return ff_filter_config_links(ctx);
+        return 0;
     }
     return AVERROR(ENOSYS);
 }
@@ -293,48 +296,26 @@ static av_cold void uninit(AVFilterContext *ctx)
     ff_framesync_uninit(&s->fs);
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    AVFilterFormats *formats;
-    int ret, i;
-
-    for (i = 0; i < ctx->nb_inputs; i++) {
-        formats = ff_all_formats(ctx->inputs[i]->type);
-        if ((ret = ff_set_common_formats(ctx, formats)) < 0)
-            return ret;
-
-        if (ctx->inputs[i]->type == AVMEDIA_TYPE_AUDIO) {
-            if ((ret = ff_set_common_all_samplerates   (ctx)) < 0 ||
-                (ret = ff_set_common_all_channel_counts(ctx)) < 0)
-                return ret;
-        }
-    }
-
-    return 0;
-}
-
-const AVFilter ff_vf_streamselect = {
-    .name            = "streamselect",
-    .description     = NULL_IF_CONFIG_SMALL("Select video streams"),
+const FFFilter ff_vf_streamselect = {
+    .p.name          = "streamselect",
+    .p.description   = NULL_IF_CONFIG_SMALL("Select video streams"),
+    .p.priv_class    = &streamselect_class,
+    .p.flags         = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
     .init            = init,
-    FILTER_QUERY_FUNC(query_formats),
     .process_command = process_command,
     .uninit          = uninit,
     .activate        = activate,
     .priv_size       = sizeof(StreamSelectContext),
-    .priv_class      = &streamselect_class,
-    .flags           = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
 };
 
-const AVFilter ff_af_astreamselect = {
-    .name            = "astreamselect",
-    .description     = NULL_IF_CONFIG_SMALL("Select audio streams"),
-    .priv_class      = &streamselect_class,
+const FFFilter ff_af_astreamselect = {
+    .p.name          = "astreamselect",
+    .p.description   = NULL_IF_CONFIG_SMALL("Select audio streams"),
+    .p.priv_class    = &streamselect_class,
+    .p.flags         = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
     .init            = init,
-    FILTER_QUERY_FUNC(query_formats),
     .process_command = process_command,
     .uninit          = uninit,
     .activate        = activate,
     .priv_size       = sizeof(StreamSelectContext),
-    .flags           = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
 };

@@ -41,11 +41,14 @@ typedef struct D3D12DecodePictureContext {
     unsigned               bitstream_size;
 } D3D12DecodePictureContext;
 
-static int d3d12va_vc1_start_frame(AVCodecContext *avctx, av_unused const uint8_t *buffer,  av_unused uint32_t size)
+static int d3d12va_vc1_start_frame(AVCodecContext *avctx,
+                                   av_unused const AVBufferRef *buffer_ref,
+                                   av_unused const uint8_t *buffer,
+                                   av_unused uint32_t size)
 {
     const VC1Context          *v       = avctx->priv_data;
     D3D12VADecodeContext      *ctx     = D3D12VA_DECODE_CONTEXT(avctx);
-    D3D12DecodePictureContext *ctx_pic = v->s.current_picture_ptr->hwaccel_picture_private;
+    D3D12DecodePictureContext *ctx_pic = v->s.cur_pic.ptr->hwaccel_picture_private;
 
     if (!ctx)
         return -1;
@@ -67,7 +70,7 @@ static int d3d12va_vc1_start_frame(AVCodecContext *avctx, av_unused const uint8_
 static int d3d12va_vc1_decode_slice(AVCodecContext *avctx, const uint8_t *buffer, uint32_t size)
 {
     const VC1Context          *v       = avctx->priv_data;
-    D3D12DecodePictureContext *ctx_pic = v->s.current_picture_ptr->hwaccel_picture_private;
+    D3D12DecodePictureContext *ctx_pic = v->s.cur_pic.ptr->hwaccel_picture_private;
 
     if (ctx_pic->slice_count >= MAX_SLICES) {
         return AVERROR(ERANGE);
@@ -93,7 +96,7 @@ static int update_input_arguments(AVCodecContext *avctx, D3D12_VIDEO_DECODE_INPU
 {
     const VC1Context *v                     = avctx->priv_data;
     const MpegEncContext      *s            = &v->s;
-    D3D12DecodePictureContext *ctx_pic      = s->current_picture_ptr->hwaccel_picture_private;
+    D3D12DecodePictureContext *ctx_pic      = s->cur_pic.ptr->hwaccel_picture_private;
     D3D12_VIDEO_DECODE_FRAME_ARGUMENT *args = &input_args->FrameArguments[input_args->NumFrameArguments++];
 
     const unsigned mb_count = s->mb_width * (s->mb_height >> v->field_mode);
@@ -151,18 +154,18 @@ static int update_input_arguments(AVCodecContext *avctx, D3D12_VIDEO_DECODE_INPU
 static int d3d12va_vc1_end_frame(AVCodecContext *avctx)
 {
     const VC1Context          *v       = avctx->priv_data;
-    D3D12DecodePictureContext *ctx_pic = v->s.current_picture_ptr->hwaccel_picture_private;
+    D3D12DecodePictureContext *ctx_pic = v->s.cur_pic.ptr->hwaccel_picture_private;
 
     if (ctx_pic->slice_count <= 0 || ctx_pic->bitstream_size <= 0)
         return -1;
 
-    return ff_d3d12va_common_end_frame(avctx, v->s.current_picture_ptr->f,
+    return ff_d3d12va_common_end_frame(avctx, v->s.cur_pic.ptr->f,
                                        &ctx_pic->pp, sizeof(ctx_pic->pp),
                                        NULL, 0,
                                        update_input_arguments);
 }
 
-static int d3d12va_vc1_decode_init(AVCodecContext *avctx)
+static av_cold int d3d12va_vc1_decode_init(AVCodecContext *avctx)
 {
     int ret;
     D3D12VADecodeContext *ctx = D3D12VA_DECODE_CONTEXT(avctx);

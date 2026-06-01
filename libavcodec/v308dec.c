@@ -30,6 +30,8 @@ static av_cold int v308_decode_init(AVCodecContext *avctx)
     if (avctx->width & 1)
         av_log(avctx, AV_LOG_WARNING, "v308 requires width to be even.\n");
 
+    av_log(avctx, AV_LOG_WARNING, "This decoder is deprecated and will be removed.\n");
+
     return 0;
 }
 
@@ -47,9 +49,6 @@ static int v308_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
     if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
         return ret;
-
-    pic->flags |= AV_FRAME_FLAG_KEY;
-    pic->pict_type = AV_PICTURE_TYPE_I;
 
     y = pic->data[0];
     u = pic->data[1];

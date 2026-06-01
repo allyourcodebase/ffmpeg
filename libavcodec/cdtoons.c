@@ -29,6 +29,7 @@
 
 #include "libavutil/attributes.h"
 #include "libavutil/internal.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
@@ -384,11 +385,6 @@ static int cdtoons_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
             }
             /* first palette entry indicates transparency */
             c->pal[0]                     = 0;
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-            c->frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
         }
     }
 

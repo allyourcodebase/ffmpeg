@@ -21,6 +21,7 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/dict.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/avassert.h"
@@ -338,8 +339,9 @@ static const struct URLProtocol *url_find_protocol(const char *filename)
         }
     }
     av_freep(&protocols);
-    if (av_strstart(filename, "https:", NULL) || av_strstart(filename, "tls:", NULL))
-        av_log(NULL, AV_LOG_WARNING, "https protocol not found, recompile FFmpeg with "
+    if (av_strstart(filename, "https:", NULL) || av_strstart(filename, "tls:", NULL) ||
+        av_strstart(filename, "dtls:", NULL))
+        av_log(NULL, AV_LOG_WARNING, "https or dtls protocol not found, recompile FFmpeg with "
                                      "openssl, gnutls or securetransport enabled.\n");
 
     return NULL;

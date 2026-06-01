@@ -50,6 +50,7 @@ typedef struct MOVIentry {
     int64_t      dts;
     int64_t      pts;
     unsigned int size;
+    unsigned int stsd_index;
     unsigned int samples_in_chunk;
     unsigned int chunkNum;              ///< Chunk number if the current entry is a chunk start otherwise 0
     unsigned int entries;
@@ -85,11 +86,18 @@ typedef struct MOVFragmentInfo {
 
 typedef struct MOVTrack {
     int         mode;
-    int         entry;
+    int         entry, entry_written;
     unsigned    timescale;
     uint64_t    time;
     int64_t     track_duration;
     int         last_sample_is_subtitle_end;
+
+    /* multiple stsd */
+    int         stsd_count;
+    int         last_stsd_index;
+    uint8_t     **extradata;
+    int         *extradata_size;
+
     long        sample_count;
     long        sample_size;
     long        chunkCount;
@@ -111,9 +119,8 @@ typedef struct MOVTrack {
     int mono_as_fc;
     int multichannel_as_mono;
 
-    int         vos_len;
-    uint8_t     *vos_data;
     MOVIentry   *cluster;
+    MOVIentry   *cluster_written;
     unsigned    cluster_capacity;
     int         audio_vbr;
     int         height; ///< active picture (w/o VBI) height for D-10/IMX
@@ -175,6 +182,8 @@ typedef struct MOVTrack {
     int first_iamf_idx;
     int last_iamf_idx;
     AVIOContext *iamf_buf;
+
+    struct APVDecoderConfigurationRecord *apv;
 } MOVTrack;
 
 typedef enum {
@@ -242,8 +251,6 @@ typedef struct MOVMuxContext {
     uint8_t *encryption_kid;
     int encryption_kid_len;
 
-    int need_rewrite_extradata;
-
     int use_stream_ids_as_track_ids;
     int track_ids_ok;
     int write_btrt;
@@ -282,6 +289,7 @@ typedef struct MOVMuxContext {
 #define FF_MOV_FLAG_SKIP_SIDX             (1 << 21)
 #define FF_MOV_FLAG_CMAF                  (1 << 22)
 #define FF_MOV_FLAG_PREFER_ICC            (1 << 23)
+#define FF_MOV_FLAG_HYBRID_FRAGMENTED     (1 << 24)
 
 int ff_mov_write_packet(AVFormatContext *s, AVPacket *pkt);
 

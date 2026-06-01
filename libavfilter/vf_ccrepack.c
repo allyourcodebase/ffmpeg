@@ -30,7 +30,7 @@
  */
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "ccfifo.h"
 #include "video.h"
 #include "libavutil/opt.h"
@@ -49,9 +49,10 @@ AVFILTER_DEFINE_CLASS(ccrepack);
 
 static int config_input(AVFilterLink *link)
 {
+    FilterLink *l = ff_filter_link(link);
     CCRepackContext *ctx = link->dst->priv;
 
-    int ret = ff_ccfifo_init(&ctx->cc_fifo, link->frame_rate, ctx);
+    int ret = ff_ccfifo_init(&ctx->cc_fifo, l->frame_rate, ctx);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Failure to setup CC FIFO queue\n");
         return ret;
@@ -86,12 +87,12 @@ static const AVFilterPad avfilter_vf_ccrepack_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_ccrepack = {
-    .name        = "ccrepack",
-    .description = NULL_IF_CONFIG_SMALL("Repack CEA-708 closed caption metadata"),
+const FFFilter ff_vf_ccrepack = {
+    .p.name        = "ccrepack",
+    .p.description = NULL_IF_CONFIG_SMALL("Repack CEA-708 closed caption metadata"),
+    .p.priv_class  = &ccrepack_class,
     .uninit      = uninit,
     .priv_size   = sizeof(CCRepackContext),
-    .priv_class  = &ccrepack_class,
     FILTER_INPUTS(avfilter_vf_ccrepack_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
 };

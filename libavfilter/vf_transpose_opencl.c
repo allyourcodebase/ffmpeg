@@ -23,7 +23,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "opencl.h"
 #include "opencl_source.h"
 #include "video.h"
@@ -71,9 +71,11 @@ fail:
 
 static int transpose_opencl_config_output(AVFilterLink *outlink)
 {
+    FilterLink       *outl = ff_filter_link(outlink);
     AVFilterContext *avctx = outlink->src;
     TransposeOpenCLContext *s = avctx->priv;
     AVFilterLink *inlink = avctx->inputs[0];
+    FilterLink      *inl = ff_filter_link(inlink);
     const AVPixFmtDescriptor *desc_in  = av_pix_fmt_desc_get(inlink->format);
     int ret;
 
@@ -81,9 +83,9 @@ static int transpose_opencl_config_output(AVFilterLink *outlink)
          s->passthrough == TRANSPOSE_PT_TYPE_LANDSCAPE) ||
         (inlink->w <= inlink->h &&
          s->passthrough == TRANSPOSE_PT_TYPE_PORTRAIT)) {
-        if (inlink->hw_frames_ctx) {
-            outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
-            if (!outlink->hw_frames_ctx)
+        if (inl->hw_frames_ctx) {
+            outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
+            if (!outl->hw_frames_ctx)
                 return AVERROR(ENOMEM);
         }
         av_log(avctx, AV_LOG_VERBOSE,
@@ -270,16 +272,16 @@ static const AVFilterPad transpose_opencl_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_transpose_opencl = {
-    .name           = "transpose_opencl",
-    .description    = NULL_IF_CONFIG_SMALL("Transpose input video"),
+const FFFilter ff_vf_transpose_opencl = {
+    .p.name         = "transpose_opencl",
+    .p.description  = NULL_IF_CONFIG_SMALL("Transpose input video"),
+    .p.priv_class   = &transpose_opencl_class,
+    .p.flags        = AVFILTER_FLAG_HWDEVICE,
     .priv_size      = sizeof(TransposeOpenCLContext),
-    .priv_class     = &transpose_opencl_class,
     .init           = &ff_opencl_filter_init,
     .uninit         = &transpose_opencl_uninit,
     FILTER_INPUTS(transpose_opencl_inputs),
     FILTER_OUTPUTS(transpose_opencl_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_OPENCL),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

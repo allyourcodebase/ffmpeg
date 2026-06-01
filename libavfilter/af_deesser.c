@@ -21,9 +21,11 @@
  */
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
+#include "filters.h"
 
 typedef struct DeesserChannel {
     double s1, s2, s3;
@@ -192,14 +194,14 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_deesser = {
-    .name          = "deesser",
-    .description   = NULL_IF_CONFIG_SMALL("Apply de-essing to the audio."),
+const FFFilter ff_af_deesser = {
+    .p.name        = "deesser",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply de-essing to the audio."),
+    .p.priv_class  = &deesser_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size     = sizeof(DeesserContext),
-    .priv_class    = &deesser_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

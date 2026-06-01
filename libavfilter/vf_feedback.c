@@ -28,7 +28,6 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 typedef struct FeedbackContext {
@@ -107,11 +106,14 @@ static int config_output(AVFilterLink *outlink)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    return ff_set_common_formats(ctx, ff_formats_pixdesc_filter(0, AV_PIX_FMT_FLAG_BITSTREAM |
-                                                                   AV_PIX_FMT_FLAG_HWACCEL |
-                                                                   AV_PIX_FMT_FLAG_PAL));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_formats_pixdesc_filter(0, AV_PIX_FMT_FLAG_BITSTREAM |
+                                                               AV_PIX_FMT_FLAG_HWACCEL |
+                                                               AV_PIX_FMT_FLAG_PAL));
 }
 
 static int activate(AVFilterContext *ctx)
@@ -243,6 +245,10 @@ static int activate(AVFilterContext *ctx)
     }
 
     if (!s->feed || ctx->is_disabled) {
+        if (!ctx->is_disabled && ff_outlink_frame_wanted(ctx->outputs[1])) {
+            ff_inlink_request_frame(ctx->inputs[0]);
+            return 0;
+        }
         if (ff_outlink_frame_wanted(ctx->outputs[0])) {
             ff_inlink_request_frame(ctx->inputs[0]);
             if (!ctx->is_disabled)
@@ -323,17 +329,17 @@ static const AVOption feedback_options[] = {
 
 AVFILTER_DEFINE_CLASS(feedback);
 
-const AVFilter ff_vf_feedback = {
-    .name        = "feedback",
-    .description = NULL_IF_CONFIG_SMALL("Apply feedback video filter."),
-    .priv_class  = &feedback_class,
+const FFFilter ff_vf_feedback = {
+    .p.name        = "feedback",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply feedback video filter."),
+    .p.priv_class  = &feedback_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size   = sizeof(FeedbackContext),
     .activate    = activate,
     .init        = init,
     .uninit      = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = ff_filter_process_command,
 };

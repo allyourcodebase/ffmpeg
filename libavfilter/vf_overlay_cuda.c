@@ -34,7 +34,6 @@
 #include "avfilter.h"
 #include "filters.h"
 #include "framesync.h"
-#include "internal.h"
 
 #include "cuda/load_helper.h"
 
@@ -68,9 +67,6 @@ enum var_name {
     VAR_X,
     VAR_Y,
     VAR_N,
-#if FF_API_FRAME_PKT
-    VAR_POS,
-#endif
     VAR_T,
     VAR_VARS_NB
 };
@@ -89,9 +85,6 @@ static const char *const var_names[] = {
     "x",
     "y",
     "n",            ///< number of frame
-#if FF_API_FRAME_PKT
-    "pos",          ///< position in the file
-#endif
     "t",            ///< timestamp expressed in seconds
     NULL
 };
@@ -236,6 +229,7 @@ static int overlay_cuda_blend(FFFrameSync *fs)
     OverlayCUDAContext *ctx = avctx->priv;
     AVFilterLink *outlink = avctx->outputs[0];
     AVFilterLink *inlink = avctx->inputs[0];
+    FilterLink *inl = ff_filter_link(inlink);
 
     CudaFunctions *cu = ctx->hwctx->internal->cuda_dl;
     CUcontext dummy, cuda_ctx = ctx->hwctx->cuda_ctx;
@@ -270,18 +264,9 @@ static int overlay_cuda_blend(FFFrameSync *fs)
     }
 
     if (ctx->eval_mode == EVAL_MODE_FRAME) {
-        ctx->var_values[VAR_N] = inlink->frame_count_out;
+        ctx->var_values[VAR_N] = inl->frame_count_out;
         ctx->var_values[VAR_T] = input_main->pts == AV_NOPTS_VALUE ?
             NAN : input_main->pts * av_q2d(inlink->time_base);
-
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
-        {
-            int64_t pos = input_main->pkt_pos;
-            ctx->var_values[VAR_POS] = pos == -1 ? NAN : pos;
-        }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
 
         ctx->var_values[VAR_OVERLAY_W] = ctx->var_values[VAR_OW] = input_overlay->width;
         ctx->var_values[VAR_OVERLAY_H] = ctx->var_values[VAR_OH] = input_overlay->height;
@@ -365,9 +350,6 @@ static int config_input_overlay(AVFilterLink *inlink)
     s->var_values[VAR_Y]   = NAN;
     s->var_values[VAR_N]   = 0;
     s->var_values[VAR_T]   = NAN;
-#if FF_API_FRAME_PKT
-    s->var_values[VAR_POS] = NAN;
-#endif
 
     if ((ret = set_expr(&s->x_pexpr, s->x_expr, "x", ctx)) < 0 ||
         (ret = set_expr(&s->y_pexpr, s->y_expr, "y", ctx)) < 0)
@@ -436,14 +418,17 @@ static int overlay_cuda_config_output(AVFilterLink *outlink)
     extern const unsigned int ff_vf_overlay_cuda_ptx_len;
 
     int err;
+    FilterLink       *outl = ff_filter_link(outlink);
     AVFilterContext* avctx = outlink->src;
     OverlayCUDAContext* ctx = avctx->priv;
 
     AVFilterLink *inlink = avctx->inputs[0];
-    AVHWFramesContext  *frames_ctx = (AVHWFramesContext*)inlink->hw_frames_ctx->data;
+    FilterLink *inl = ff_filter_link(inlink);
+    AVHWFramesContext  *frames_ctx = (AVHWFramesContext*)inl->hw_frames_ctx->data;
 
     AVFilterLink *inlink_overlay = avctx->inputs[1];
-    AVHWFramesContext  *frames_ctx_overlay = (AVHWFramesContext*)inlink_overlay->hw_frames_ctx->data;
+    FilterLink *inl_overlay = ff_filter_link(inlink_overlay);
+    AVHWFramesContext  *frames_ctx_overlay = (AVHWFramesContext*)inl_overlay->hw_frames_ctx->data;
 
     CUcontext dummy, cuda_ctx;
     CudaFunctions *cu;
@@ -496,8 +481,8 @@ static int overlay_cuda_config_output(AVFilterLink *outlink)
 
     ctx->cu_stream = ctx->hwctx->stream;
 
-    outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
-    if (!outlink->hw_frames_ctx)
+    outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
+    if (!outl->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     // load functions
@@ -576,11 +561,11 @@ static const AVFilterPad overlay_cuda_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_overlay_cuda = {
-    .name            = "overlay_cuda",
-    .description     = NULL_IF_CONFIG_SMALL("Overlay one video on top of another using CUDA"),
+const FFFilter ff_vf_overlay_cuda = {
+    .p.name          = "overlay_cuda",
+    .p.description   = NULL_IF_CONFIG_SMALL("Overlay one video on top of another using CUDA"),
+    .p.priv_class    = &overlay_cuda_class,
     .priv_size       = sizeof(OverlayCUDAContext),
-    .priv_class      = &overlay_cuda_class,
     .init            = &overlay_cuda_init,
     .uninit          = &overlay_cuda_uninit,
     .activate        = &overlay_cuda_activate,
@@ -588,5 +573,6 @@ const AVFilter ff_vf_overlay_cuda = {
     FILTER_OUTPUTS(overlay_cuda_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_CUDA),
     .preinit         = overlay_cuda_framesync_preinit,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .flags_internal  = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

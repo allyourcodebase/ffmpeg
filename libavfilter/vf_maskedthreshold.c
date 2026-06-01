@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "framesync.h"
 
@@ -220,6 +220,8 @@ static int config_output(AVFilterLink *outlink)
     MaskedThresholdContext *s = ctx->priv;
     AVFilterLink *source = ctx->inputs[0];
     AVFilterLink *ref = ctx->inputs[1];
+    FilterLink *il = ff_filter_link(source);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -235,7 +237,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = source->w;
     outlink->h = source->h;
     outlink->sample_aspect_ratio = source->sample_aspect_ratio;
-    outlink->frame_rate = source->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 2)) < 0)
         return ret;
@@ -293,16 +295,17 @@ static const AVFilterPad maskedthreshold_outputs[] = {
 
 AVFILTER_DEFINE_CLASS(maskedthreshold);
 
-const AVFilter ff_vf_maskedthreshold = {
-    .name          = "maskedthreshold",
-    .description   = NULL_IF_CONFIG_SMALL("Pick pixels comparing absolute difference of two streams with threshold."),
-    .priv_class    = &maskedthreshold_class,
+const FFFilter ff_vf_maskedthreshold = {
+    .p.name        = "maskedthreshold",
+    .p.description = NULL_IF_CONFIG_SMALL("Pick pixels comparing absolute difference of two streams with threshold."),
+    .p.priv_class  = &maskedthreshold_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MaskedThresholdContext),
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(maskedthreshold_inputs),
     FILTER_OUTPUTS(maskedthreshold_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

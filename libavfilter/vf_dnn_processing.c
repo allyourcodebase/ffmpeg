@@ -29,7 +29,6 @@
 #include "libavutil/imgutils.h"
 #include "filters.h"
 #include "dnn_filter_common.h"
-#include "internal.h"
 #include "video.h"
 #include "libswscale/swscale.h"
 #include "libavutil/time.h"
@@ -54,11 +53,10 @@ static const AVOption dnn_processing_options[] = {
 #if (CONFIG_LIBTORCH == 1)
     { "torch",       "torch backend flag",         0,                        AV_OPT_TYPE_CONST,     { .i64 = DNN_TH },    0, 0, FLAGS, "backend" },
 #endif
-    DNN_COMMON_OPTIONS
     { NULL }
 };
 
-AVFILTER_DEFINE_CLASS(dnn_processing);
+AVFILTER_DNN_DEFINE_CLASS(dnn_processing, DNN_TF | DNN_OV | DNN_TH);
 
 static av_cold int init(AVFilterContext *context)
 {
@@ -369,15 +367,16 @@ static const AVFilterPad dnn_processing_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_dnn_processing = {
-    .name          = "dnn_processing",
-    .description   = NULL_IF_CONFIG_SMALL("Apply DNN processing filter to the input."),
+const FFFilter ff_vf_dnn_processing = {
+    .p.name        = "dnn_processing",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply DNN processing filter to the input."),
+    .p.priv_class  = &dnn_processing_class,
     .priv_size     = sizeof(DnnProcessingContext),
+    .preinit       = ff_dnn_filter_init_child_class,
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(dnn_processing_inputs),
     FILTER_OUTPUTS(dnn_processing_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &dnn_processing_class,
     .activate      = activate,
 };

@@ -50,7 +50,7 @@
  */
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "transform.h"
 #include "video.h"
 #include "libavutil/common.h"
@@ -478,8 +478,10 @@ static int filter_frame(AVFilterLink *link, AVFrame *in)
 
     aligned = !((intptr_t)in->data[0] & 15 | in->linesize[0] & 15);
     deshake->sad = av_pixelutils_get_sad_fn(4, 4, aligned, deshake); // 16x16, 2nd source unaligned
-    if (!deshake->sad)
-        return AVERROR(EINVAL);
+    if (!deshake->sad) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
 
     if (deshake->cx < 0 || deshake->cy < 0 || deshake->cw < 0 || deshake->ch < 0) {
         // Find the most likely global motion for the current frame
@@ -587,14 +589,14 @@ static const AVFilterPad deshake_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_deshake = {
-    .name          = "deshake",
-    .description   = NULL_IF_CONFIG_SMALL("Stabilize shaky video."),
+const FFFilter ff_vf_deshake = {
+    .p.name        = "deshake",
+    .p.description = NULL_IF_CONFIG_SMALL("Stabilize shaky video."),
+    .p.priv_class  = &deshake_class,
     .priv_size     = sizeof(DeshakeContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(deshake_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &deshake_class,
 };

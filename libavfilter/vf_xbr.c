@@ -30,7 +30,8 @@
 
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "video.h"
 
 #define LB_MASK       0x00FEFEFE
@@ -412,14 +413,14 @@ static const AVFilterPad xbr_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_xbr = {
-    .name          = "xbr",
-    .description   = NULL_IF_CONFIG_SMALL("Scale the input using xBR algorithm."),
+const FFFilter ff_vf_xbr = {
+    .p.name        = "xbr",
+    .p.description = NULL_IF_CONFIG_SMALL("Scale the input using xBR algorithm."),
+    .p.priv_class  = &xbr_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     FILTER_INPUTS(xbr_inputs),
     FILTER_OUTPUTS(xbr_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_0RGB32),
     .priv_size     = sizeof(XBRContext),
-    .priv_class    = &xbr_class,
     .init          = init,
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

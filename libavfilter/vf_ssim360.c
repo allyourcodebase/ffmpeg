@@ -38,19 +38,20 @@
 
 /*
  * @file
- * Caculate the SSIM between two input 360 videos.
+ * Calculate the SSIM between two input 360 videos.
  */
 
 #include <math.h>
 
 #include "libavutil/avstring.h"
 #include "libavutil/file_open.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
 #include "drawutils.h"
-#include "internal.h"
+#include "filters.h"
 #include "framesync.h"
 
 #define RIGHT   0
@@ -249,7 +250,7 @@ static const AVOption ssim360_options[] = {
       OFFSET(ref_pad), AV_OPT_TYPE_FLOAT, {.dbl = .0f}, 0, 10, .flags = FLAGS },
 
     { "main_pad",
-      "Expansion (padding) coeffiecient for each cube face of the main video",
+      "Expansion (padding) coefficient for each cube face of the main video",
       OFFSET(main_pad), AV_OPT_TYPE_FLOAT, {.dbl = .0f}, 0, 10, .flags = FLAGS },
 
     { "use_tape",
@@ -1033,10 +1034,16 @@ generate_eye_tape_map(SSIM360Context *s,
     float x_range = end_x - start_x;
 
     // Ensure tape length is a multiple of 4, for full SSIM block coverage
-    int tape_length = s->tape_length[plane] = ((int)ROUNDED_DIV(x_range, 4)) << 2;
+    float tape_length_f = ROUNDED_DIV(x_range, 4);
+    int tape_length;
 
-    s->ref_tape_map[plane][eye]  = av_malloc_array(tape_length * 8, sizeof(BilinearMap));
-    s->main_tape_map[plane][eye] = av_malloc_array(tape_length * 8, sizeof(BilinearMap));
+    if (!(tape_length_f > 0.f) || tape_length_f > INT_MAX / 4.0f)
+        return AVERROR(EINVAL);
+
+    tape_length = s->tape_length[plane] = (int)tape_length_f << 2;
+
+    s->ref_tape_map[plane][eye]  = av_malloc_array(tape_length, 8 * sizeof(BilinearMap));
+    s->main_tape_map[plane][eye] = av_malloc_array(tape_length, 8 * sizeof(BilinearMap));
     if (!s->ref_tape_map[plane][eye] || !s->main_tape_map[plane][eye])
         return AVERROR(ENOMEM);
 
@@ -1131,7 +1138,7 @@ static int do_ssim360(FFFrameSync *fs)
     AVFrame *master, *ref;
     AVDictionary **metadata;
     double c[4], ssim360v = 0.0, ssim360p50 = 0.0;
-    int i, ret;
+    int ret;
     int need_frame_skip = s->nb_net_frames % (s->frame_skip_ratio + 1);
     HeatmapList* h_ptr = NULL;
 
@@ -1152,7 +1159,7 @@ static int do_ssim360(FFFrameSync *fs)
             return ret;
     }
 
-    for (i = 0; i < s->nb_components; i++) {
+    for (int i = 0; i < s->nb_components; i++) {
         if (s->use_tape) {
             c[i] = ssim360_tape(master->data[i], s->main_tape_map[i][0],
                                 ref->data[i],    s->ref_tape_map [i][0],
@@ -1190,16 +1197,16 @@ static int do_ssim360(FFFrameSync *fs)
 
     // Record percentiles from histogram and attach metadata when using tape
     if (s->use_tape) {
-        int i, p, hist_indices[4];
+        int hist_indices[4];
         double hist_weight[4];
 
-        for (i = 0; i < s->nb_components; i++) {
+        for (int i = 0; i < s->nb_components; i++) {
             hist_indices[i] = SSIM360_HIST_SIZE - 1;
             hist_weight[i] = 0;
         }
 
-        for (p = 0; PERCENTILE_LIST[p] >= 0.0; p ++) {
-            for (i = 0; i < s->nb_components; i++) {
+        for (int p = 0; PERCENTILE_LIST[p] >= 0.0; p ++) {
+            for (int i = 0; i < s->nb_components; i++) {
                 double target_weight, ssim360p;
 
                 // Target weight = total number of samples above the specified percentile
@@ -1217,12 +1224,12 @@ static int do_ssim360(FFFrameSync *fs)
             }
         }
 
-        for (i = 0; i < s->nb_components; i++) {
+        for (int i = 0; i < s->nb_components; i++) {
             memset(s->ssim360_hist[i], 0, SSIM360_HIST_SIZE * sizeof(double));
             s->ssim360_hist_net[i] = 0;
         }
 
-        for (i = 0; i < s->nb_components; i++) {
+        for (int i = 0; i < s->nb_components; i++) {
             int cidx = s->is_rgb ? s->rgba_map[i] : i;
             set_meta(metadata, "lavfi.ssim360.", s->comps[i], c[cidx]);
         }
@@ -1234,7 +1241,7 @@ static int do_ssim360(FFFrameSync *fs)
         if (s->stats_file) {
             fprintf(s->stats_file, "n:%"PRId64" ", s->nb_ssim_frames);
 
-            for (i = 0; i < s->nb_components; i++) {
+            for (int i = 0; i < s->nb_components; i++) {
                 int cidx = s->is_rgb ? s->rgba_map[i] : i;
                 fprintf(s->stats_file, "%c:%f ", s->comps[i], c[cidx]);
             }
@@ -1319,12 +1326,9 @@ static av_cold int init(AVFilterContext *ctx)
         } else {
             s->stats_file = avpriv_fopen_utf8(s->stats_file_str, "w");
             if (!s->stats_file) {
-                char buf[128];
-
                 err = AVERROR(errno);
-                av_strerror(err, buf, sizeof(buf));
                 av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
-                       s->stats_file_str, buf);
+                       s->stats_file_str, av_err2str(err));
                 return err;
             }
         }
@@ -1593,6 +1597,8 @@ static int config_output(AVFilterLink *outlink)
     SSIM360Context      *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
     AVFilterLink  *reflink = ctx->inputs[0];
+    FilterLink         *il = ff_filter_link(mainlink);
+    FilterLink         *ol = ff_filter_link(outlink);
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(outlink->format);
     int ret;
 
@@ -1642,7 +1648,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
-    outlink->frame_rate = mainlink->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     s->fs.opt_shortest   = 1;
     s->fs.opt_repeatlast = 1;
@@ -1745,15 +1751,15 @@ static const AVFilterPad ssim360_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_ssim360 = {
-    .name          = "ssim360",
-    .description   = NULL_IF_CONFIG_SMALL("Calculate the SSIM between two 360 video streams."),
+const FFFilter ff_vf_ssim360 = {
+    .p.name        = "ssim360",
+    .p.description = NULL_IF_CONFIG_SMALL("Calculate the SSIM between two 360 video streams."),
+    .p.priv_class  = &ssim360_class,
     .preinit       = ssim360_framesync_preinit,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(SSIM360Context),
-    .priv_class    = &ssim360_class,
     FILTER_INPUTS(ssim360_inputs),
     FILTER_OUTPUTS(ssim360_outputs),
     FILTER_PIXFMTS_ARRAY(ssim360_pixfmts),

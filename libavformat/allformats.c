@@ -25,6 +25,7 @@
 
 #include "libavformat/internal.h"
 #include "avformat.h"
+#include "avformat_internal.h"
 #include "demux.h"
 #include "mux.h"
 
@@ -71,6 +72,8 @@ extern const FFInputFormat  ff_aptx_demuxer;
 extern const FFOutputFormat ff_aptx_muxer;
 extern const FFInputFormat  ff_aptx_hd_demuxer;
 extern const FFOutputFormat ff_aptx_hd_muxer;
+extern const FFInputFormat  ff_apv_demuxer;
+extern const FFOutputFormat ff_apv_muxer;
 extern const FFInputFormat  ff_aqtitle_demuxer;
 extern const FFInputFormat  ff_argo_asf_demuxer;
 extern const FFOutputFormat ff_argo_asf_muxer;
@@ -91,7 +94,6 @@ extern const FFInputFormat  ff_av1_demuxer;
 extern const FFInputFormat  ff_avi_demuxer;
 extern const FFOutputFormat ff_avi_muxer;
 extern const FFOutputFormat ff_avif_muxer;
-extern const FFInputFormat  ff_avisynth_demuxer;
 extern const FFOutputFormat ff_avm2_muxer;
 extern const FFInputFormat  ff_avr_demuxer;
 extern const FFInputFormat  ff_avs_demuxer;
@@ -152,7 +154,6 @@ extern const FFInputFormat  ff_dv_demuxer;
 extern const FFOutputFormat ff_dv_muxer;
 extern const FFInputFormat  ff_dvbsub_demuxer;
 extern const FFInputFormat  ff_dvbtxt_demuxer;
-extern const FFInputFormat  ff_dvdvideo_demuxer;
 extern const FFInputFormat  ff_dxa_demuxer;
 extern const FFInputFormat  ff_ea_demuxer;
 extern const FFInputFormat  ff_ea_cdata_demuxer;
@@ -190,6 +191,7 @@ extern const FFInputFormat  ff_g726_demuxer;
 extern const FFOutputFormat ff_g726_muxer;
 extern const FFInputFormat  ff_g726le_demuxer;
 extern const FFOutputFormat ff_g726le_muxer;
+extern const FFInputFormat  ff_g728_demuxer;
 extern const FFInputFormat  ff_g729_demuxer;
 extern const FFInputFormat  ff_gdv_demuxer;
 extern const FFInputFormat  ff_genh_demuxer;
@@ -252,6 +254,8 @@ extern const FFInputFormat  ff_kvag_demuxer;
 extern const FFOutputFormat ff_kvag_muxer;
 extern const FFInputFormat  ff_laf_demuxer;
 extern const FFOutputFormat ff_latm_muxer;
+extern const FFInputFormat  ff_lc3_demuxer;
+extern const FFOutputFormat ff_lc3_muxer;
 extern const FFInputFormat  ff_lmlm4_demuxer;
 extern const FFInputFormat  ff_loas_demuxer;
 extern const FFInputFormat  ff_luodat_demuxer;
@@ -263,6 +267,7 @@ extern const FFInputFormat  ff_m4v_demuxer;
 extern const FFOutputFormat ff_m4v_muxer;
 extern const FFInputFormat  ff_mca_demuxer;
 extern const FFInputFormat  ff_mcc_demuxer;
+extern const FFOutputFormat ff_mcc_muxer;
 extern const FFOutputFormat ff_md5_muxer;
 extern const FFInputFormat  ff_matroska_demuxer;
 extern const FFOutputFormat ff_matroska_muxer;
@@ -391,6 +396,7 @@ extern const FFInputFormat  ff_qoa_demuxer;
 extern const FFInputFormat  ff_r3d_demuxer;
 extern const FFInputFormat  ff_rawvideo_demuxer;
 extern const FFOutputFormat ff_rawvideo_muxer;
+extern const FFInputFormat  ff_rcwt_demuxer;
 extern const FFOutputFormat ff_rcwt_muxer;
 extern const FFInputFormat  ff_realtext_demuxer;
 extern const FFInputFormat  ff_redspark_demuxer;
@@ -511,6 +517,7 @@ extern const FFOutputFormat ff_webp_muxer;
 extern const FFInputFormat  ff_webvtt_demuxer;
 extern const FFOutputFormat ff_webvtt_muxer;
 extern const FFInputFormat  ff_wsaud_demuxer;
+extern const FFOutputFormat ff_whip_muxer;
 extern const FFOutputFormat ff_wsaud_muxer;
 extern const FFInputFormat  ff_wsd_demuxer;
 extern const FFInputFormat  ff_wsvqa_demuxer;
@@ -567,7 +574,9 @@ extern const FFInputFormat  ff_image_xpm_pipe_demuxer;
 extern const FFInputFormat  ff_image_xwd_pipe_demuxer;
 
 /* external libraries */
+extern const FFInputFormat  ff_avisynth_demuxer;
 extern const FFOutputFormat ff_chromaprint_muxer;
+extern const FFInputFormat  ff_dvdvideo_demuxer;
 extern const FFInputFormat  ff_libgme_demuxer;
 extern const FFInputFormat  ff_libmodplug_demuxer;
 extern const FFInputFormat  ff_libopenmpt_demuxer;
@@ -576,8 +585,8 @@ extern const FFInputFormat  ff_vapoursynth_demuxer;
 #include "libavformat/muxer_list.c"
 #include "libavformat/demuxer_list.c"
 
-static atomic_uintptr_t indev_list_intptr  = ATOMIC_VAR_INIT(0);
-static atomic_uintptr_t outdev_list_intptr = ATOMIC_VAR_INIT(0);
+static atomic_uintptr_t indev_list_intptr  = 0;
+static atomic_uintptr_t outdev_list_intptr = 0;
 
 const AVOutputFormat *av_muxer_iterate(void **opaque)
 {

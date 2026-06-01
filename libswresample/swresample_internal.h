@@ -37,10 +37,10 @@ typedef int64_t integer;
 typedef int integer;
 #endif
 
-typedef void (mix_1_1_func_type)(void *out, const void *in, void *coeffp, integer index, integer len);
-typedef void (mix_2_1_func_type)(void *out, const void *in1, const void *in2, void *coeffp, integer index1, integer index2, integer len);
+typedef void (mix_1_1_func_type)(void *out, const void *in, const void *coeffp, integer index, integer len);
+typedef void (mix_2_1_func_type)(void *out, const void *in1, const void *in2, const void *coeffp, integer index1, integer index2, integer len);
 
-typedef void (mix_any_func_type)(uint8_t **out, const uint8_t **in1, void *coeffp, integer len);
+typedef void (mix_any_func_type)(uint8_t *const *out, const uint8_t *const *in1, const void *coeffp, integer len);
 
 typedef struct AudioData{
     uint8_t *ch[SWR_CH_MAX];    ///< samples buffer per channel
@@ -187,6 +187,7 @@ struct SwrContext {
 
 av_warn_unused_result
 int swri_realloc_audio(AudioData *a, int count);
+int swri_check_chlayout(struct SwrContext *s, const AVChannelLayout *chl, const char *name);
 
 void swri_noise_shaping_int16 (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);
 void swri_noise_shaping_int32 (SwrContext *s, AudioData *dsts, const AudioData *srcs, const AudioData *noises, int count);

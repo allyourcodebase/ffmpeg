@@ -619,7 +619,7 @@ static void rpza_encode_stream(RpzaContext *s, const AVFrame *pict)
 
                 if (compare_blocks(&prev_pixels[pblock_offset],
                                    &src_pixels[block_offset], &bi, s->skip_frame_thresh) != 0) {
-                    // write out skipable blocks
+                    // write out skippable blocks
                     if (n_blocks) {
 
                         // write skip opcode
@@ -749,20 +749,24 @@ post_skip :
 
             if (err > s->sixteen_color_thresh) { // DO SIXTEEN COLOR BLOCK
                 const uint16_t *row_ptr;
-                int y_size, rgb555;
+                int y_size, x_size, rgb555;
 
                 block_offset  = get_block_info(&bi, block_counter, 0);
                 pblock_offset = get_block_info(&bi, block_counter, 1);
 
                 row_ptr = &src_pixels[block_offset];
                 y_size = FFMIN(4, bi.image_height - bi.row * 4);
+                x_size = FFMIN(4, bi.image_width  - bi.col * 4);
 
                 for (int y = 0; y < y_size; y++) {
-                    for (int x = 0; x < 4; x++) {
+                    for (int x = 0; x < x_size; x++) {
                         rgb555 = row_ptr[x] & ~0x8000;
 
                         put_bits(&s->pb, 16, rgb555);
                     }
+                    for (int x = x_size; x < 4; x++)
+                        put_bits(&s->pb, 16, 0);
+
                     row_ptr += bi.rowstride;
                 }
 
@@ -784,7 +788,7 @@ post_skip :
     }
 }
 
-static int rpza_encode_init(AVCodecContext *avctx)
+static av_cold int rpza_encode_init(AVCodecContext *avctx)
 {
     RpzaContext *s = avctx->priv_data;
 
@@ -843,7 +847,7 @@ static int rpza_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-static int rpza_encode_end(AVCodecContext *avctx)
+static av_cold int rpza_encode_end(AVCodecContext *avctx)
 {
     RpzaContext *s = (RpzaContext *)avctx->priv_data;
 
@@ -880,6 +884,5 @@ const FFCodec ff_rpza_encoder = {
     .init           = rpza_encode_init,
     FF_CODEC_ENCODE_CB(rpza_encode_frame),
     .close          = rpza_encode_end,
-    .p.pix_fmts     = (const enum AVPixelFormat[]) { AV_PIX_FMT_RGB555,
-                                                     AV_PIX_FMT_NONE},
+    CODEC_PIXFMTS(AV_PIX_FMT_RGB555),
 };

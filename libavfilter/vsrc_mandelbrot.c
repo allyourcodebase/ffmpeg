@@ -27,9 +27,10 @@
  */
 
 #include "avfilter.h"
+#include "filters.h"
 #include "video.h"
-#include "internal.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include <float.h>
 #include <math.h>
@@ -150,6 +151,7 @@ static av_cold void uninit(AVFilterContext *ctx)
 static int config_props(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
+    FilterLink *l = ff_filter_link(outlink);
     MBContext *s = ctx->priv;
 
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
@@ -158,7 +160,7 @@ static int config_props(AVFilterLink *outlink)
     outlink->w = s->w;
     outlink->h = s->h;
     outlink->time_base = av_inv_q(s->frame_rate);
-    outlink->frame_rate = s->frame_rate;
+    l->frame_rate = s->frame_rate;
 
     return 0;
 }
@@ -408,14 +410,14 @@ static const AVFilterPad mandelbrot_outputs[] = {
     },
 };
 
-const AVFilter ff_vsrc_mandelbrot = {
-    .name          = "mandelbrot",
-    .description   = NULL_IF_CONFIG_SMALL("Render a Mandelbrot fractal."),
+const FFFilter ff_vsrc_mandelbrot = {
+    .p.name        = "mandelbrot",
+    .p.description = NULL_IF_CONFIG_SMALL("Render a Mandelbrot fractal."),
+    .p.priv_class  = &mandelbrot_class,
+    .p.inputs      = NULL,
     .priv_size     = sizeof(MBContext),
-    .priv_class    = &mandelbrot_class,
     .init          = init,
     .uninit        = uninit,
-    .inputs        = NULL,
     FILTER_OUTPUTS(mandelbrot_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_0BGR32),
 };

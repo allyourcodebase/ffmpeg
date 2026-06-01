@@ -25,11 +25,12 @@
  */
 
 #include "libavutil/file_open.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 #include "vmaf_motion.h"
 
@@ -89,11 +90,10 @@ static void convolution_x(const uint16_t *filter, int filt_w, const uint16_t *sr
     int borders_left = radius;
     int borders_right = w - (filt_w - radius);
     int i, j, k;
-    int sum = 0;
 
     for (i = 0; i < h; i++) {
         for (j = 0; j < borders_left; j++) {
-            sum = 0;
+            int sum = 0;
             for (k = 0; k < filt_w; k++) {
                 int j_tap = FFABS(j - radius + k);
                 if (j_tap >= w) {
@@ -113,7 +113,7 @@ static void convolution_x(const uint16_t *filter, int filt_w, const uint16_t *sr
         }
 
         for (j = borders_right; j < w; j++) {
-            sum = 0;
+            int sum = 0;
             for (k = 0; k < filt_w; k++) {
                 int j_tap = FFABS(j - radius + k);
                 if (j_tap >= w) {
@@ -263,7 +263,9 @@ int ff_vmafmotion_init(VMAFMotionData *s,
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *fmts_list = NULL;
     int format, ret;
@@ -278,7 +280,7 @@ static int query_formats(AVFilterContext *ctx)
             return ret;
     }
 
-    return ff_set_common_formats(ctx, fmts_list);
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out, fmts_list);
 }
 
 static int config_input_ref(AVFilterLink *inlink)
@@ -317,10 +319,8 @@ static av_cold int init(AVFilterContext *ctx)
             s->stats_file = avpriv_fopen_utf8(s->stats_file_str, "w");
             if (!s->stats_file) {
                 int err = AVERROR(errno);
-                char buf[128];
-                av_strerror(err, buf, sizeof(buf));
                 av_log(ctx, AV_LOG_ERROR, "Could not open stats file %s: %s\n",
-                       s->stats_file_str, buf);
+                       s->stats_file_str, av_err2str(err));
                 return err;
             }
         }
@@ -351,15 +351,15 @@ static const AVFilterPad vmafmotion_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_vmafmotion = {
-    .name          = "vmafmotion",
-    .description   = NULL_IF_CONFIG_SMALL("Calculate the VMAF Motion score."),
+const FFFilter ff_vf_vmafmotion = {
+    .p.name        = "vmafmotion",
+    .p.description = NULL_IF_CONFIG_SMALL("Calculate the VMAF Motion score."),
+    .p.priv_class  = &vmafmotion_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .init          = init,
     .uninit        = uninit,
     .priv_size     = sizeof(VMAFMotionContext),
-    .priv_class    = &vmafmotion_class,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(vmafmotion_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };

@@ -28,6 +28,7 @@
 #import <AudioToolbox/AudioToolbox.h>
 #include <pthread.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavformat/internal.h"
 #include "libavformat/mux.h"
@@ -246,7 +247,7 @@ static int at_write_packet(AVFormatContext *avctx, AVPacket *pkt)
     // will be unlocked by queue callback
     pthread_mutex_lock(&ctx->buffer_lock[ctx->cur_buf]);
 
-    // (re-)allocate the buffer if not existant or of different size
+    // (re-)allocate the buffer if not existent or of different size
     if (!ctx->buffer[ctx->cur_buf] || ctx->buffer[ctx->cur_buf]->mAudioDataBytesCapacity != pkt->size) {
         err = AudioQueueAllocateBuffer(ctx->queue, pkt->size, &ctx->buffer[ctx->cur_buf]);
         if (check_status(avctx, &err, "AudioQueueAllocateBuffer")) {

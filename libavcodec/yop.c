@@ -232,12 +232,6 @@ static int yop_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
                                    (palette[i + firstcolor] >> 6) & 0x30303;
     }
 
-#if FF_API_PALETTE_HAS_CHANGED
-FF_DISABLE_DEPRECATION_WARNINGS
-    frame->palette_has_changed = 1;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
-
     for (y = 0; y < avctx->height; y += 2) {
         for (x = 0; x < avctx->width; x += 2) {
             if (s->srcptr - avpkt->data >= avpkt->size) {
@@ -274,6 +268,7 @@ const FFCodec ff_yop_decoder = {
     CODEC_LONG_NAME("Psygnosis YOP Video"),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_YOP,
+    .p.capabilities = AV_CODEC_CAP_DR1,
     .priv_data_size = sizeof(YopDecContext),
     .init           = yop_decode_init,
     .close          = yop_decode_close,

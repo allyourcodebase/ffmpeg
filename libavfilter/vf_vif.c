@@ -27,11 +27,12 @@
 
 #include <float.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
-#include "internal.h"
 
 #define NUM_DATA_BUFS 13
 
@@ -549,6 +550,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     VIFContext *s = ctx->priv;
     AVFilterLink *mainlink = ctx->inputs[0];
+    FilterLink *il = ff_filter_link(mainlink);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -556,7 +559,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = mainlink->h;
     outlink->time_base = mainlink->time_base;
     outlink->sample_aspect_ratio = mainlink->sample_aspect_ratio;
-    outlink->frame_rate = mainlink->frame_rate;
+    ol->frame_rate = il->frame_rate;
     if ((ret = ff_framesync_init(&s->fs, ctx, 2)) < 0)
         return ret;
 
@@ -624,18 +627,18 @@ static const AVFilterPad vif_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_vif = {
-    .name          = "vif",
-    .description   = NULL_IF_CONFIG_SMALL("Calculate the VIF between two video streams."),
+const FFFilter ff_vf_vif = {
+    .p.name        = "vif",
+    .p.description = NULL_IF_CONFIG_SMALL("Calculate the VIF between two video streams."),
+    .p.priv_class  = &vif_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS             |
+                     AVFILTER_FLAG_METADATA_ONLY,
     .preinit       = vif_framesync_preinit,
     .uninit        = uninit,
     .priv_size     = sizeof(VIFContext),
-    .priv_class    = &vif_class,
     .activate      = activate,
     FILTER_INPUTS(vif_inputs),
     FILTER_OUTPUTS(vif_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS             |
-                     AVFILTER_FLAG_METADATA_ONLY,
 };

@@ -17,9 +17,20 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+<<<<<<< HEAD
 #include "libavcodec/get_bits.h"
 #include "libavcodec/bsf.h"
 #include "libavcodec/bsf_internal.h"
+||||||| e7d938073e
+#include "get_bits.h"
+#include "bsf.h"
+#include "bsf_internal.h"
+=======
+#include "libavutil/mem.h"
+#include "get_bits.h"
+#include "bsf.h"
+#include "bsf_internal.h"
+>>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 
 #include "libavcodec/evc.h"
 #include "libavcodec/evc_parse.h"

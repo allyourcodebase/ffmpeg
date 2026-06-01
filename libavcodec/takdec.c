@@ -26,6 +26,7 @@
  */
 
 #include "libavutil/internal.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/samplefmt.h"
 
@@ -432,6 +433,9 @@ static int decode_subframe(TAKDecContext *s, int32_t *decoded,
         if (filter_quant < 3)
             return AVERROR_INVALIDDATA;
     }
+
+    if (get_bits_left(gb) < 2*10 + 2*size)
+        return AVERROR_INVALIDDATA;
 
     s->predictors[0] = get_sbits(gb, 10);
     s->predictors[1] = get_sbits(gb, 10);
@@ -949,8 +953,5 @@ const FFCodec ff_tak_decoder = {
     FF_CODEC_DECODE_CB(tak_decode_frame),
     UPDATE_THREAD_CONTEXT(update_thread_context),
     .p.capabilities   = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS | AV_CODEC_CAP_CHANNEL_CONF,
-    .p.sample_fmts    = (const enum AVSampleFormat[]) { AV_SAMPLE_FMT_U8P,
-                                                        AV_SAMPLE_FMT_S16P,
-                                                        AV_SAMPLE_FMT_S32P,
-                                                        AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_U8P, AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P),
 };

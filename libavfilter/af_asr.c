@@ -22,11 +22,12 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "audio.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 
 typedef struct ASRContext {
     const AVClass *class;
@@ -121,20 +122,33 @@ static av_cold int asr_init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    ASRContext *s = ctx->priv;
+    static const enum AVSampleFormat formats[] = {
+        AV_SAMPLE_FMT_S16,
+        AV_SAMPLE_FMT_NONE,
+    };
+    static const AVChannelLayout layouts[] = {
+        AV_CHANNEL_LAYOUT_MONO,
+        { .nb_channels = 0 },
+    };
+
+    const ASRContext *s = ctx->priv;
     int sample_rates[] = { s->rate, -1 };
     int ret;
 
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layout = NULL;
+    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+    if (ret < 0)
+        return ret;
 
-    if ((ret = ff_add_format                 (&formats, AV_SAMPLE_FMT_S16                 )) < 0 ||
-        (ret = ff_set_common_formats         (ctx     , formats                           )) < 0 ||
-        (ret = ff_add_channel_layout         (&layout , &(AVChannelLayout)AV_CHANNEL_LAYOUT_MONO )) < 0 ||
-        (ret = ff_set_common_channel_layouts (ctx     , layout                            )) < 0 ||
-        (ret = ff_set_common_samplerates_from_list(ctx, sample_rates     )) < 0)
+    ret = ff_set_common_channel_layouts_from_list2(ctx, cfg_in, cfg_out, layouts);
+    if (ret < 0)
+        return ret;
+
+    ret = ff_set_common_samplerates_from_list2(ctx, cfg_in, cfg_out, sample_rates);
+    if (ret < 0)
         return ret;
 
     return 0;
@@ -159,15 +173,15 @@ static const AVFilterPad asr_inputs[] = {
     },
 };
 
-const AVFilter ff_af_asr = {
-    .name          = "asr",
-    .description   = NULL_IF_CONFIG_SMALL("Automatic Speech Recognition."),
+const FFFilter ff_af_asr = {
+    .p.name        = "asr",
+    .p.description = NULL_IF_CONFIG_SMALL("Automatic Speech Recognition."),
+    .p.priv_class  = &asr_class,
+    .p.flags       = AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(ASRContext),
-    .priv_class    = &asr_class,
     .init          = asr_init,
     .uninit        = asr_uninit,
-    .flags         = AVFILTER_FLAG_METADATA_ONLY,
     FILTER_INPUTS(asr_inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
 };

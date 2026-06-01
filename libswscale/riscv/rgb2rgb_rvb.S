@@ -18,13 +18,12 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "config.h"
 #include "libavutil/riscv/asm.S"
 #include "libavutil/riscv/bswap_rvb.S"
 
 #if (__riscv_xlen >= 64)
 func ff_shuffle_bytes_3210_rvb, zbb
-        srli    a2, a2, 2
+        lpad    0
         bswap32_rvb a1, a0, a2
 endfunc
 #endif

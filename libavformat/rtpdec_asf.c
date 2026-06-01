@@ -28,6 +28,7 @@
 #include "libavutil/base64.h"
 #include "libavutil/avstring.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "rtpdec_formats.h"
 #include "rtsp.h"
 #include "asf.h"
@@ -119,8 +120,10 @@ int ff_wms_parse_sdp_a_line(AVFormatContext *s, const char *p)
             avformat_close_input(&rt->asf_ctx);
         }
 
-        if (!(iformat = av_find_input_format("asf")))
+        if (!(iformat = av_find_input_format("asf"))) {
+            av_free(buf);
             return AVERROR_DEMUXER_NOT_FOUND;
+        }
 
         rt->asf_ctx = avformat_alloc_context();
         if (!rt->asf_ctx) {

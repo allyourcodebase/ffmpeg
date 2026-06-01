@@ -20,12 +20,13 @@
  */
 
 #include "libavutil/attributes.h"
+#include "libavutil/avassert.h"
 #include "libavutil/cpu.h"
 #include "libavutil/x86/asm.h"
 #include "libavutil/x86/cpu.h"
-#include "libavcodec/avcodec.h"
 #include "libavcodec/mpegvideo.h"
 #include "libavcodec/mpegvideodata.h"
+#include "libavcodec/mpegvideo_unquantize.h"
 
 #if HAVE_MMX_INLINE
 
@@ -312,8 +313,7 @@ static void dct_unquantize_mpeg2_intra_mmx(MpegEncContext *s,
     if (s->q_scale_type) qscale = ff_mpeg2_non_linear_qscale[qscale];
     else                 qscale <<= 1;
 
-    if(s->alternate_scan) nCoeffs= 63; //FIXME
-    else nCoeffs= s->intra_scantable.raster_end[ s->block_last_index[n] ];
+    nCoeffs= s->intra_scantable.raster_end[ s->block_last_index[n] ];
 
     if (n < 4)
         block0 = block[0] * s->y_dc_scale;
@@ -380,8 +380,7 @@ static void dct_unquantize_mpeg2_inter_mmx(MpegEncContext *s,
     if (s->q_scale_type) qscale = ff_mpeg2_non_linear_qscale[qscale];
     else                 qscale <<= 1;
 
-    if(s->alternate_scan) nCoeffs= 63; //FIXME
-    else nCoeffs= s->intra_scantable.raster_end[ s->block_last_index[n] ];
+    nCoeffs= s->intra_scantable.raster_end[ s->block_last_index[n] ];
 
         quant_matrix = s->inter_matrix;
 __asm__ volatile(
@@ -451,7 +450,7 @@ __asm__ volatile(
 
 #endif /* HAVE_MMX_INLINE */
 
-av_cold void ff_mpv_common_init_x86(MpegEncContext *s)
+av_cold void ff_mpv_unquantize_init_x86(MPVUnquantDSPContext *s, int bitexact)
 {
 #if HAVE_MMX_INLINE
     int cpu_flags = av_get_cpu_flags();
@@ -461,7 +460,7 @@ av_cold void ff_mpv_common_init_x86(MpegEncContext *s)
         s->dct_unquantize_h263_inter = dct_unquantize_h263_inter_mmx;
         s->dct_unquantize_mpeg1_intra = dct_unquantize_mpeg1_intra_mmx;
         s->dct_unquantize_mpeg1_inter = dct_unquantize_mpeg1_inter_mmx;
-        if (!(s->avctx->flags & AV_CODEC_FLAG_BITEXACT))
+        if (!bitexact)
             s->dct_unquantize_mpeg2_intra = dct_unquantize_mpeg2_intra_mmx;
         s->dct_unquantize_mpeg2_inter = dct_unquantize_mpeg2_inter_mmx;
     }

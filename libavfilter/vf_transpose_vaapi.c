@@ -21,7 +21,7 @@
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "transpose.h"
 #include "vaapi_vpp.h"
 #include "video.h"
@@ -185,15 +185,17 @@ static av_cold int transpose_vaapi_init(AVFilterContext *avctx)
 
 static int transpose_vaapi_vpp_config_output(AVFilterLink *outlink)
 {
+    FilterLink *outl           = ff_filter_link(outlink);
     AVFilterContext *avctx     = outlink->src;
     VAAPIVPPContext *vpp_ctx   = avctx->priv;
     TransposeVAAPIContext *ctx = avctx->priv;
     AVFilterLink *inlink       = avctx->inputs[0];
+    FilterLink *inl            = ff_filter_link(inlink);
 
     if ((inlink->w >= inlink->h && ctx->passthrough == TRANSPOSE_PT_TYPE_LANDSCAPE) ||
         (inlink->w <= inlink->h && ctx->passthrough == TRANSPOSE_PT_TYPE_PORTRAIT)) {
-        outlink->hw_frames_ctx = av_buffer_ref(inlink->hw_frames_ctx);
-        if (!outlink->hw_frames_ctx)
+        outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
+        if (!outl->hw_frames_ctx)
             return AVERROR(ENOMEM);
         av_log(avctx, AV_LOG_VERBOSE,
                "w:%d h:%d -> w:%d h:%d (passthrough mode)\n",
@@ -270,15 +272,15 @@ static const AVFilterPad transpose_vaapi_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_transpose_vaapi = {
-    .name           = "transpose_vaapi",
-    .description    = NULL_IF_CONFIG_SMALL("VAAPI VPP for transpose"),
+const FFFilter ff_vf_transpose_vaapi = {
+    .p.name         = "transpose_vaapi",
+    .p.description  = NULL_IF_CONFIG_SMALL("VAAPI VPP for transpose"),
+    .p.priv_class   = &transpose_vaapi_class,
     .priv_size      = sizeof(TransposeVAAPIContext),
     .init           = &transpose_vaapi_init,
     .uninit         = &ff_vaapi_vpp_ctx_uninit,
     FILTER_INPUTS(transpose_vaapi_inputs),
     FILTER_OUTPUTS(transpose_vaapi_outputs),
-    FILTER_QUERY_FUNC(&ff_vaapi_vpp_query_formats),
-    .priv_class     = &transpose_vaapi_class,
+    FILTER_QUERY_FUNC2(&ff_vaapi_vpp_query_formats),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

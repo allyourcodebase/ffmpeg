@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Institue of Software Chinese Academy of Sciences (ISCAS).
+ * Copyright (c) 2023 Institute of Software Chinese Academy of Sciences (ISCAS).
  *
  * This file is part of FFmpeg.
  *
@@ -35,7 +35,7 @@ av_cold void ff_takdsp_init_riscv(TAKDSPContext *dsp)
 #if HAVE_RVV
     int flags = av_get_cpu_flags();
 
-    if ((flags & AV_CPU_FLAG_RVV_I32) && (flags & AV_CPU_FLAG_RVB_ADDR)) {
+    if ((flags & AV_CPU_FLAG_RVV_I32) && (flags & AV_CPU_FLAG_RVB)) {
         dsp->decorrelate_ls = ff_decorrelate_ls_rvv;
         dsp->decorrelate_sr = ff_decorrelate_sr_rvv;
         dsp->decorrelate_sm = ff_decorrelate_sm_rvv;

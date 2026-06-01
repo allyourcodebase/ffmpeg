@@ -21,11 +21,12 @@
  * SOFTWARE.
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 typedef struct DebandContext {
@@ -70,9 +71,11 @@ static const AVOption deband_options[] = {
 
 AVFILTER_DEFINE_CLASS(deband);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    DebandContext *s = ctx->priv;
+    const DebandContext *s = ctx->priv;
 
     static const enum AVPixelFormat pix_fmts[] = {
         AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY9, AV_PIX_FMT_GRAY10,
@@ -109,7 +112,8 @@ static int query_formats(AVFilterContext *ctx)
         AV_PIX_FMT_NONE
     };
 
-    return ff_set_common_formats_from_list(ctx, s->coupling ? cpix_fmts : pix_fmts);
+    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out,
+                                            s->coupling ? cpix_fmts : pix_fmts);
 }
 
 static float frand(int x, int y)
@@ -459,15 +463,15 @@ static const AVFilterPad avfilter_vf_deband_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_deband = {
-    .name          = "deband",
-    .description   = NULL_IF_CONFIG_SMALL("Debands video."),
+const FFFilter ff_vf_deband = {
+    .p.name        = "deband",
+    .p.description = NULL_IF_CONFIG_SMALL("Debands video."),
+    .p.priv_class  = &deband_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(DebandContext),
-    .priv_class    = &deband_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_deband_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
 };

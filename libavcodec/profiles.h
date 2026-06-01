@@ -19,7 +19,8 @@
 #ifndef AVCODEC_PROFILES_H
 #define AVCODEC_PROFILES_H
 
-#include "avcodec.h"
+#include "codec.h"
+#include "defs.h"
 #include "libavutil/opt.h"
 
 #define FF_AVCTX_PROFILE_OPTION(name, description, type, value) \
@@ -34,6 +35,7 @@
     FF_AVCTX_PROFILE_OPTION("aac_he_v2",     NULL, AUDIO, AV_PROFILE_AAC_HE_V2)\
     FF_AVCTX_PROFILE_OPTION("aac_ld",        NULL, AUDIO, AV_PROFILE_AAC_LD)\
     FF_AVCTX_PROFILE_OPTION("aac_eld",       NULL, AUDIO, AV_PROFILE_AAC_ELD)\
+    FF_AVCTX_PROFILE_OPTION("aac_xhe",       NULL, AUDIO, AV_PROFILE_AAC_USAC)\
     FF_AVCTX_PROFILE_OPTION("mpeg2_aac_low", NULL, AUDIO, AV_PROFILE_MPEG2_AAC_LOW)\
     FF_AVCTX_PROFILE_OPTION("mpeg2_aac_he",  NULL, AUDIO, AV_PROFILE_MPEG2_AAC_HE)\
 
@@ -72,8 +74,10 @@ extern const AVProfile ff_vp9_profiles[];
 extern const AVProfile ff_av1_profiles[];
 extern const AVProfile ff_sbc_profiles[];
 extern const AVProfile ff_prores_profiles[];
+extern const AVProfile ff_prores_raw_profiles[];
 extern const AVProfile ff_mjpeg_profiles[];
 extern const AVProfile ff_arib_caption_profiles[];
 extern const AVProfile ff_evc_profiles[];
+extern const AVProfile ff_apv_profiles[];
 
 #endif /* AVCODEC_PROFILES_H */

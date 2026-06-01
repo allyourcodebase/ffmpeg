@@ -26,6 +26,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time_internal.h"
 #include "avformat.h"
@@ -1433,8 +1434,10 @@ static av_cold int sbg_read_header(AVFormatContext *avf)
     }
 
     st = avformat_new_stream(avf, NULL);
-    if (!st)
-        return AVERROR(ENOMEM);
+    if (!st) {
+        r = AVERROR(ENOMEM);
+        goto fail;
+    }
     sti = ffstream(st);
     st->codecpar->codec_type     = AVMEDIA_TYPE_AUDIO;
     st->codecpar->codec_id       = AV_CODEC_ID_FFWAVESYNTH;

@@ -22,10 +22,11 @@
 #include "motion_estimation.h"
 #include "libavcodec/mathops.h"
 #include "libavutil/common.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "scene_sad.h"
 
@@ -386,7 +387,7 @@ static int config_input(AVFilterLink *inlink)
     }
 
     if (mi_ctx->scd_method == SCD_METHOD_FDIFF) {
-        mi_ctx->sad = ff_scene_sad_get_fn(mi_ctx->bitdepth == 8 ? 8 : 16);
+        mi_ctx->sad = ff_scene_sad_get_fn(mi_ctx->bitdepth);
         if (!mi_ctx->sad)
             return AVERROR(EINVAL);
     }
@@ -397,8 +398,9 @@ static int config_input(AVFilterLink *inlink)
 static int config_output(AVFilterLink *outlink)
 {
     MIContext *mi_ctx = outlink->src->priv;
+    FilterLink     *l = ff_filter_link(outlink);
 
-    outlink->frame_rate = mi_ctx->frame_rate;
+    l->frame_rate       = mi_ctx->frame_rate;
     outlink->time_base  = av_inv_q(mi_ctx->frame_rate);
 
     return 0;
@@ -1250,11 +1252,11 @@ static const AVFilterPad minterpolate_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_minterpolate = {
-    .name          = "minterpolate",
-    .description   = NULL_IF_CONFIG_SMALL("Frame rate conversion using Motion Interpolation."),
+const FFFilter ff_vf_minterpolate = {
+    .p.name        = "minterpolate",
+    .p.description = NULL_IF_CONFIG_SMALL("Frame rate conversion using Motion Interpolation."),
+    .p.priv_class  = &minterpolate_class,
     .priv_size     = sizeof(MIContext),
-    .priv_class    = &minterpolate_class,
     .uninit        = uninit,
     FILTER_INPUTS(minterpolate_inputs),
     FILTER_OUTPUTS(minterpolate_outputs),

@@ -37,7 +37,21 @@
 #define LZF_LITERAL_MAX (1 << 5)
 #define LZF_LONG_BACKREF 7 + 2
 
-int ff_lzf_uncompress(GetByteContext *gb, uint8_t **buf, int64_t *size)
+
+static inline int lzf_realloc(uint8_t **buf, size_t new_size, unsigned *allocated_size)
+{
+    void *ptr = av_fast_realloc(*buf, allocated_size, new_size);
+
+    if (!ptr) {
+        av_freep(buf); //probably not needed
+        return AVERROR(ENOMEM);
+    }
+    *buf = ptr;
+
+    return 0;
+}
+
+int ff_lzf_uncompress(GetByteContext *gb, uint8_t **buf, size_t *size, unsigned *allocated_size)
 {
     int ret     = 0;
     uint8_t *p  = *buf;
@@ -48,15 +62,17 @@ int ff_lzf_uncompress(GetByteContext *gb, uint8_t **buf, int64_t *size)
 
         if (s < LZF_LITERAL_MAX) {
             s++;
-            if (s > *size - len) {
-                *size += s + *size /2;
-                ret = av_reallocp(buf, *size);
+            if (s > *allocated_size - len) {
+                ret = lzf_realloc(buf, len + s, allocated_size);
                 if (ret < 0)
                     return ret;
                 p = *buf + len;
             }
 
-            bytestream2_get_buffer(gb, p, s);
+            int s2 = bytestream2_get_buffer(gb, p, s);
+            if (s2 != s)
+                return AVERROR_INVALIDDATA;
+
             p   += s;
             len += s;
         } else {
@@ -71,9 +87,8 @@ int ff_lzf_uncompress(GetByteContext *gb, uint8_t **buf, int64_t *size)
             if (off > len)
                 return AVERROR_INVALIDDATA;
 
-            if (l > *size - len) {
-                *size += l + *size / 2;
-                ret = av_reallocp(buf, *size);
+            if (l > *allocated_size - len) {
+                ret = lzf_realloc(buf, len + l, allocated_size);
                 if (ret < 0)
                     return ret;
                 p = *buf + len;

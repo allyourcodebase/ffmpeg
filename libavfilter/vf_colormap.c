@@ -28,7 +28,7 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "framesync.h"
 #include "video.h"
 
@@ -482,16 +482,18 @@ static int process_frame(FFFrameSync *fs)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *outl     = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     ColorMapContext *s = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink      *inl = ff_filter_link(inlink);
     AVFilterLink *source = ctx->inputs[1];
     AVFilterLink *target = ctx->inputs[2];
     FFFrameSyncIn *in;
     int ret;
 
     outlink->time_base = inlink->time_base;
-    outlink->frame_rate = inlink->frame_rate;
+    outl->frame_rate   = inl->frame_rate;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
     outlink->w = inlink->w;
     outlink->h = inlink->h;
@@ -559,17 +561,17 @@ static const AVFilterPad outputs[] = {
 
 AVFILTER_DEFINE_CLASS(colormap);
 
-const AVFilter ff_vf_colormap = {
-    .name          = "colormap",
-    .description   = NULL_IF_CONFIG_SMALL("Apply custom Color Maps to video stream."),
-    .priv_class    = &colormap_class,
+const FFFilter ff_vf_colormap = {
+    .p.name        = "colormap",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply custom Color Maps to video stream."),
+    .p.priv_class  = &colormap_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ColorMapContext),
     .activate      = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS(AV_PIX_FMT_GBRPF32, AV_PIX_FMT_GBRAPF32),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                     AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
     .uninit        = uninit,
 };

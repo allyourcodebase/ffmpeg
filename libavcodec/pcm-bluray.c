@@ -167,7 +167,7 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             samples *= num_source_channels;
             if (AV_SAMPLE_FMT_S16 == avctx->sample_fmt) {
 #if HAVE_BIGENDIAN
-                bytestream2_get_buffer(&gb, dst16, buf_size);
+                bytestream2_get_buffer(&gb, (uint8_t*)dst16, buf_size);
 #else
                 do {
                     *dst16++ = bytestream2_get_be16u(&gb);
@@ -187,7 +187,8 @@ static int pcm_bluray_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             if (AV_SAMPLE_FMT_S16 == avctx->sample_fmt) {
                 do {
 #if HAVE_BIGENDIAN
-                    bytestream2_get_buffer(&gb, dst16, avctx->ch_layout.nb_channels * 2);
+                    bytestream2_get_buffer(&gb, (uint8_t*)dst16,
+                                           avctx->ch_layout.nb_channels * 2);
                     dst16 += avctx->ch_layout.nb_channels;
 #else
                     channel = avctx->ch_layout.nb_channels;
@@ -306,7 +307,5 @@ const FFCodec ff_pcm_bluray_decoder = {
     .p.id           = AV_CODEC_ID_PCM_BLURAY,
     FF_CODEC_DECODE_CB(pcm_bluray_decode_frame),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
-    .p.sample_fmts  = (const enum AVSampleFormat[]){
-        AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32, AV_SAMPLE_FMT_NONE
-    },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16, AV_SAMPLE_FMT_S32),
 };

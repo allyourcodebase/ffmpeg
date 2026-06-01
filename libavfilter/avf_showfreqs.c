@@ -21,6 +21,7 @@
 #include <float.h>
 #include <math.h>
 
+#include "libavutil/mem.h"
 #include "libavutil/tx.h"
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
@@ -33,7 +34,6 @@
 #include "formats.h"
 #include "video.h"
 #include "avfilter.h"
-#include "internal.h"
 #include "window_func.h"
 
 enum DataMode       { MAGNITUDE, PHASE, DELAY, NB_DATA };
@@ -116,32 +116,23 @@ static const AVOption showfreqs_options[] = {
 
 AVFILTER_DEFINE_CLASS(showfreqs);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_RGBA, AV_PIX_FMT_NONE };
     int ret;
 
     /* set input audio formats */
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0)
         return ret;
 
     /* set output video format */
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -149,6 +140,7 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     AVFilterLink *inlink = ctx->inputs[0];
     ShowFreqsContext *s = ctx->priv;
@@ -222,8 +214,8 @@ static int config_output(AVFilterLink *outlink)
     if (!s->window)
         return AVERROR(ENOMEM);
 
-    outlink->frame_rate = s->frame_rate;
-    outlink->time_base = av_inv_q(outlink->frame_rate);
+    l->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(l->frame_rate);
     outlink->sample_aspect_ratio = (AVRational){1,1};
     outlink->w = s->w;
     outlink->h = s->h;
@@ -296,6 +288,7 @@ static inline void plot_freq(ShowFreqsContext *s, int ch,
                              double a, int f, uint8_t fg[4], int *prev_y,
                              AVFrame *out, AVFilterLink *outlink)
 {
+    FilterLink *outl = ff_filter_link(outlink);
     const int w = s->w;
     const float min = s->minamp;
     const float avg = s->avg_data[ch][f];
@@ -335,12 +328,12 @@ static inline void plot_freq(ShowFreqsContext *s, int ch,
 
     switch (s->avg) {
     case 0:
-        y = s->avg_data[ch][f] = !outlink->frame_count_in ? y : FFMIN(0, y);
+        y = s->avg_data[ch][f] = !outl->frame_count_in ? y : FFMIN(0, y);
         break;
     case 1:
         break;
     default:
-        s->avg_data[ch][f] = avg + y * (y - avg) / (FFMIN(outlink->frame_count_in + 1, s->avg) * (float)y);
+        s->avg_data[ch][f] = avg + y * (y - avg) / (FFMIN(outl->frame_count_in + 1, s->avg) * (float)y);
         y = av_clip(s->avg_data[ch][f], 0, outlink->h - 1);
         break;
     }
@@ -556,14 +549,14 @@ static const AVFilterPad showfreqs_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showfreqs = {
-    .name          = "showfreqs",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio to a frequencies video output."),
+const FFFilter ff_avf_showfreqs = {
+    .p.name        = "showfreqs",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio to a frequencies video output."),
+    .p.priv_class  = &showfreqs_class,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowFreqsContext),
     .activate      = activate,
     FILTER_INPUTS(ff_audio_default_filterpad),
     FILTER_OUTPUTS(showfreqs_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &showfreqs_class,
+    FILTER_QUERY_FUNC2(query_formats),
 };

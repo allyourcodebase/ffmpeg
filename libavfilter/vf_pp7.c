@@ -29,10 +29,12 @@
 
 #include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "qp_table.h"
 #include "vf_pp7.h"
 #include "video.h"
@@ -387,14 +389,14 @@ static const AVFilterPad pp7_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_pp7 = {
-    .name            = "pp7",
-    .description     = NULL_IF_CONFIG_SMALL("Apply Postprocessing 7 filter."),
+const FFFilter ff_vf_pp7 = {
+    .p.name          = "pp7",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply Postprocessing 7 filter."),
+    .p.priv_class    = &pp7_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size       = sizeof(PP7Context),
     .uninit          = uninit,
     FILTER_INPUTS(pp7_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class      = &pp7_class,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

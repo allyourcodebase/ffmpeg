@@ -32,6 +32,7 @@
 #include "mpegaudiodecheader.h"
 #include "libavutil/avassert.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 
@@ -540,6 +541,8 @@ static int ffat_decode(AVCodecContext *avctx, AVFrame *frame,
     frame->sample_rate = avctx->sample_rate;
 
     frame->nb_samples = avctx->frame_size;
+
+    frame->flags |= AV_FRAME_FLAG_KEY;
 
     out_buffers.mBuffers[0].mData = at->decoded_data;
 

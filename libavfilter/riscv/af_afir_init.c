@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Institue of Software Chinese Academy of Sciences (ISCAS).
+ * Copyright (c) 2023 Institute of Software Chinese Academy of Sciences (ISCAS).
  *
  * This file is part of FFmpeg.
  *
@@ -34,7 +34,7 @@ av_cold void ff_afir_init_riscv(AudioFIRDSPContext *s)
     int flags = av_get_cpu_flags();
 
     if (flags & AV_CPU_FLAG_RVV_F64) {
-        if (flags & AV_CPU_FLAG_RVB_ADDR) {
+        if (flags & AV_CPU_FLAG_RVB) {
             s->fcmul_add = ff_fcmul_add_rvv;
         }
     }

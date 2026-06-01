@@ -30,11 +30,12 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/ffmath.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/samplefmt.h"
 #include "audio.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 
 typedef struct CompandSegment {
     double x, y;
@@ -417,8 +418,8 @@ static int config_output(AVFilterLink *outlink)
         }
 
         new_nb_items += sscanf(tstr2, "%lf", &s->bands[i].topfreq) == 1;
-        if (s->bands[i].topfreq < 0 || s->bands[i].topfreq >= outlink->sample_rate / 2) {
-            av_log(ctx, AV_LOG_ERROR, "crossover_frequency: %f, should be >=0 and lower than half of sample rate: %d.\n", s->bands[i].topfreq, outlink->sample_rate / 2);
+        if (s->bands[i].topfreq < 0 || s->bands[i].topfreq >= outlink->sample_rate / 2.0) {
+            av_log(ctx, AV_LOG_ERROR, "crossover_frequency: %f, should be >=0 and lower than half of sample rate: %f.\n", s->bands[i].topfreq, outlink->sample_rate / 2.0);
             return AVERROR(EINVAL);
         }
 
@@ -633,12 +634,12 @@ static const AVFilterPad mcompand_outputs[] = {
 };
 
 
-const AVFilter ff_af_mcompand = {
-    .name           = "mcompand",
-    .description    = NULL_IF_CONFIG_SMALL(
+const FFFilter ff_af_mcompand = {
+    .p.name         = "mcompand",
+    .p.description  = NULL_IF_CONFIG_SMALL(
             "Multiband Compress or expand audio dynamic range."),
+    .p.priv_class   = &mcompand_class,
     .priv_size      = sizeof(MCompandContext),
-    .priv_class     = &mcompand_class,
     .uninit         = uninit,
     FILTER_INPUTS(mcompand_inputs),
     FILTER_OUTPUTS(mcompand_outputs),

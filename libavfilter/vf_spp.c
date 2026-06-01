@@ -33,10 +33,12 @@
 
 #include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "qp_table.h"
 #include "vf_spp.h"
 #include "video.h"
@@ -171,7 +173,7 @@ static void store_slice_c(uint8_t *dst, const int16_t *src,
     int y, x;
 
 #define STORE(pos) do {                                                     \
-    temp = ((src[x + y*src_linesize + pos] << log2_scale) + d[pos]) >> 6;   \
+    temp = (src[x + y*src_linesize + pos] * (1 << log2_scale) + d[pos]) >> 6;\
     if (temp & 0x100)                                                       \
         temp = ~(temp >> 31);                                               \
     dst[x + y*dst_linesize + pos] = temp;                                   \
@@ -202,7 +204,7 @@ static void store_slice16_c(uint16_t *dst, const int16_t *src,
     unsigned int mask = -1<<depth;
 
 #define STORE16(pos) do {                                                   \
-    temp = ((src[x + y*src_linesize + pos] << log2_scale) + (d[pos]>>1)) >> 5;   \
+    temp = (src[x + y*src_linesize + pos] * (1 << log2_scale) + (d[pos]>>1)) >> 5; \
     if (temp & mask )                                                       \
         temp = ~(temp >> 31);                                               \
     dst[x + y*dst_linesize + pos] = temp;                                   \
@@ -486,9 +488,11 @@ static const AVFilterPad spp_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_spp = {
-    .name            = "spp",
-    .description     = NULL_IF_CONFIG_SMALL("Apply a simple post processing filter."),
+const FFFilter ff_vf_spp = {
+    .p.name          = "spp",
+    .p.description   = NULL_IF_CONFIG_SMALL("Apply a simple post processing filter."),
+    .p.priv_class    = &spp_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size       = sizeof(SPPContext),
     .preinit         = preinit,
     .uninit          = uninit,
@@ -496,6 +500,4 @@ const AVFilter ff_vf_spp = {
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
     .process_command = process_command,
-    .priv_class      = &spp_class,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
 };

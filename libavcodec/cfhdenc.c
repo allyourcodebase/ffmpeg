@@ -23,11 +23,11 @@
  * Cineform HD video encoder
  */
 
-#include <stdlib.h>
-#include <string.h>
+#include <stddef.h>
 
-#include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
 
 #include "avcodec.h"
 #include "bytestream.h"
@@ -36,7 +36,6 @@
 #include "codec_internal.h"
 #include "encode.h"
 #include "put_bits.h"
-#include "thread.h"
 
 /* Derived from existing tables from decoder */
 static const unsigned codebook[256][2] = {
@@ -258,8 +257,8 @@ static av_cold int cfhd_encode_init(AVCodecContext *avctx)
     if (ret < 0)
         return ret;
 
-    if (avctx->height < 4) {
-        av_log(avctx, AV_LOG_ERROR, "Height must be >= 4.\n");
+    if (avctx->height < 32) {
+        av_log(avctx, AV_LOG_ERROR, "Height must be >= 32.\n");
         return AVERROR_INVALIDDATA;
     }
 
@@ -286,7 +285,7 @@ static av_cold int cfhd_encode_init(AVCodecContext *avctx)
         s->plane[i].dwt_buf =
             av_calloc(h8 * 8 * w8 * 8, sizeof(*s->plane[i].dwt_buf));
         s->plane[i].dwt_tmp =
-            av_malloc_array(h8 * 8 * w8 * 8, sizeof(*s->plane[i].dwt_tmp));
+            av_calloc(h8 * 8 * w8 * 8, sizeof(*s->plane[i].dwt_tmp));
         if (!s->plane[i].dwt_buf || !s->plane[i].dwt_tmp)
             return AVERROR(ENOMEM);
 
@@ -553,7 +552,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                          width, height * 2);
     }
 
-    ret = ff_alloc_packet(avctx, pkt, 256LL + s->planes * (2LL * avctx->width * (avctx->height + 15) + 2048LL));
+    ret = ff_alloc_packet(avctx, pkt, 256LL + s->planes * (4LL * avctx->width * (avctx->height + 15) + 2048LL));
     if (ret < 0)
         return ret;
 
@@ -628,7 +627,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
 
         bytestream2_put_be16(pby, BitstreamMarker);
-        bytestream2_put_be16(pby, 0x1a4a);
+        bytestream2_put_be16(pby, LowPassSegment);
 
         pos = bytestream2_tell_p(pby);
 
@@ -654,7 +653,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         bytestream2_put_be16(pby, 16);
 
         bytestream2_put_be16(pby, BitstreamMarker);
-        bytestream2_put_be16(pby, 0x0f0f);
+        bytestream2_put_be16(pby, CoefficientSegment);
 
         for (int i = 0; i < height; i++) {
             for (int j = 0; j < width; j++)
@@ -663,7 +662,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
         }
 
         bytestream2_put_be16(pby, BitstreamMarker);
-        bytestream2_put_be16(pby, 0x1b4b);
+        bytestream2_put_be16(pby, LowPassEndSegment);
 
         for (int l = 0; l < 3; l++) {
             for (int i = 0; i < 3; i++) {
@@ -678,7 +677,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             int height = s->plane[p].band[l][0].height;
 
             bytestream2_put_be16(pby, BitstreamMarker);
-            bytestream2_put_be16(pby, 0x0d0d);
+            bytestream2_put_be16(pby, HighPassSegment);
 
             bytestream2_put_be16(pby, WaveletType);
             bytestream2_put_be16(pby, 3 + 2 * (l == 2));
@@ -715,7 +714,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 int count = 0, padd = 0;
 
                 bytestream2_put_be16(pby, BitstreamMarker);
-                bytestream2_put_be16(pby, 0x0e0e);
+                bytestream2_put_be16(pby, BandSegment);
 
                 bytestream2_put_be16(pby, SubbandNumber);
                 bytestream2_put_be16(pby, i + 1);
@@ -761,7 +760,6 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                         } else if (count > 0) {
                             count = put_runcode(pb, count, rb);
                         }
-
                         put_bits(pb, cb[index].size, cb[index].bits);
                     }
 
@@ -785,7 +783,7 @@ static int cfhd_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             }
 
             bytestream2_put_be16(pby, BitstreamMarker);
-            bytestream2_put_be16(pby, 0x0c0c);
+            bytestream2_put_be16(pby, HighPassEndSegment);
         }
 
         s->plane[p].size = bytestream2_tell_p(pby) - pos;
@@ -866,11 +864,7 @@ const FFCodec ff_cfhd_encoder = {
     .init             = cfhd_encode_init,
     .close            = cfhd_encode_close,
     FF_CODEC_ENCODE_CB(cfhd_encode_frame),
-    .p.pix_fmts       = (const enum AVPixelFormat[]) {
-                          AV_PIX_FMT_YUV422P10,
-                          AV_PIX_FMT_GBRP12,
-                          AV_PIX_FMT_GBRAP12,
-                          AV_PIX_FMT_NONE
-                        },
+    CODEC_PIXFMTS(AV_PIX_FMT_YUV422P10, AV_PIX_FMT_GBRP12, AV_PIX_FMT_GBRAP12),
+    .color_ranges     = AVCOL_RANGE_MPEG,
     .caps_internal    = FF_CODEC_CAP_INIT_CLEANUP,
 };

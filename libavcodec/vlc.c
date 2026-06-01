@@ -42,6 +42,8 @@
 {                                                           \
     const uint8_t *ptr = (const uint8_t *)table + i * wrap; \
     switch(size) {                                          \
+    default:                                                \
+        av_unreachable("Only uint8/16/32_t are used");      \
     case 1:                                                 \
         v = *(const uint8_t *)ptr;                          \
         break;                                              \
@@ -49,8 +51,6 @@
         v = *(const uint16_t *)ptr;                         \
         break;                                              \
     case 4:                                                 \
-    default:                                                \
-        av_assert1(size == 4);                              \
         v = *(const uint32_t *)ptr;                         \
         break;                                              \
     }                                                       \
@@ -155,7 +155,7 @@ static int build_table(VLC *vlc, int table_nb_bits, int nb_codes,
         int         n = codes[i].bits;
         uint32_t code = codes[i].code;
         int    symbol = codes[i].symbol;
-        ff_dlog(NULL, "i=%d n=%d code=0x%"PRIx32"\n", i, n, code);
+        ff_tlog(NULL, "i=%d n=%d code=0x%"PRIx32"\n", i, n, code);
         if (n <= table_nb_bits) {
             /* no need to add another table */
             int   j = code >> (32 - table_nb_bits);
@@ -169,7 +169,7 @@ static int build_table(VLC *vlc, int table_nb_bits, int nb_codes,
             for (int k = 0; k < nb; k++) {
                 int   bits = table[j].len;
                 int oldsym = table[j].sym;
-                ff_dlog(NULL, "%4x: code=%d n=%d\n", j, i, n);
+                ff_tlog(NULL, "%4x: code=%d n=%d\n", j, i, n);
                 if ((bits || oldsym) && (bits != n || oldsym != symbol)) {
                     av_log(NULL, AV_LOG_ERROR, "incorrect codes\n");
                     return AVERROR_INVALIDDATA;
@@ -260,7 +260,7 @@ int ff_vlc_init_sparse(VLC *vlc, int nb_bits, int nb_codes,
     if (ret < 0)
         return ret;
 
-    av_assert0(symbols_size <= 2 || !symbols);
+    av_assert0(symbols_size <= 2U);
     j = 0;
 #define COPY(condition)\
     for (int i = 0; i < nb_codes; i++) {                                    \
@@ -440,8 +440,8 @@ static void add_level(VLC_MULTI_ELEM *table, const int is16bit,
             code = curcode + (buf[t].code >> curlen);
             newlimit = curlimit - l;
             l  += curlen;
-            if (is16bit) AV_WN16(info.val+2*curlevel, sym);
-            else info.val[curlevel] = sym&0xFF;
+            if (is16bit) info.val16[curlevel] = sym;
+            else info.val8[curlevel] = sym&0xFF;
 
             if (curlevel) { // let's not add single entries
                 uint32_t val = code >> (32 - numbits);
@@ -468,7 +468,7 @@ static int vlc_multi_gen(VLC_MULTI_ELEM *table, const VLC *single,
 {
     int minbits, maxbits, max;
     unsigned count[VLC_MULTI_MAX_SYMBOLS-1] = { 0, };
-    VLC_MULTI_ELEM info = { { 0, }, 0, 0, };
+    VLC_MULTI_ELEM info = { 0 };
     int count0 = 0;
 
     for (int j = 0; j < 1<<numbits; j++) {
@@ -491,7 +491,7 @@ static int vlc_multi_gen(VLC_MULTI_ELEM *table, const VLC *single,
         // We can only add a code that fits with the shortest other code into the table
         // We assume the table is sorted by bits and we skip subtables which from our
         // point of view are basically random corrupted entries
-        // If we have not a single useable vlc we end with max = nb_codes
+        // If we have not a single usable vlc we end with max = nb_codes
         if (buf[max - 1].bits+minbits > numbits)
             break;
     }
@@ -499,10 +499,19 @@ static int vlc_multi_gen(VLC_MULTI_ELEM *table, const VLC *single,
     for (int j = 0; j < 1<<numbits; j++) {
         table[j].len = single->table[j].len;
         table[j].num = single->table[j].len > 0 ? 1 : 0;
+<<<<<<< HEAD
         if (is16bit)
             AV_WN16(table[j].val, single->table[j].sym);
         else
             table[j].val[0] = single->table[j].sym;
+||||||| e7d938073e
+        AV_WN16(table[j].val, single->table[j].sym);
+=======
+        if (is16bit)
+            table[j].val16[0] = single->table[j].sym;
+        else
+            table[j].val8[0]  = single->table[j].sym;
+>>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
     }
 
     add_level(table, is16bit, nb_codes, numbits, buf,
@@ -527,9 +536,9 @@ int ff_vlc_init_multi_from_lengths(VLC *vlc, VLC_MULTI *multi, int nb_bits, int 
     if (ret < 0)
         return ret;
 
-    multi->table = av_malloc(sizeof(*multi->table) << nb_bits);
+    multi->table = av_mallocz(sizeof(*multi->table) << nb_bits);
     if (!multi->table)
-        return AVERROR(ENOMEM);
+        goto fail;
 
     j = code = 0;
     for (int i = 0; i < nb_codes; i++, lens += lens_wrap) {

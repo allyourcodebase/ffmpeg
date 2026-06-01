@@ -22,6 +22,7 @@
 #include "config_components.h"
 
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "avformat.h"
 #include "avio_internal.h"
 #include "demux.h"
@@ -74,6 +75,9 @@ static int mpegps_probe(const AVProbeData *p)
             int len  = p->buf[i + 1] << 8 | p->buf[i + 2];
             int pes  = endpes <= i && check_pes(p->buf + i, p->buf + p->buf_size);
             int pack = check_pack_header(p->buf + i);
+
+            if (len > INT_MAX - i)
+                break;
 
             if (code == SYSTEM_HEADER_START_CODE)
                 sys++;
@@ -562,7 +566,9 @@ redo:
         static const unsigned char avs_seqh[4] = { 0, 0, 1, 0xb0 };
         unsigned char buf[8];
 
-        avio_read(s->pb, buf, 8);
+        ret = ffio_read_size(s->pb, buf, 8);
+        if (ret < 0)
+            return ret;
         avio_seek(s->pb, -8, SEEK_CUR);
         if (!memcmp(buf, avs_seqh, 4) && (buf[6] != 0 || buf[7] != 1))
             codec_id = AV_CODEC_ID_CAVS;
@@ -614,6 +620,9 @@ redo:
     } else if (startcode >= 0xfd55 && startcode <= 0xfd5f) {
         type     = AVMEDIA_TYPE_VIDEO;
         codec_id = AV_CODEC_ID_VC1;
+    } else if (startcode == 0x69 || startcode == 0x49) {
+        type     = AVMEDIA_TYPE_SUBTITLE;
+        codec_id = AV_CODEC_ID_IVTV_VBI;
     } else {
 skip:
         /* skip packet */

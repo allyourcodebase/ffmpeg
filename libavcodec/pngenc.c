@@ -33,6 +33,7 @@
 #include "libavutil/csp.h"
 #include "libavutil/libm.h"
 #include "libavutil/mastering_display_metadata.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/rational.h"
 #include "libavutil/stereo3d.h"
@@ -444,22 +445,22 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
         AVContentLightMetadata *clli = (AVContentLightMetadata *) side_data->data;
         AV_WB32(s->buf, clli->MaxCLL * 10000);
         AV_WB32(s->buf + 4, clli->MaxFALL * 10000);
-        png_write_chunk(&s->bytestream, MKTAG('c', 'L', 'L', 'i'), s->buf, 8);
+        png_write_chunk(&s->bytestream, MKTAG('c', 'L', 'L', 'I'), s->buf, 8);
     }
 
     side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
     if (side_data) {
-        AVMasteringDisplayMetadata *mdvc = (AVMasteringDisplayMetadata *) side_data->data;
-        if (mdvc->has_luminance && mdvc->has_primaries) {
+        AVMasteringDisplayMetadata *mdcv = (AVMasteringDisplayMetadata *) side_data->data;
+        if (mdcv->has_luminance && mdcv->has_primaries) {
             for (int i = 0; i < 3; i++) {
-                AV_WB16(s->buf + 2*i, PNG_Q2D(mdvc->display_primaries[i][0], 50000));
-                AV_WB16(s->buf + 2*i + 2, PNG_Q2D(mdvc->display_primaries[i][1], 50000));
+                AV_WB16(s->buf + 2*i, PNG_Q2D(mdcv->display_primaries[i][0], 50000));
+                AV_WB16(s->buf + 2*i + 2, PNG_Q2D(mdcv->display_primaries[i][1], 50000));
             }
-            AV_WB16(s->buf + 12, PNG_Q2D(mdvc->white_point[0], 50000));
-            AV_WB16(s->buf + 14, PNG_Q2D(mdvc->white_point[1], 50000));
-            AV_WB32(s->buf + 16, PNG_Q2D(mdvc->max_luminance, 10000));
-            AV_WB32(s->buf + 20, PNG_Q2D(mdvc->min_luminance, 10000));
-            png_write_chunk(&s->bytestream, MKTAG('m', 'D', 'V', 'c'), s->buf, 24);
+            AV_WB16(s->buf + 12, PNG_Q2D(mdcv->white_point[0], 50000));
+            AV_WB16(s->buf + 14, PNG_Q2D(mdcv->white_point[1], 50000));
+            AV_WB32(s->buf + 16, PNG_Q2D(mdcv->max_luminance, 10000));
+            AV_WB32(s->buf + 20, PNG_Q2D(mdcv->min_luminance, 10000));
+            png_write_chunk(&s->bytestream, MKTAG('m', 'D', 'C', 'V'), s->buf, 24);
         }
     }
 
@@ -468,8 +469,9 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
     if (png_get_gama(pict->color_trc, s->buf))
         png_write_chunk(&s->bytestream, MKTAG('g', 'A', 'M', 'A'), s->buf, 4);
 
-    if (avctx->bits_per_raw_sample > 0 && avctx->bits_per_raw_sample < s->bit_depth) {
-        int len = ff_png_get_nb_channels(s->color_type);
+    if (avctx->bits_per_raw_sample > 0 &&
+            avctx->bits_per_raw_sample < (s->color_type & PNG_COLOR_MASK_PALETTE ? 8 : s->bit_depth)) {
+        int len = s->color_type & PNG_COLOR_MASK_PALETTE ? 3 : ff_png_get_nb_channels(s->color_type);
         memset(s->buf, avctx->bits_per_raw_sample, len);
         png_write_chunk(&s->bytestream, MKTAG('s', 'B', 'I', 'T'), s->buf, len);
     }
@@ -1203,7 +1205,7 @@ static av_cold int png_enc_close(AVCodecContext *avctx)
 static const AVOption options[] = {
     {"dpi", "Set image resolution (in dots per inch)",  OFFSET(dpi), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 0x10000, VE},
     {"dpm", "Set image resolution (in dots per meter)", OFFSET(dpm), AV_OPT_TYPE_INT, {.i64 = 0}, 0, 0x10000, VE},
-    { "pred", "Prediction method", OFFSET(filter_type), AV_OPT_TYPE_INT, { .i64 = PNG_FILTER_VALUE_NONE }, PNG_FILTER_VALUE_NONE, PNG_FILTER_VALUE_MIXED, VE, .unit = "pred" },
+    { "pred", "Prediction method", OFFSET(filter_type), AV_OPT_TYPE_INT, { .i64 = PNG_FILTER_VALUE_PAETH }, PNG_FILTER_VALUE_NONE, PNG_FILTER_VALUE_MIXED, VE, .unit = "pred" },
         { "none",  NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_NONE },  INT_MIN, INT_MAX, VE, .unit = "pred" },
         { "sub",   NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_SUB },   INT_MIN, INT_MAX, VE, .unit = "pred" },
         { "up",    NULL, 0, AV_OPT_TYPE_CONST, { .i64 = PNG_FILTER_VALUE_UP },    INT_MIN, INT_MAX, VE, .unit = "pred" },
@@ -1231,14 +1233,12 @@ const FFCodec ff_png_encoder = {
     .init           = png_enc_init,
     .close          = png_enc_close,
     FF_CODEC_ENCODE_CB(encode_png),
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
-        AV_PIX_FMT_PAL8,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
-        AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
-        AV_PIX_FMT_MONOBLACK, AV_PIX_FMT_NONE
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
+                  AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
+                  AV_PIX_FMT_PAL8,
+                  AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
+                  AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
+                  AV_PIX_FMT_MONOBLACK),
     .p.priv_class   = &pngenc_class,
     .caps_internal  = FF_CODEC_CAP_ICC_PROFILES,
 };
@@ -1254,14 +1254,11 @@ const FFCodec ff_apng_encoder = {
     .init           = png_enc_init,
     .close          = png_enc_close,
     FF_CODEC_ENCODE_CB(encode_apng),
-    .p.pix_fmts     = (const enum AVPixelFormat[]) {
-        AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
-        AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
-        AV_PIX_FMT_PAL8,
-        AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
-        AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
-        AV_PIX_FMT_NONE
-    },
+    CODEC_PIXFMTS(AV_PIX_FMT_RGB24, AV_PIX_FMT_RGBA,
+                  AV_PIX_FMT_RGB48BE, AV_PIX_FMT_RGBA64BE,
+                  AV_PIX_FMT_PAL8,
+                  AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
+                  AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE),
     .p.priv_class   = &pngenc_class,
     .caps_internal  = FF_CODEC_CAP_ICC_PROFILES,
 };

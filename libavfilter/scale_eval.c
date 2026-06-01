@@ -83,18 +83,27 @@ int ff_scale_eval_dimensions(void *log_ctx,
     av_expr_parse_and_eval(&res, (expr = w_expr),
                            var_names, var_values,
                            NULL, NULL, NULL, NULL, NULL, 0, log_ctx);
-    eval_w = var_values[VAR_OUT_W] = var_values[VAR_OW] = (int) res == 0 ? inlink->w : (int) res;
+    var_values[VAR_OUT_W] = var_values[VAR_OW] = res == 0 ? inlink->w : trunc(res);
 
     if ((ret = av_expr_parse_and_eval(&res, (expr = h_expr),
                                       var_names, var_values,
                                       NULL, NULL, NULL, NULL, NULL, 0, log_ctx)) < 0)
         goto fail;
+    if (!(res >= INT32_MIN && res <= INT32_MAX)) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
+
     eval_h = var_values[VAR_OUT_H] = var_values[VAR_OH] = (int) res == 0 ? inlink->h : (int) res;
     /* evaluate again the width, as it may depend on the output height */
     if ((ret = av_expr_parse_and_eval(&res, (expr = w_expr),
                                       var_names, var_values,
                                       NULL, NULL, NULL, NULL, NULL, 0, log_ctx)) < 0)
         goto fail;
+    if (!(res >= INT32_MIN && res <= INT32_MAX)) {
+        ret = AVERROR(EINVAL);
+        goto fail;
+    }
     eval_w = (int) res == 0 ? inlink->w : (int) res;
 
     *ret_w = eval_w;
@@ -112,10 +121,11 @@ fail:
 
 int ff_scale_adjust_dimensions(AVFilterLink *inlink,
     int *ret_w, int *ret_h,
-    int force_original_aspect_ratio, int force_divisible_by)
+    int force_original_aspect_ratio, int force_divisible_by,
+    double w_adj)
 {
-    int w, h;
-    int factor_w, factor_h;
+    int64_t w, h;
+    int64_t factor_w, factor_h;
 
     w = *ret_w;
     h = *ret_h;
@@ -132,7 +142,7 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
     }
 
     if (w < 0 && h < 0) {
-        w = inlink->w;
+        w = inlink->w * w_adj;
         h = inlink->h;
     }
 
@@ -140,18 +150,18 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
      * earlier. If no factor was set, nothing will happen as the default
      * factor is 1 */
     if (w < 0)
-        w = av_rescale(h, inlink->w, inlink->h * factor_w) * factor_w;
+        w = av_rescale(h, inlink->w * w_adj, inlink->h * factor_w) * factor_w;
     if (h < 0)
-        h = av_rescale(w, inlink->h, inlink->w * factor_h) * factor_h;
+        h = av_rescale(w, inlink->h, inlink->w * w_adj * factor_h) * factor_h;
 
     /* Note that force_original_aspect_ratio may overwrite the previous set
      * dimensions so that it is not divisible by the set factors anymore
      * unless force_divisible_by is defined as well */
     if (force_original_aspect_ratio) {
         // Including force_divisible_by here rounds to the nearest multiple of it.
-        int tmp_w = av_rescale(h, inlink->w, inlink->h * (int64_t)force_divisible_by)
+        int64_t tmp_w = av_rescale(h, inlink->w * w_adj, inlink->h * (int64_t)force_divisible_by)
                     * force_divisible_by;
-        int tmp_h = av_rescale(w, inlink->h, inlink->w * (int64_t)force_divisible_by)
+        int64_t tmp_h = av_rescale(w, inlink->h, inlink->w * w_adj * (int64_t)force_divisible_by)
                     * force_divisible_by;
 
         if (force_original_aspect_ratio == 1) {
@@ -172,6 +182,9 @@ int ff_scale_adjust_dimensions(AVFilterLink *inlink,
              }
         }
     }
+
+    if ((int32_t)w != w || (int32_t)h != h)
+        return AVERROR(EINVAL);
 
     *ret_w = w;
     *ret_h = h;

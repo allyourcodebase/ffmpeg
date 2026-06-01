@@ -26,12 +26,12 @@
 #include "libavutil/avstring.h"
 #include "libavutil/bprint.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "audio.h"
 #include "formats.h"
-#include "internal.h"
 
 #define SWR_CH_MAX 64
 
@@ -77,7 +77,7 @@ static int query_formats(AVFilterContext *ctx)
     AVChannelLayout *inlayout[SWR_CH_MAX] = { NULL }, outlayout = { 0 };
     uint64_t outmask = 0;
     AVFilterChannelLayouts *layouts;
-    int i, ret, overlap = 0, nb_ch = 0;
+    int i, ret, nb_ch = 0;
 
     for (i = 0; i < s->nb_inputs; i++) {
         if (!ctx->inputs[i]->incfg.channel_layouts ||
@@ -92,15 +92,11 @@ static int query_formats(AVFilterContext *ctx)
             av_channel_layout_describe(inlayout[i], buf, sizeof(buf));
             av_log(ctx, AV_LOG_INFO, "Using \"%s\" for input %d\n", buf, i + 1);
         }
-        s->in[i].nb_ch = FF_LAYOUT2COUNT(inlayout[i]);
-        if (s->in[i].nb_ch) {
-            overlap++;
-        } else {
-            s->in[i].nb_ch = inlayout[i]->nb_channels;
-            if (av_channel_layout_subset(inlayout[i], outmask))
-                overlap++;
-            outmask |= inlayout[i]->order == AV_CHANNEL_ORDER_NATIVE ?
-                       inlayout[i]->u.mask : 0;
+        s->in[i].nb_ch = inlayout[i]->nb_channels;
+        for (int j = 0; j < s->in[i].nb_ch; j++) {
+            enum AVChannel id = av_channel_layout_channel_from_index(inlayout[i], j);
+            if (id >= 0 && id < 64)
+                outmask |= (1ULL << id);
         }
         nb_ch += s->in[i].nb_ch;
     }
@@ -108,7 +104,7 @@ static int query_formats(AVFilterContext *ctx)
         av_log(ctx, AV_LOG_ERROR, "Too many channels (max %d)\n", SWR_CH_MAX);
         return AVERROR(EINVAL);
     }
-    if (overlap) {
+    if (av_popcount64(outmask) != nb_ch) {
         av_log(ctx, AV_LOG_WARNING,
                "Input channel layouts overlap: "
                "output layout will be determined by the number of distinct input channels\n");
@@ -245,8 +241,11 @@ static int try_push_frame(AVFilterContext *ctx, int nb_samples)
                                     av_make_q(1, outlink->sample_rate),
                                     outlink->time_base);
 
-    if ((ret = av_channel_layout_copy(&outbuf->ch_layout, &outlink->ch_layout)) < 0)
+    if ((ret = av_channel_layout_copy(&outbuf->ch_layout, &outlink->ch_layout)) < 0) {
+        free_frames(s->nb_inputs, inbuf);
+        av_frame_free(&outbuf);
         return ret;
+    }
 
     while (nb_samples) {
         /* Unroll the most common sample formats: speed +~350% for the loop,
@@ -338,17 +337,17 @@ static const AVFilterPad amerge_outputs[] = {
     },
 };
 
-const AVFilter ff_af_amerge = {
-    .name          = "amerge",
-    .description   = NULL_IF_CONFIG_SMALL("Merge two or more audio streams into "
+const FFFilter ff_af_amerge = {
+    .p.name        = "amerge",
+    .p.description = NULL_IF_CONFIG_SMALL("Merge two or more audio streams into "
                                           "a single multi-channel stream."),
+    .p.inputs      = NULL,
+    .p.priv_class  = &amerge_class,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_INPUTS,
     .priv_size     = sizeof(AMergeContext),
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
-    .inputs        = NULL,
     FILTER_OUTPUTS(amerge_outputs),
     FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &amerge_class,
-    .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS,
 };

@@ -24,7 +24,6 @@
 #include "libavutil/attributes.h"
 #include "libavutil/cpu.h"
 #include "libavutil/riscv/cpu.h"
-#include "libavcodec/avcodec.h"
 #include "libavcodec/pixblockdsp.h"
 
 void ff_get_pixels_8_rvi(int16_t *block, const uint8_t *pixels,
@@ -42,12 +41,12 @@ void ff_diff_pixels_unaligned_rvv(int16_t *block, const uint8_t *s1,
                                   const uint8_t *s2, ptrdiff_t stride);
 
 av_cold void ff_pixblockdsp_init_riscv(PixblockDSPContext *c,
-                                       AVCodecContext *avctx,
                                        unsigned high_bit_depth)
 {
 #if HAVE_RV
     int cpu_flags = av_get_cpu_flags();
 
+#if __riscv_xlen >= 64
     if (cpu_flags & AV_CPU_FLAG_RVI) {
         if (high_bit_depth)
             c->get_pixels = ff_get_pixels_16_rvi;
@@ -55,8 +54,15 @@ av_cold void ff_pixblockdsp_init_riscv(PixblockDSPContext *c,
             c->get_pixels = ff_get_pixels_8_rvi;
     }
 
+    if (cpu_flags & AV_CPU_FLAG_RV_MISALIGNED) {
+        if (high_bit_depth)
+            c->get_pixels_unaligned = ff_get_pixels_16_rvi;
+        else
+            c->get_pixels_unaligned = ff_get_pixels_8_rvi;
+    }
+#endif
 #if HAVE_RVV
-    if ((cpu_flags & AV_CPU_FLAG_RVV_I32) && ff_get_rv_vlenb() >= 16) {
+    if ((cpu_flags & AV_CPU_FLAG_RVV_I32) && ff_rv_vlen_least(128)) {
         c->diff_pixels = ff_diff_pixels_unaligned_rvv;
         c->diff_pixels_unaligned = ff_diff_pixels_unaligned_rvv;
     }

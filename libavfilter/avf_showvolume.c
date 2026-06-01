@@ -18,19 +18,16 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/eval.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
-#include "libavutil/parseutils.h"
 #include "libavutil/xga_font_data.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "audio.h"
 #include "video.h"
-#include "internal.h"
 
 static const char *const var_names[] = {   "VOLUME",   "CHANNEL",   "PEAK",        NULL };
 enum                                   { VAR_VOLUME, VAR_CHANNEL, VAR_PEAK, VAR_VARS_NB };
@@ -113,30 +110,21 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layouts = NULL;
-    AVFilterLink *inlink = ctx->inputs[0];
-    AVFilterLink *outlink = ctx->outputs[0];
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE };
     static const enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_RGBA, AV_PIX_FMT_NONE };
     int ret;
 
     formats = ff_make_format_list(sample_fmts);
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.formats)) < 0)
-        return ret;
-
-    layouts = ff_all_channel_counts();
-    if ((ret = ff_channel_layouts_ref(layouts, &inlink->outcfg.channel_layouts)) < 0)
-        return ret;
-
-    formats = ff_all_samplerates();
-    if ((ret = ff_formats_ref(formats, &inlink->outcfg.samplerates)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0)
         return ret;
 
     formats = ff_make_format_list(pix_fmts);
-    if ((ret = ff_formats_ref(formats, &outlink->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
         return ret;
 
     return 0;
@@ -198,6 +186,7 @@ static int config_input(AVFilterLink *inlink)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink        *l = ff_filter_link(outlink);
     ShowVolumeContext *s = outlink->src->priv;
     AVFilterLink *inlink = outlink->src->inputs[0];
     int ch;
@@ -211,8 +200,8 @@ static int config_output(AVFilterLink *outlink)
     }
 
     outlink->sample_aspect_ratio = (AVRational){1,1};
-    outlink->frame_rate = s->frame_rate;
-    outlink->time_base = av_inv_q(outlink->frame_rate);
+    l->frame_rate = s->frame_rate;
+    outlink->time_base = av_inv_q(l->frame_rate);
 
     for (ch = 0; ch < inlink->ch_layout.nb_channels; ch++) {
         int i;
@@ -236,7 +225,7 @@ static void drawtext(AVFrame *pic, int x, int y, const char *txt, int o)
     int font_height;
     int i;
 
-    font = avpriv_cga_font,   font_height =  8;
+    font = avpriv_cga_font_get(),   font_height =  8;
 
     for (i = 0; txt[i]; i++) {
         int char_y, mask;
@@ -513,15 +502,15 @@ static const AVFilterPad showvolume_outputs[] = {
     },
 };
 
-const AVFilter ff_avf_showvolume = {
-    .name          = "showvolume",
-    .description   = NULL_IF_CONFIG_SMALL("Convert input audio volume to video output."),
+const FFFilter ff_avf_showvolume = {
+    .p.name        = "showvolume",
+    .p.description = NULL_IF_CONFIG_SMALL("Convert input audio volume to video output."),
+    .p.priv_class  = &showvolume_class,
     .init          = init,
     .activate      = activate,
     .uninit        = uninit,
     .priv_size     = sizeof(ShowVolumeContext),
     FILTER_INPUTS(showvolume_inputs),
     FILTER_OUTPUTS(showvolume_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &showvolume_class,
+    FILTER_QUERY_FUNC2(query_formats),
 };

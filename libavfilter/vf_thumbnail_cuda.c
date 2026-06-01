@@ -23,11 +23,12 @@
 #include "libavutil/hwcontext.h"
 #include "libavutil/hwcontext_cuda_internal.h"
 #include "libavutil/cuda_check.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 
 #include "cuda/load_helper.h"
 
@@ -290,7 +291,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
             hist[i] = 4 * hist[i];
     }
 
-    CHECK_CU(cu->cuCtxPopCurrent(&dummy));
+    ret = CHECK_CU(cu->cuCtxPopCurrent(&dummy));
     if (ret < 0)
         return ret;
 
@@ -357,8 +358,10 @@ static int format_is_supported(enum AVPixelFormat fmt)
 static int config_props(AVFilterLink *inlink)
 {
     AVFilterContext *ctx = inlink->dst;
+    FilterLink      *inl = ff_filter_link(inlink);
+    FilterLink     *outl = ff_filter_link(ctx->outputs[0]);
     ThumbnailCudaContext *s = ctx->priv;
-    AVHWFramesContext     *hw_frames_ctx = (AVHWFramesContext*)inlink->hw_frames_ctx->data;
+    AVHWFramesContext     *hw_frames_ctx = (AVHWFramesContext*)inl->hw_frames_ctx->data;
     AVCUDADeviceContext *device_hwctx = hw_frames_ctx->device_ctx->hwctx;
     CUcontext dummy, cuda_ctx = device_hwctx->cuda_ctx;
     CudaFunctions *cu = device_hwctx->internal->cuda_dl;
@@ -400,10 +403,10 @@ static int config_props(AVFilterLink *inlink)
 
     CHECK_CU(cu->cuCtxPopCurrent(&dummy));
 
-    s->hw_frames_ctx = ctx->inputs[0]->hw_frames_ctx;
+    s->hw_frames_ctx = inl->hw_frames_ctx;
 
-    ctx->outputs[0]->hw_frames_ctx = av_buffer_ref(s->hw_frames_ctx);
-    if (!ctx->outputs[0]->hw_frames_ctx)
+    outl->hw_frames_ctx = av_buffer_ref(s->hw_frames_ctx);
+    if (!outl->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     s->tb = inlink->time_base;
@@ -433,15 +436,15 @@ static const AVFilterPad thumbnail_cuda_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_thumbnail_cuda = {
-    .name          = "thumbnail_cuda",
-    .description   = NULL_IF_CONFIG_SMALL("Select the most representative frame in a given sequence of consecutive frames."),
+const FFFilter ff_vf_thumbnail_cuda = {
+    .p.name        = "thumbnail_cuda",
+    .p.description = NULL_IF_CONFIG_SMALL("Select the most representative frame in a given sequence of consecutive frames using CUDA."),
+    .p.priv_class  = &thumbnail_cuda_class,
     .priv_size     = sizeof(ThumbnailCudaContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(thumbnail_cuda_inputs),
     FILTER_OUTPUTS(thumbnail_cuda_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_CUDA),
-    .priv_class    = &thumbnail_cuda_class,
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

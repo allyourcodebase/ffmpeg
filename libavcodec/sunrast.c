@@ -22,6 +22,7 @@
 #include "libavutil/avassert.h"
 #include "libavutil/common.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
@@ -162,8 +163,10 @@ static int sunrast_decode_frame(AVCodecContext *avctx, AVFrame *p,
         x = 0;
         while (ptr != end && buf < buf_end) {
             run = 1;
-            if (buf_end - buf < 1)
+            if (buf_end - buf < 1) {
+                av_freep(&ptr2);
                 return AVERROR_INVALIDDATA;
+            }
 
             if ((value = *buf++) == RLE_TRIGGER) {
                 run = *buf++ + 1;

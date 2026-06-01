@@ -33,8 +33,8 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "drawutils.h"
+#include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 
 #define R 0
@@ -101,7 +101,9 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     const FadeContext *s = ctx->priv;
     static const enum AVPixelFormat pix_fmts[] = {
@@ -162,7 +164,7 @@ static int query_formats(AVFilterContext *ctx)
         else
             pixel_fmts = pix_fmts_rgb;
     }
-    return ff_set_common_formats_from_list(ctx, pixel_fmts);
+    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pixel_fmts);
 }
 
 const static enum AVPixelFormat studio_level_pix_fmts[] = {
@@ -442,6 +444,7 @@ static int config_input(AVFilterLink *inlink)
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
+    FilterLink      *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     FadeContext *s       = ctx->priv;
 
@@ -449,7 +452,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     if (s->fade_state == VF_FADE_WAITING) {
         s->factor=0;
         if (frame->pts >= s->start_time_pts
-            && inlink->frame_count_out >= s->start_frame) {
+            && inl->frame_count_out >= s->start_frame) {
             // Time to start fading
             s->fade_state = VF_FADE_FADING;
 
@@ -460,15 +463,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
             // Save start frame in case we are starting based on time and fading based on frames
             if (s->start_time_pts != 0 && s->start_frame == 0) {
-                s->start_frame = inlink->frame_count_out;
+                s->start_frame = inl->frame_count_out;
             }
         }
     }
     if (s->fade_state == VF_FADE_FADING) {
         if (s->duration_pts == 0) {
             // Fading based on frame count
-            s->factor = (inlink->frame_count_out - s->start_frame) * s->fade_per_frame;
-            if (inlink->frame_count_out > s->start_frame + s->nb_frames) {
+            s->factor = (inl->frame_count_out - s->start_frame) * s->fade_per_frame;
+            if (inl->frame_count_out > s->start_frame + s->nb_frames) {
                 s->fade_state = VF_FADE_DONE;
             }
 
@@ -557,15 +560,15 @@ static const AVFilterPad avfilter_vf_fade_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_fade = {
-    .name          = "fade",
-    .description   = NULL_IF_CONFIG_SMALL("Fade in/out input video."),
+const FFFilter ff_vf_fade = {
+    .p.name        = "fade",
+    .p.description = NULL_IF_CONFIG_SMALL("Fade in/out input video."),
+    .p.priv_class  = &fade_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS |
+                     AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .init          = init,
     .priv_size     = sizeof(FadeContext),
-    .priv_class    = &fade_class,
     FILTER_INPUTS(avfilter_vf_fade_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS |
-                     AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
+    FILTER_QUERY_FUNC2(query_formats),
 };

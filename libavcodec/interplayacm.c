@@ -19,6 +19,7 @@
  */
 
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavutil/thread.h"
 
 #define BITSTREAM_READER_LE
@@ -435,6 +436,9 @@ static int fill_block(InterplayACMContext *s)
     GetBitContext *gb = &s->gb;
     unsigned i, ind;
     int ret;
+
+    if (get_bits_left(gb) < s->cols * 5)
+        return AVERROR_INVALIDDATA;
 
     for (i = 0; i < s->cols; i++) {
         ind = get_bits(gb, 5);

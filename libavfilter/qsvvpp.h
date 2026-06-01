@@ -65,7 +65,7 @@ typedef struct QSVVPPContext {
 
     mfxSession          session;
     int (*filter_frame) (AVFilterLink *outlink, AVFrame *frame); /**< callback */
-    int (*set_frame_ext_params)(AVFilterContext *ctx, const AVFrame *in, AVFrame *out, QSVVPPFrameParam *fp); /**< callbak */
+    int (*set_frame_ext_params)(AVFilterContext *ctx, const AVFrame *in, AVFrame *out, QSVVPPFrameParam *fp); /**< callback */
     enum AVPixelFormat  out_sw_format;   /**< Real output format */
     mfxVideoParam       vpp_param;
     mfxFrameInfo       *frame_infos;     /**< frame info for each input */
@@ -110,7 +110,7 @@ typedef struct QSVVPPCrop {
 typedef struct QSVVPPParam {
     /* default is ff_filter_frame */
     int (*filter_frame)(AVFilterLink *outlink, AVFrame *frame);
-    int (*set_frame_ext_params)(AVFilterContext *ctx, const AVFrame *in, AVFrame *out, QSVVPPFrameParam *fp); /**< callbak */
+    int (*set_frame_ext_params)(AVFilterContext *ctx, const AVFrame *in, AVFrame *out, QSVVPPFrameParam *fp); /**< callback */
 
     /* To fill with MFX enhanced filter configurations */
     int num_ext_buf;
@@ -131,7 +131,7 @@ int ff_qsvvpp_init(AVFilterContext *avctx, QSVVPPParam *param);
 int ff_qsvvpp_close(AVFilterContext *avctx);
 
 /* vpp filter frame and call the cb if needed */
-int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame);
+int ff_qsvvpp_filter_frame(QSVVPPContext *vpp, AVFilterLink *inlink, AVFrame *frame, AVFrame *propref);
 
 int ff_qsvvpp_print_iopattern(void *log_ctx, int mfx_iopattern,
                               const char *extra_string);

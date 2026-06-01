@@ -233,6 +233,8 @@ static int jpeg_parse_packet(AVFormatContext *ctx, PayloadContext *jpeg,
     q      = AV_RB8(buf + 5);   /* quantization factor (or table id) */
     width  = AV_RB8(buf + 6);   /* frame width in 8 pixel blocks */
     height = AV_RB8(buf + 7);   /* frame height in 8 pixel blocks */
+    st->codecpar->width = width*8;
+    st->codecpar->height = height*8;
     buf += 8;
     len -= 8;
 
@@ -274,6 +276,12 @@ static int jpeg_parse_packet(AVFormatContext *ctx, PayloadContext *jpeg,
                 av_log(ctx, AV_LOG_WARNING, "Only 8-bit precision is supported.\n");
 
             if (qtable_len > 0) {
+                if (qtable_len != 128) {
+                    av_log(ctx, AV_LOG_ERROR, "Invalid RTP/JPEG packet. Invalid qtable length %d.\n", qtable_len);
+                    if (qtable_len%64 || qtable_len > 4*64)
+                        return AVERROR_INVALIDDATA;
+                }
+
                 if (len < qtable_len) {
                     av_log(ctx, AV_LOG_ERROR, "Too short RTP/JPEG packet.\n");
                     return AVERROR_INVALIDDATA;

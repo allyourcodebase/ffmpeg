@@ -30,11 +30,12 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/ffmath.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/samplefmt.h"
 #include "audio.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 
 typedef struct ChanParam {
     double attack;
@@ -541,12 +542,12 @@ static const AVFilterPad compand_outputs[] = {
 };
 
 
-const AVFilter ff_af_compand = {
-    .name           = "compand",
-    .description    = NULL_IF_CONFIG_SMALL(
+const FFFilter ff_af_compand = {
+    .p.name         = "compand",
+    .p.description  = NULL_IF_CONFIG_SMALL(
             "Compress or expand audio dynamic range."),
+    .p.priv_class   = &compand_class,
     .priv_size      = sizeof(CompandContext),
-    .priv_class     = &compand_class,
     .init           = init,
     .uninit         = uninit,
     FILTER_INPUTS(compand_inputs),

@@ -24,8 +24,8 @@
  */
 
 #include "avfilter.h"
+#include "filters.h"
 #include "video.h"
-#include "internal.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/intreadwrite.h"
 #include "libavutil/opt.h"
@@ -138,6 +138,7 @@ static int draw_carpet_slice(AVFilterContext *ctx, void *arg, int job, int nb_jo
 static int config_output(AVFilterLink *outlink)
 {
     AVFilterContext *ctx = outlink->src;
+    FilterLink *l = ff_filter_link(outlink);
     SierpinskiContext *s = ctx->priv;
 
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
@@ -147,7 +148,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->h = s->h;
     outlink->time_base = av_inv_q(s->frame_rate);
     outlink->sample_aspect_ratio = (AVRational) {1, 1};
-    outlink->frame_rate = s->frame_rate;
+    l->frame_rate = s->frame_rate;
     if (s->seed == -1)
         s->seed = av_get_random_seed();
     av_lfg_init(&s->lfg, s->seed);
@@ -210,13 +211,13 @@ static const AVFilterPad sierpinski_outputs[] = {
     },
 };
 
-const AVFilter ff_vsrc_sierpinski = {
-    .name          = "sierpinski",
-    .description   = NULL_IF_CONFIG_SMALL("Render a Sierpinski fractal."),
+const FFFilter ff_vsrc_sierpinski = {
+    .p.name        = "sierpinski",
+    .p.description = NULL_IF_CONFIG_SMALL("Render a Sierpinski fractal."),
+    .p.priv_class  = &sierpinski_class,
+    .p.inputs      = NULL,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(SierpinskiContext),
-    .priv_class    = &sierpinski_class,
-    .inputs        = NULL,
     FILTER_OUTPUTS(sierpinski_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_0BGR32),
-    .flags         = AVFILTER_FLAG_SLICE_THREADS,
 };

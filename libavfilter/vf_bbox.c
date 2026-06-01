@@ -28,7 +28,7 @@
 #include "libavutil/timestamp.h"
 #include "avfilter.h"
 #include "bbox.h"
-#include "internal.h"
+#include "filters.h"
 
 typedef struct BBoxContext {
     const AVClass *class;
@@ -75,6 +75,7 @@ static const enum AVPixelFormat pix_fmts[] = {
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     BBoxContext *bbox = ctx->priv;
     FFBoundingBox box;
@@ -88,7 +89,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     h = box.y2 - box.y1 + 1;
 
     av_log(ctx, AV_LOG_INFO,
-           "n:%"PRId64" pts:%s pts_time:%s", inlink->frame_count_out,
+           "n:%"PRId64" pts:%s pts_time:%s", inl->frame_count_out,
            av_ts2str(frame->pts), av_ts2timestr(frame->pts, &inlink->time_base));
 
     if (has_bbox) {
@@ -143,14 +144,14 @@ static const AVFilterPad bbox_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_bbox = {
-    .name          = "bbox",
-    .description   = NULL_IF_CONFIG_SMALL("Compute bounding box for each frame."),
+const FFFilter ff_vf_bbox = {
+    .p.name        = "bbox",
+    .p.description = NULL_IF_CONFIG_SMALL("Compute bounding box for each frame."),
+    .p.priv_class  = &bbox_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
     .priv_size     = sizeof(BBoxContext),
-    .priv_class    = &bbox_class,
     FILTER_INPUTS(bbox_inputs),
     FILTER_OUTPUTS(bbox_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_METADATA_ONLY,
     .process_command = ff_filter_process_command,
 };

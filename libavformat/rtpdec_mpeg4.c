@@ -31,12 +31,14 @@
 #include "internal.h"
 #include "libavutil/attributes.h"
 #include "libavutil/avstring.h"
+#include "libavutil/mem.h"
 #include "libavcodec/get_bits.h"
 
 #define MAX_AAC_HBR_FRAME_SIZE 8191
 
 /** Structure listing useful vars to parse RTP packet payload */
 struct PayloadContext {
+    int bitrate;
     int sizelength;
     int indexlength;
     int indexdeltalength;
@@ -82,6 +84,9 @@ typedef struct AttrNameMap {
 #define ATTR_NAME_TYPE_INT 0
 #define ATTR_NAME_TYPE_STR 1
 static const AttrNameMap attr_names[] = {
+    { "bitrate",       ATTR_NAME_TYPE_INT,
+      offsetof(PayloadContext, bitrate),
+      {0, INT32_MAX} },
     { "SizeLength",       ATTR_NAME_TYPE_INT,
       offsetof(PayloadContext, sizelength),
       {0, 32} }, // SizeLength number of bits used to encode AU-size integer value
@@ -133,7 +138,7 @@ static int rtp_parse_mp4_au(PayloadContext *data, const uint8_t *buf, int len)
        length in bits */
     au_headers_length = AV_RB16(buf);
 
-    if (au_headers_length > RTP_MAX_PACKET_LENGTH)
+    if (au_headers_length == 0 || au_headers_length > RTP_MAX_PACKET_LENGTH)
       return -1;
 
     data->au_headers_length_bytes = (au_headers_length + 7) / 8;
@@ -331,6 +336,9 @@ static int parse_fmtp(AVFormatContext *s,
                 }
             }
         }
+        if (!strcmp(attr, "bitrate")) {
+            par->bit_rate = data->bitrate;
+        }
     }
     return 0;
 }
@@ -362,6 +370,7 @@ const RTPDynamicProtocolHandler ff_mpeg4_generic_dynamic_handler = {
     .enc_name           = "mpeg4-generic",
     .codec_type         = AVMEDIA_TYPE_AUDIO,
     .codec_id           = AV_CODEC_ID_AAC,
+    .need_parsing       = AVSTREAM_PARSE_HEADERS,
     .priv_data_size     = sizeof(PayloadContext),
     .parse_sdp_a_line   = parse_sdp_line,
     .close              = close_context,

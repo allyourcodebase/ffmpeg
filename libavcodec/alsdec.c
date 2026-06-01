@@ -37,10 +37,11 @@
 #include "decode.h"
 #include "internal.h"
 #include "mlz.h"
+#include "libavutil/mem.h"
+#include "libavutil/opt.h"
 #include "libavutil/samplefmt.h"
 #include "libavutil/crc.h"
 #include "libavutil/softfloat_ieee754.h"
-#include "libavutil/intfloat.h"
 #include "libavutil/intreadwrite.h"
 
 #include <stdint.h>
@@ -194,6 +195,7 @@ typedef struct ALSChannelData {
 
 
 typedef struct ALSDecContext {
+    AVClass        *av_class;
     AVCodecContext *avctx;
     ALSSpecificConfig sconf;
     GetBitContext gb;
@@ -222,7 +224,7 @@ typedef struct ALSDecContext {
     int32_t *quant_cof_buffer;      ///< contains all quantized parcor coefficients
     int32_t **lpc_cof;              ///< coefficients of the direct form prediction filter for a channel
     int32_t *lpc_cof_buffer;        ///< contains all coefficients of the direct form prediction filter
-    int32_t *lpc_cof_reversed_buffer; ///< temporary buffer to set up a reversed versio of lpc_cof_buffer
+    int32_t *lpc_cof_reversed_buffer; ///< temporary buffer to set up a reversed version of lpc_cof_buffer
     ALSChannelData **chan_data;     ///< channel data for multi-channel correlation
     ALSChannelData *chan_data_buffer; ///< contains channel data for all channels
     int *reverted_channels;         ///< stores a flag for each reverted channel
@@ -239,6 +241,7 @@ typedef struct ALSDecContext {
     unsigned char *larray;          ///< buffer to store the output of masked lz decompression
     int *nbits;                     ///< contains the number of bits to read for masked lz decompression for all samples
     int highest_decoded_channel;
+    int user_max_order;             ///< user specified maximum prediction order
 } ALSDecContext;
 
 
@@ -351,6 +354,11 @@ static av_cold int read_specific_config(ALSDecContext *ctx)
     sconf->rlslms               = get_bits1(&gb);
     skip_bits(&gb, 5);       // skip 5 reserved bits
     skip_bits1(&gb);         // skip aux_data_enabled
+
+    if (sconf->max_order > ctx->user_max_order) {
+        av_log(avctx, AV_LOG_ERROR, "order %d exceeds specified max %d\n", sconf->max_order, ctx->user_max_order);
+        return AVERROR_INVALIDDATA;
+    }
 
 
     // check for ALSSpecificConfig struct
@@ -1540,8 +1548,12 @@ static int read_diff_float_data(ALSDecContext *ctx, unsigned int ra_frame) {
                     return AVERROR_INVALIDDATA;
                 }
 
+                j = 0;
                 for (i = 0; i < frame_length; ++i) {
-                    ctx->raw_mantissa[c][i] = AV_RB32(larray);
+                    if (ctx->raw_samples[c][i] == 0) {
+                        ctx->raw_mantissa[c][i] = AV_RB32(larray + j);
+                        j += 4;
+                    }
                 }
             }
         }
@@ -1550,9 +1562,12 @@ static int read_diff_float_data(ALSDecContext *ctx, unsigned int ra_frame) {
         if (highest_byte) {
             for (i = 0; i < frame_length; ++i) {
                 if (ctx->raw_samples[c][i] != 0) {
-                    //The following logic is taken from Tabel 14.45 and 14.46 from the ISO spec
+                    //The following logic is taken from Table 14.45 and 14.46 from the ISO spec
                     if (av_cmp_sf_ieee754(acf[c], FLOAT_1)) {
-                        nbits[i] = 23 - av_log2(abs(ctx->raw_samples[c][i]));
+                        int nbit = av_log2(FFABSU(ctx->raw_samples[c][i]));
+                        if (nbit > 23)
+                            return AVERROR_INVALIDDATA;
+                        nbits[i] = 23 - nbit;
                     } else {
                         nbits[i] = 23;
                     }
@@ -1626,7 +1641,7 @@ static int read_diff_float_data(ALSDecContext *ctx, unsigned int ra_frame) {
                 tmp_32 = (sign << 31) | ((e + EXP_BIAS) << 23) | (mantissa);
                 ctx->raw_samples[c][i] = tmp_32;
             } else {
-                ctx->raw_samples[c][i] = raw_mantissa[c][i] & 0x007fffffUL;
+                ctx->raw_samples[c][i] = raw_mantissa[c][i];
             }
         }
         align_get_bits(gb);
@@ -1782,7 +1797,9 @@ static int read_frame_data(ALSDecContext *ctx, unsigned int ra_frame)
     }
 
     if (sconf->floating) {
-        read_diff_float_data(ctx, ra_frame);
+        ret = read_diff_float_data(ctx, ra_frame);
+        if (ret < 0)
+            return ret;
     }
 
     if (get_bits_left(gb) < 0) {
@@ -2110,17 +2127,17 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
     if (sconf->floating) {
         ctx->acf               = av_malloc_array(channels, sizeof(*ctx->acf));
-        ctx->shift_value       = av_malloc_array(channels, sizeof(*ctx->shift_value));
-        ctx->last_shift_value  = av_malloc_array(channels, sizeof(*ctx->last_shift_value));
-        ctx->last_acf_mantissa = av_malloc_array(channels, sizeof(*ctx->last_acf_mantissa));
+        ctx->shift_value       = av_calloc(channels, sizeof(*ctx->shift_value));
+        ctx->last_shift_value  = av_calloc(channels, sizeof(*ctx->last_shift_value));
+        ctx->last_acf_mantissa = av_calloc(channels, sizeof(*ctx->last_acf_mantissa));
         ctx->raw_mantissa      = av_calloc(channels, sizeof(*ctx->raw_mantissa));
 
         ctx->larray = av_malloc_array(ctx->cur_frame_length * 4, sizeof(*ctx->larray));
         ctx->nbits  = av_malloc_array(ctx->cur_frame_length, sizeof(*ctx->nbits));
         ctx->mlz    = av_mallocz(sizeof(*ctx->mlz));
 
-        if (!ctx->mlz || !ctx->acf || !ctx->shift_value || !ctx->last_shift_value
-            || !ctx->last_acf_mantissa || !ctx->raw_mantissa) {
+        if (!ctx->larray || !ctx->nbits || !ctx->mlz || !ctx->acf || !ctx->shift_value
+            || !ctx->last_shift_value || !ctx->last_acf_mantissa || !ctx->raw_mantissa) {
             av_log(avctx, AV_LOG_ERROR, "Allocating buffer memory failed.\n");
             return AVERROR(ENOMEM);
         }
@@ -2132,6 +2149,10 @@ static av_cold int decode_init(AVCodecContext *avctx)
 
         for (c = 0; c < channels; ++c) {
             ctx->raw_mantissa[c] = av_calloc(ctx->cur_frame_length, sizeof(**ctx->raw_mantissa));
+            if (!ctx->raw_mantissa[c]) {
+                av_log(avctx, AV_LOG_ERROR, "Allocating buffer memory failed.\n");
+                return AVERROR(ENOMEM);
+            }
         }
     }
 
@@ -2179,6 +2200,17 @@ static av_cold void flush(AVCodecContext *avctx)
     ctx->frame_id = 0;
 }
 
+static const AVOption options[] = {
+    { "max_order", "Sets the maximum order (ALS simple profile allows max 15)", offsetof(ALSDecContext, user_max_order), AV_OPT_TYPE_INT, { .i64 = 1023 }, 0, 1023, AV_OPT_FLAG_AUDIO_PARAM | AV_OPT_FLAG_DECODING_PARAM },
+    { NULL }
+};
+
+static const AVClass als_class = {
+    .class_name = "als",
+    .item_name  = av_default_item_name,
+    .option     = options,
+    .version    = LIBAVUTIL_VERSION_INT,
+};
 
 const FFCodec ff_als_decoder = {
     .p.name         = "als",
@@ -2189,11 +2221,8 @@ const FFCodec ff_als_decoder = {
     .init           = decode_init,
     .close          = decode_end,
     FF_CODEC_DECODE_CB(decode_frame),
+    .p.priv_class   = &als_class,
     .flush          = flush,
-    .p.capabilities =
-#if FF_API_SUBFRAMES
-                      AV_CODEC_CAP_SUBFRAMES |
-#endif
-                      AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

@@ -33,6 +33,7 @@
 #include "libavutil/intreadwrite.h"
 #include "libavutil/log.h"
 #include "libavutil/mathematics.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavcodec/internal.h"
 #include "avformat.h"
@@ -177,7 +178,7 @@ static void handle_stream_probing(AVStream *st)
 {
     if (st->codecpar->codec_id == AV_CODEC_ID_PCM_S16LE) {
         FFStream *const sti = ffstream(st);
-        sti->request_probe = AVPROBE_SCORE_EXTENSION;
+        sti->request_probe = AVPROBE_SCORE_EXTENSION + 1;
         sti->probe_packets = FFMIN(sti->probe_packets, 32);
     }
 }
@@ -693,7 +694,8 @@ static int64_t find_guid(AVIOContext *pb, const uint8_t guid1[16])
     int64_t size;
 
     while (!avio_feof(pb)) {
-        avio_read(pb, guid, 16);
+        if (avio_read(pb, guid, 16) != 16)
+            break;
         size = avio_rl64(pb);
         if (size <= 24 || size > INT64_MAX - 8)
             return AVERROR_INVALIDDATA;
@@ -871,9 +873,11 @@ static int w64_read_header(AVFormatContext *s)
     WAVDemuxContext *wav = s->priv_data;
     AVStream *st;
     uint8_t guid[16];
-    int ret;
+    int ret = ffio_read_size(pb, guid, 16);
 
-    avio_read(pb, guid, 16);
+    if (ret < 0)
+        return ret;
+
     if (memcmp(guid, ff_w64_guid_riff, 16))
         return AVERROR_INVALIDDATA;
 
@@ -912,10 +916,10 @@ static int w64_read_header(AVFormatContext *s)
             if (st->codecpar->block_align &&
                 st->codecpar->ch_layout.nb_channels < FF_SANE_NB_CHANNELS &&
                 st->codecpar->bits_per_coded_sample < 128) {
-                int block_align = st->codecpar->block_align;
+                int64_t block_align = st->codecpar->block_align;
 
                 block_align = FFMAX(block_align,
-                                    ((st->codecpar->bits_per_coded_sample + 7) / 8) *
+                                    ((st->codecpar->bits_per_coded_sample + 7LL) / 8) *
                                     st->codecpar->ch_layout.nb_channels);
                 if (block_align > st->codecpar->block_align) {
                     av_log(s, AV_LOG_WARNING, "invalid block_align: %d, broken file.\n",

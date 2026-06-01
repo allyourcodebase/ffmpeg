@@ -27,7 +27,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 #include "vidstabutils.h"
@@ -283,16 +283,16 @@ static const AVFilterPad avfilter_vf_vidstabtransform_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_vidstabtransform = {
-    .name          = "vidstabtransform",
-    .description   = NULL_IF_CONFIG_SMALL("Transform the frames, "
+const FFFilter ff_vf_vidstabtransform = {
+    .p.name        = "vidstabtransform",
+    .p.description = NULL_IF_CONFIG_SMALL("Transform the frames, "
                                           "pass 2 of 2 for stabilization "
                                           "(see vidstabdetect for pass 1)."),
+    .p.priv_class  = &vidstabtransform_class,
     .priv_size     = sizeof(TransformContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_vf_vidstabtransform_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(ff_vidstab_pix_fmts),
-    .priv_class    = &vidstabtransform_class,
 };

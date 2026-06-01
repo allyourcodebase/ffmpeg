@@ -22,7 +22,7 @@
 #include "libavutil/pixdesc.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 #include "maskedmerge.h"
 
@@ -215,6 +215,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *base = ctx->inputs[0];
     AVFilterLink *overlay = ctx->inputs[1];
     AVFilterLink *mask = ctx->inputs[2];
+    FilterLink *il = ff_filter_link(base);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -233,7 +235,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = base->w;
     outlink->h = base->h;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    outlink->frame_rate = base->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = av_image_fill_linesizes(s->linesize, outlink->format, outlink->w)) < 0)
         return ret;
@@ -300,16 +302,17 @@ static const AVFilterPad maskedmerge_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_maskedmerge = {
-    .name          = "maskedmerge",
-    .description   = NULL_IF_CONFIG_SMALL("Merge first stream with second stream using third stream as mask."),
+const FFFilter ff_vf_maskedmerge = {
+    .p.name        = "maskedmerge",
+    .p.description = NULL_IF_CONFIG_SMALL("Merge first stream with second stream using third stream as mask."),
+    .p.priv_class  = &maskedmerge_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                     AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(MaskedMergeContext),
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(maskedmerge_inputs),
     FILTER_OUTPUTS(maskedmerge_outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &maskedmerge_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

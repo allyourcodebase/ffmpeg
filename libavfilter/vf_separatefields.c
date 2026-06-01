@@ -21,7 +21,6 @@
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 #include "video.h"
 
 typedef struct SeparateFieldsContext {
@@ -34,6 +33,8 @@ static int config_props_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     SeparateFieldsContext *s = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink       *il = ff_filter_link(inlink);
+    FilterLink       *ol = ff_filter_link(outlink);
 
     s->nb_planes = av_pix_fmt_count_planes(inlink->format);
 
@@ -44,8 +45,8 @@ static int config_props_output(AVFilterLink *outlink)
 
     outlink->time_base.num = inlink->time_base.num;
     outlink->time_base.den = inlink->time_base.den * 2;
-    outlink->frame_rate.num = inlink->frame_rate.num * 2;
-    outlink->frame_rate.den = inlink->frame_rate.den;
+    ol->frame_rate.num = il->frame_rate.num * 2;
+    ol->frame_rate.den = il->frame_rate.den;
     outlink->w = inlink->w;
     outlink->h = inlink->h / 2;
 
@@ -71,11 +72,6 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *inpicref)
     int ret;
 
     inpicref->height = outlink->h;
-#if FF_API_INTERLACED_FRAME
-FF_DISABLE_DEPRECATION_WARNINGS
-    inpicref->interlaced_frame = 0;
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
     inpicref->flags &= ~AV_FRAME_FLAG_INTERLACED;
 
     if (!s->second) {
@@ -170,9 +166,9 @@ static const AVFilterPad separatefields_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_separatefields = {
-    .name        = "separatefields",
-    .description = NULL_IF_CONFIG_SMALL("Split input video frames into fields."),
+const FFFilter ff_vf_separatefields = {
+    .p.name        = "separatefields",
+    .p.description = NULL_IF_CONFIG_SMALL("Split input video frames into fields."),
     .priv_size   = sizeof(SeparateFieldsContext),
     .activate    = activate,
     .uninit      = uninit,

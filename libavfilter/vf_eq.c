@@ -31,7 +31,8 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "vf_eq.h"
 #include "video.h"
 
@@ -197,11 +198,12 @@ static av_cold void uninit(AVFilterContext *ctx)
 
 static int config_props(AVFilterLink *inlink)
 {
+    FilterLink *l = ff_filter_link(inlink);
     EQContext *eq = inlink->dst->priv;
 
     eq->var_values[VAR_N] = 0;
-    eq->var_values[VAR_R] = inlink->frame_rate.num == 0 || inlink->frame_rate.den == 0 ?
-        NAN : av_q2d(inlink->frame_rate);
+    eq->var_values[VAR_R] = l->frame_rate.num == 0 || l->frame_rate.den == 0 ?
+        NAN : av_q2d(l->frame_rate);
 
     return 0;
 }
@@ -218,6 +220,7 @@ static const enum AVPixelFormat pixel_fmts_eq[] = {
 
 static int filter_frame(AVFilterLink *inlink, AVFrame *in)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = inlink->dst->outputs[0];
     EQContext *eq = ctx->priv;
@@ -234,15 +237,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     av_frame_copy_props(out, in);
     desc = av_pix_fmt_desc_get(inlink->format);
 
-    eq->var_values[VAR_N]   = inlink->frame_count_out;
-#if FF_API_FRAME_PKT
-FF_DISABLE_DEPRECATION_WARNINGS
-    {
-        int64_t pos = in->pkt_pos;
-        eq->var_values[VAR_POS] = pos == -1 ? NAN : pos;
-    }
-FF_ENABLE_DEPRECATION_WARNINGS
-#endif
+    eq->var_values[VAR_N]   = inl->frame_count_out;
     eq->var_values[VAR_T]   = TS2T(in->pts, inlink->time_base);
 
     if (eq->eval_mode == EVAL_MODE_FRAME) {
@@ -342,16 +337,16 @@ static const AVOption eq_options[] = {
 
 AVFILTER_DEFINE_CLASS(eq);
 
-const AVFilter ff_vf_eq = {
-    .name            = "eq",
-    .description     = NULL_IF_CONFIG_SMALL("Adjust brightness, contrast, gamma, and saturation."),
+const FFFilter ff_vf_eq = {
+    .p.name          = "eq",
+    .p.description   = NULL_IF_CONFIG_SMALL("Adjust brightness, contrast, gamma, and saturation."),
+    .p.priv_class    = &eq_class,
+    .p.flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size       = sizeof(EQContext),
-    .priv_class      = &eq_class,
     FILTER_INPUTS(eq_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pixel_fmts_eq),
     .process_command = process_command,
     .init            = initialize,
     .uninit          = uninit,
-    .flags           = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

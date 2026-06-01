@@ -25,11 +25,11 @@
 
 #include "libavutil/avstring.h"
 #include "libavutil/channel_layout.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 #include "video.h"
 #include "audio.h"
 
@@ -72,9 +72,11 @@ static const AVOption concat_options[] = {
 
 AVFILTER_DEFINE_CLASS(concat);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    ConcatContext *cat = ctx->priv;
+    const ConcatContext *cat = ctx->priv;
     unsigned type, nb_str, idx0 = 0, idx, str, seg;
     AVFilterFormats *formats, *rates = NULL;
     AVFilterChannelLayouts *layouts = NULL;
@@ -87,25 +89,25 @@ static int query_formats(AVFilterContext *ctx)
 
             /* Set the output formats */
             formats = ff_all_formats(type);
-            if ((ret = ff_formats_ref(formats, &ctx->outputs[idx]->incfg.formats)) < 0)
+            if ((ret = ff_formats_ref(formats, &cfg_out[idx]->formats)) < 0)
                 return ret;
 
             if (type == AVMEDIA_TYPE_AUDIO) {
                 rates = ff_all_samplerates();
-                if ((ret = ff_formats_ref(rates, &ctx->outputs[idx]->incfg.samplerates)) < 0)
+                if ((ret = ff_formats_ref(rates, &cfg_out[idx]->samplerates)) < 0)
                     return ret;
                 layouts = ff_all_channel_layouts();
-                if ((ret = ff_channel_layouts_ref(layouts, &ctx->outputs[idx]->incfg.channel_layouts)) < 0)
+                if ((ret = ff_channel_layouts_ref(layouts, &cfg_out[idx]->channel_layouts)) < 0)
                     return ret;
             }
 
             /* Set the same formats for each corresponding input */
             for (seg = 0; seg < cat->nb_segments; seg++) {
-                if ((ret = ff_formats_ref(formats, &ctx->inputs[idx]->outcfg.formats)) < 0)
+                if ((ret = ff_formats_ref(formats, &cfg_in[idx]->formats)) < 0)
                     return ret;
                 if (type == AVMEDIA_TYPE_AUDIO) {
-                    if ((ret = ff_formats_ref(rates, &ctx->inputs[idx]->outcfg.samplerates)) < 0 ||
-                        (ret = ff_channel_layouts_ref(layouts, &ctx->inputs[idx]->outcfg.channel_layouts)) < 0)
+                    if ((ret = ff_formats_ref(rates, &cfg_in[idx]->samplerates)) < 0 ||
+                        (ret = ff_channel_layouts_ref(layouts, &cfg_in[idx]->channel_layouts)) < 0)
                         return ret;
                 }
                 idx += ctx->nb_outputs;
@@ -119,11 +121,13 @@ static int query_formats(AVFilterContext *ctx)
 
 static int config_output(AVFilterLink *outlink)
 {
+    FilterLink *outl     = ff_filter_link(outlink);
     AVFilterContext *ctx = outlink->src;
     ConcatContext *cat   = ctx->priv;
     unsigned out_no = FF_OUTLINK_IDX(outlink);
     unsigned in_no  = out_no, seg;
     AVFilterLink *inlink = ctx->inputs[in_no];
+    FilterLink *inl = ff_filter_link(inlink);
 
     /* enhancement: find a common one */
     outlink->time_base           = AV_TIME_BASE_Q;
@@ -131,15 +135,16 @@ static int config_output(AVFilterLink *outlink)
     outlink->h                   = inlink->h;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
     outlink->format              = inlink->format;
-    outlink->frame_rate          = inlink->frame_rate;
+    outl->frame_rate             = inl->frame_rate;
 
     for (seg = 1; seg < cat->nb_segments; seg++) {
         inlink = ctx->inputs[in_no + seg * ctx->nb_outputs];
-        if (outlink->frame_rate.num != inlink->frame_rate.num ||
-            outlink->frame_rate.den != inlink->frame_rate.den) {
+        inl    = ff_filter_link(inlink);
+        if (outl->frame_rate.num != inl->frame_rate.num ||
+            outl->frame_rate.den != inl->frame_rate.den) {
             av_log(ctx, AV_LOG_VERBOSE,
                     "Video inputs have different frame rates, output will be VFR\n");
-            outlink->frame_rate = av_make_q(1, 0);
+            outl->frame_rate = av_make_q(1, 0);
             break;
         }
     }
@@ -446,17 +451,17 @@ static int process_command(AVFilterContext *ctx, const char *cmd, const char *ar
     return ret;
 }
 
-const AVFilter ff_avf_concat = {
-    .name          = "concat",
-    .description   = NULL_IF_CONFIG_SMALL("Concatenate audio and video streams."),
+const FFFilter ff_avf_concat = {
+    .p.name        = "concat",
+    .p.description = NULL_IF_CONFIG_SMALL("Concatenate audio and video streams."),
+    .p.inputs      = NULL,
+    .p.outputs     = NULL,
+    .p.priv_class  = &concat_class,
+    .p.flags       = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(ConcatContext),
-    .inputs        = NULL,
-    .outputs       = NULL,
-    .priv_class    = &concat_class,
-    .flags         = AVFILTER_FLAG_DYNAMIC_INPUTS | AVFILTER_FLAG_DYNAMIC_OUTPUTS,
-    FILTER_QUERY_FUNC(query_formats),
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
 };

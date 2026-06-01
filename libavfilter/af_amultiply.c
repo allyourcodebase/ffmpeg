@@ -21,11 +21,11 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
-#include "internal.h"
 
 typedef struct AudioMultiplyContext {
     const AVClass *class;
@@ -169,9 +169,9 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_af_amultiply = {
-    .name           = "amultiply",
-    .description    = NULL_IF_CONFIG_SMALL("Multiply two audio streams."),
+const FFFilter ff_af_amultiply = {
+    .p.name         = "amultiply",
+    .p.description  = NULL_IF_CONFIG_SMALL("Multiply two audio streams."),
     .priv_size      = sizeof(AudioMultiplyContext),
     .init           = init,
     .uninit         = uninit,

@@ -26,6 +26,7 @@
 
 #include <float.h>
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 #include "libavutil/tx.h"
 
 #include "avcodec.h"
@@ -739,8 +740,10 @@ static int put_main_header(vorbis_enc_context *venc, uint8_t **out)
 
     len = hlens[0] + hlens[1] + hlens[2];
     p = *out = av_mallocz(64 + len + len/255);
-    if (!p)
+    if (!p) {
+        av_freep(&buffer);
         return AVERROR(ENOMEM);
+    }
 
     *p++ = 2;
     p += av_xiphlacing(p, hlens[0]);
@@ -1311,7 +1314,6 @@ const FFCodec ff_vorbis_encoder = {
     .init           = vorbis_encode_init,
     FF_CODEC_ENCODE_CB(vorbis_encode_frame),
     .close          = vorbis_encode_close,
-    .p.sample_fmts  = (const enum AVSampleFormat[]){ AV_SAMPLE_FMT_FLTP,
-                                                     AV_SAMPLE_FMT_NONE },
+    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

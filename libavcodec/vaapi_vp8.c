@@ -32,6 +32,7 @@ static VASurfaceID vaapi_vp8_surface_id(VP8Frame *vf)
 }
 
 static int vaapi_vp8_start_frame(AVCodecContext          *avctx,
+                                 av_unused const AVBufferRef *buffer_ref,
                                  av_unused const uint8_t *buffer,
                                  av_unused uint32_t       size)
 {
@@ -209,7 +210,7 @@ static int vaapi_vp8_decode_slice(AVCodecContext *avctx,
     for (i = 0; i < 8; i++)
         sp.partition_size[i+1] = s->coeff_partition_size[i];
 
-    err = ff_vaapi_decode_make_slice_buffer(avctx, pic, &sp, sizeof(sp), data, data_size);
+    err = ff_vaapi_decode_make_slice_buffer(avctx, pic, &sp, 1, sizeof(sp), data, data_size);
     if (err)
         goto fail;
 

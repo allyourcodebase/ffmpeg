@@ -28,8 +28,8 @@
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "framesync.h"
-#include "internal.h"
 #include "video.h"
 #include "threshold.h"
 #include "vf_threshold_init.h"
@@ -181,6 +181,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterLink *threshold = ctx->inputs[1];
     AVFilterLink *min = ctx->inputs[2];
     AVFilterLink *max = ctx->inputs[3];
+    FilterLink *il = ff_filter_link(base);
+    FilterLink *ol = ff_filter_link(outlink);
     FFFrameSyncIn *in;
     int ret;
 
@@ -205,7 +207,7 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = base->w;
     outlink->h = base->h;
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
-    outlink->frame_rate = base->frame_rate;
+    ol->frame_rate = il->frame_rate;
 
     if ((ret = ff_framesync_init(&s->fs, ctx, 4)) < 0)
         return ret;
@@ -277,16 +279,16 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_vf_threshold = {
-    .name          = "threshold",
-    .description   = NULL_IF_CONFIG_SMALL("Threshold first video stream using other video streams."),
+const FFFilter ff_vf_threshold = {
+    .p.name        = "threshold",
+    .p.description = NULL_IF_CONFIG_SMALL("Threshold first video stream using other video streams."),
+    .p.priv_class  = &threshold_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(ThresholdContext),
-    .priv_class    = &threshold_class,
     .uninit        = uninit,
     .activate      = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL | AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };

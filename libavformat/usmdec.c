@@ -19,7 +19,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/intfloat.h"
 #include "libavutil/intreadwrite.h"
+#include "libavutil/mem.h"
 #include "libavcodec/bytestream.h"
 
 #include "avformat.h"
@@ -119,7 +121,7 @@ static int parse_utf(AVFormatContext *s, AVIOContext *pb,
     for (int i = 0; i < nb_items; i++) {
         GetByteContext *xgb;
         uint8_t key[256];
-        int64_t value;
+        int64_t value = -1;
         int n = 0;
 
         type = bytestream2_get_byte(&gb);

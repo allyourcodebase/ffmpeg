@@ -61,13 +61,16 @@ static av_cold int init(AVFilterContext *ctx)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
     int reject_flags = AV_PIX_FMT_FLAG_HWACCEL   |
                        AV_PIX_FMT_FLAG_BITSTREAM |
                        FF_PIX_FMT_FLAG_SW_FLAT_SUB;
 
-    return ff_set_common_formats(ctx, ff_formats_pixdesc_filter(0, reject_flags));
+    return ff_set_common_formats2(ctx, cfg_in, cfg_out,
+                                  ff_formats_pixdesc_filter(0, reject_flags));
 }
 
 static int config_output(AVFilterLink *outlink)
@@ -75,6 +78,8 @@ static int config_output(AVFilterLink *outlink)
     AVFilterContext *ctx = outlink->src;
     UntileContext *s = ctx->priv;
     AVFilterLink *inlink = ctx->inputs[0];
+    FilterLink *il = ff_filter_link(inlink);
+    FilterLink *ol = ff_filter_link(outlink);
     AVRational dt;
 
     s->desc = av_pix_fmt_desc_get(outlink->format);
@@ -88,9 +93,9 @@ static int config_output(AVFilterLink *outlink)
     outlink->w = inlink->w / s->w;
     outlink->h = inlink->h / s->h;
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
-    outlink->frame_rate = av_mul_q(inlink->frame_rate, av_make_q(s->nb_frames, 1));
-    if (outlink->frame_rate.num)
-        dt = av_inv_q(outlink->frame_rate);
+    ol->frame_rate = av_mul_q(il->frame_rate, av_make_q(s->nb_frames, 1));
+    if (ol->frame_rate.num)
+        dt = av_inv_q(ol->frame_rate);
     else
         dt = av_mul_q(inlink->time_base, av_make_q(1, s->nb_frames));
     outlink->time_base = av_gcd_q(inlink->time_base, dt, AV_TIME_BASE / 2, AV_TIME_BASE_Q);
@@ -171,15 +176,15 @@ static const AVFilterPad untile_outputs[] = {
     },
 };
 
-const AVFilter ff_vf_untile = {
-    .name          = "untile",
-    .description   = NULL_IF_CONFIG_SMALL("Untile a frame into a sequence of frames."),
+const FFFilter ff_vf_untile = {
+    .p.name        = "untile",
+    .p.description = NULL_IF_CONFIG_SMALL("Untile a frame into a sequence of frames."),
+    .p.priv_class  = &untile_class,
     .init          = init,
     .uninit        = uninit,
     .activate      = activate,
     .priv_size     = sizeof(UntileContext),
     FILTER_INPUTS(ff_video_default_filterpad),
     FILTER_OUTPUTS(untile_outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .priv_class    = &untile_class,
+    FILTER_QUERY_FUNC2(query_formats),
 };

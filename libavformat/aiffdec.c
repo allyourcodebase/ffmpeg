@@ -21,6 +21,7 @@
 
 #include "libavutil/intreadwrite.h"
 #include "libavutil/dict.h"
+#include "libavutil/mem.h"
 #include "avformat.h"
 #include "demux.h"
 #include "internal.h"
@@ -172,6 +173,9 @@ static int get_aiff_header(AVFormatContext *s, int64_t size,
             break;
         case AV_CODEC_ID_GSM:
             par->block_align = 33;
+            break;
+        case AV_CODEC_ID_G728:
+            par->block_align = 5;
             break;
         default:
             aiff->block_duration = 1;

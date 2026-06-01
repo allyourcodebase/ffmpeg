@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024 Institue of Software Chinese Academy of Sciences (ISCAS).
+ * Copyright (c) 2024 Institute of Software Chinese Academy of Sciences (ISCAS).
  *
  * This file is part of FFmpeg.
  *
@@ -33,7 +33,7 @@ av_cold void ff_rv34dsp_init_riscv(RV34DSPContext *c)
 #if HAVE_RVV
     int flags = av_get_cpu_flags();
 
-    if (flags & AV_CPU_FLAG_RVV_I32 && ff_get_rv_vlenb() >= 16) {
+    if (flags & AV_CPU_FLAG_RVV_I32 && ff_rv_vlen_least(128)) {
         c->rv34_inv_transform_dc = ff_rv34_inv_transform_dc_rvv;
         c->rv34_idct_dc_add = ff_rv34_idct_dc_add_rvv;
     }

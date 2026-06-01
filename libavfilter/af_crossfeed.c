@@ -18,6 +18,7 @@
 
 #include "libavutil/channel_layout.h"
 #include "libavutil/ffmath.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
 #include "audio.h"
@@ -47,17 +48,27 @@ typedef struct CrossfeedContext {
     double *side[3];
 } CrossfeedContext;
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    AVFilterFormats *formats = NULL;
-    AVFilterChannelLayouts *layout = NULL;
+    static const enum AVSampleFormat formats[] = {
+        AV_SAMPLE_FMT_DBL,
+        AV_SAMPLE_FMT_NONE,
+    };
+    static const AVChannelLayout layouts[] = {
+        AV_CHANNEL_LAYOUT_STEREO,
+        { .nb_channels = 0 },
+    };
+
     int ret;
 
-    if ((ret = ff_add_format                 (&formats, AV_SAMPLE_FMT_DBL  )) < 0 ||
-        (ret = ff_set_common_formats         (ctx     , formats            )) < 0 ||
-        (ret = ff_add_channel_layout         (&layout , &(AVChannelLayout)AV_CHANNEL_LAYOUT_STEREO)) < 0 ||
-        (ret = ff_set_common_channel_layouts (ctx     , layout             )) < 0 ||
-        (ret = ff_set_common_all_samplerates (ctx                          )) < 0)
+    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, formats);
+    if (ret < 0)
+        return ret;
+
+    ret = ff_set_common_channel_layouts_from_list2(ctx, cfg_in, cfg_out, layouts);
+    if (ret < 0)
         return ret;
 
     return 0;
@@ -362,16 +373,16 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_af_crossfeed = {
-    .name           = "crossfeed",
-    .description    = NULL_IF_CONFIG_SMALL("Apply headphone crossfeed filter."),
+const FFFilter ff_af_crossfeed = {
+    .p.name         = "crossfeed",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply headphone crossfeed filter."),
+    .p.priv_class   = &crossfeed_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
     .priv_size      = sizeof(CrossfeedContext),
-    .priv_class     = &crossfeed_class,
     .activate       = activate,
     .uninit         = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = process_command,
 };

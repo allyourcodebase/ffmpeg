@@ -19,6 +19,7 @@
  */
 
 #include "libavutil/imgutils.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
 #include "libavutil/qsort.h"
@@ -27,7 +28,7 @@
 #define FF_BUFQUEUE_SIZE 129
 #include "bufferqueue.h"
 
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 #define SIZE FF_BUFQUEUE_SIZE
@@ -456,11 +457,11 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_vf_deflicker = {
-    .name          = "deflicker",
-    .description   = NULL_IF_CONFIG_SMALL("Remove temporal frame luminance variations."),
+const FFFilter ff_vf_deflicker = {
+    .p.name        = "deflicker",
+    .p.description = NULL_IF_CONFIG_SMALL("Remove temporal frame luminance variations."),
+    .p.priv_class  = &deflicker_class,
     .priv_size     = sizeof(DeflickerContext),
-    .priv_class    = &deflicker_class,
     .uninit        = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),

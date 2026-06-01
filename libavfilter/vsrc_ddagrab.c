@@ -34,6 +34,7 @@
 #include <dxgi1_5.h>
 #endif
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 #include "libavutil/avstring.h"
@@ -42,7 +43,7 @@
 #include "libavutil/hwcontext_d3d11va.h"
 #include "compat/w32dlfcn.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "video.h"
 
 #include "vsrc_ddagrab_shaders.h"
@@ -715,7 +716,7 @@ static int next_frame_internal(AVFilterContext *avctx, ID3D11Texture2D **desktop
             goto error;
         }
 
-        // Unforunately, we can't rely on the desktop_resource's format in this case.
+        // Unfortunately, we can't rely on the desktop_resource's format in this case.
         // The API might even return it in with a format that was not in the initial
         // list of supported formats, and it can change/flicker randomly.
         // To work around this, return an internal copy of the last valid texture we got.
@@ -853,6 +854,7 @@ fail:
 
 static int ddagrab_config_props(AVFilterLink *outlink)
 {
+    FilterLink *l = ff_filter_link(outlink);
     AVFilterContext *avctx = outlink->src;
     DdagrabContext *dda = avctx->priv;
     int ret;
@@ -914,14 +916,14 @@ static int ddagrab_config_props(AVFilterLink *outlink)
     if (ret < 0)
         return ret;
 
-    outlink->hw_frames_ctx = av_buffer_ref(dda->frames_ref);
-    if (!outlink->hw_frames_ctx)
+    l->hw_frames_ctx = av_buffer_ref(dda->frames_ref);
+    if (!l->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
     outlink->w = dda->width;
     outlink->h = dda->height;
     outlink->time_base = (AVRational){1, TIMER_RES};
-    outlink->frame_rate = dda->framerate;
+    l->frame_rate = dda->framerate;
 
     return 0;
 }
@@ -1241,16 +1243,16 @@ static const AVFilterPad ddagrab_outputs[] = {
     },
 };
 
-const AVFilter ff_vsrc_ddagrab = {
-    .name          = "ddagrab",
-    .description   = NULL_IF_CONFIG_SMALL("Grab Windows Desktop images using Desktop Duplication API"),
+const FFFilter ff_vsrc_ddagrab = {
+    .p.name        = "ddagrab",
+    .p.description = NULL_IF_CONFIG_SMALL("Grab Windows Desktop images using Desktop Duplication API"),
+    .p.priv_class  = &ddagrab_class,
+    .p.inputs      = NULL,
+    .p.flags       = AVFILTER_FLAG_HWDEVICE,
     .priv_size     = sizeof(DdagrabContext),
-    .priv_class    = &ddagrab_class,
     .init          = ddagrab_init,
     .uninit        = ddagrab_uninit,
-    .inputs        = NULL,
     FILTER_OUTPUTS(ddagrab_outputs),
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_D3D11),
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
-    .flags          = AVFILTER_FLAG_HWDEVICE,
 };

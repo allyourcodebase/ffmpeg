@@ -23,6 +23,7 @@
 #include <string.h>
 
 #define BITSTREAM_READER_LE
+#include "libavutil/mem.h"
 #include "avcodec.h"
 #include "bytestream.h"
 #include "codec_internal.h"
@@ -39,7 +40,8 @@ typedef struct NotchLCContext {
     unsigned uncompressed_size;
 
     uint8_t *lzf_buffer;
-    int64_t lzf_size;
+    size_t lzf_size;
+    unsigned lzf_alloc_size;
 
     unsigned texture_size_x;
     unsigned texture_size_y;
@@ -77,7 +79,7 @@ static int lz4_decompress(AVCodecContext *avctx,
                           PutByteContext *pb)
 {
     unsigned reference_pos, delta, pos = 0;
-    uint8_t history[64 * 1024];
+    uint8_t history[64 * 1024] = { 0 };
     int match_length;
 
     while (bytestream2_get_bytes_left(gb) > 0) {
@@ -88,9 +90,14 @@ static int lz4_decompress(AVCodecContext *avctx,
             unsigned char current;
             do {
                 current = bytestream2_get_byte(gb);
+                if (current > INT_MAX - num_literals)
+                    return AVERROR_INVALIDDATA;
                 num_literals += current;
             } while (current == 255);
         }
+
+        if (bytestream2_get_bytes_left(gb) < num_literals)
+            return AVERROR_INVALIDDATA;
 
         if (pos + num_literals < HISTORY_SIZE) {
             bytestream2_get_buffer(gb, history + pos, num_literals);
@@ -117,6 +124,8 @@ static int lz4_decompress(AVCodecContext *avctx,
 
             do {
                 current = bytestream2_get_byte(gb);
+                if (current > INT_MAX - match_length)
+                    return AVERROR_INVALIDDATA;
                 match_length += current;
             } while (current == 255);
         }
@@ -242,7 +251,9 @@ static int decode_blocks(AVCodecContext *avctx, AVFrame *p,
 
         bytestream2_seek(&dgb, s->y_data_offset + row_offset, SEEK_SET);
 
-        init_get_bits8(&bit, dgb.buffer, bytestream2_get_bytes_left(&dgb));
+        ret = init_get_bits8(&bit, dgb.buffer, bytestream2_get_bytes_left(&dgb));
+        if (ret < 0)
+            return ret;
         for (int x = 0; x < avctx->width; x += 4) {
             unsigned item = bytestream2_get_le32(gb);
             unsigned y_min = item & 4095;
@@ -484,7 +495,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
         return AVERROR_PATCHWELCOME;
 
     if (s->format == 0) {
-        ret = ff_lzf_uncompress(gb, &s->lzf_buffer, &s->lzf_size);
+        ret = ff_lzf_uncompress(gb, &s->lzf_buffer, &s->lzf_size, &s->lzf_alloc_size);
         if (ret < 0)
             return ret;
 
@@ -513,9 +524,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     ret = decode_blocks(avctx, p, uncompressed_size);
     if (ret < 0)
         return ret;
-
-    p->pict_type = AV_PICTURE_TYPE_I;
-    p->flags |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 

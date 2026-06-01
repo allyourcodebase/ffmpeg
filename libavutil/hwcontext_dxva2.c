@@ -31,6 +31,7 @@
 #include "hwcontext_dxva2.h"
 #include "hwcontext_internal.h"
 #include "imgutils.h"
+#include "mem.h"
 #include "pixdesc.h"
 #include "pixfmt.h"
 #include "compat/w32dlfcn.h"
@@ -92,6 +93,10 @@ static const struct {
     { MKTAG('Y', '2', '1', '0'), AV_PIX_FMT_Y210 },
     { MKTAG('Y', '4', '1', '0'), AV_PIX_FMT_XV30 },
     { MKTAG('P', '0', '1', '6'), AV_PIX_FMT_P012 },
+    { MKTAG('Y', '2', '1', '6'), AV_PIX_FMT_Y216 },
+    { MKTAG('Y', '4', '1', '6'), AV_PIX_FMT_XV48 },
+    // There is no 12bit pixel format defined in D3DFMT*, use 16bit to compatible
+    // with 12 bit AV_PIX_FMT* formats.
     { MKTAG('Y', '2', '1', '6'), AV_PIX_FMT_Y212 },
     { MKTAG('Y', '4', '1', '6'), AV_PIX_FMT_XV36 },
     { D3DFMT_P8,                 AV_PIX_FMT_PAL8 },
@@ -146,7 +151,7 @@ static AVBufferRef *dxva2_pool_alloc(void *opaque, size_t size)
     if (s->nb_surfaces_used < hwctx->nb_surfaces) {
         s->nb_surfaces_used++;
         return av_buffer_create((uint8_t*)s->surfaces_internal[s->nb_surfaces_used - 1],
-                                sizeof(*hwctx->surfaces), dxva2_pool_release_dummy, 0, 0);
+                                sizeof(**hwctx->surfaces), dxva2_pool_release_dummy, 0, 0);
     }
 
     return NULL;

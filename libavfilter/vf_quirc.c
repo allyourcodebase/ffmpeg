@@ -27,6 +27,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
+#include "filters.h"
 #include "formats.h"
 #include "video.h"
 #include <quirc.h>
@@ -70,25 +71,9 @@ static int config_input(AVFilterLink *inlink)
     return 0;
 }
 
-static int query_formats(AVFilterContext *ctx)
-{
-    static const enum AVPixelFormat pix_fmts[] = {
-        AV_PIX_FMT_GRAY8,
-        AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
-        AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
-        AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
-        AV_PIX_FMT_NV12, AV_PIX_FMT_NV21,
-        AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P,
-        AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P,
-        AV_PIX_FMT_YUVJ440P,
-        AV_PIX_FMT_NONE
-    };
-
-    return ff_set_common_formats_from_list(ctx, pix_fmts);
-}
-
 static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 {
+    FilterLink *inl = ff_filter_link(inlink);
     AVFilterContext *ctx = inlink->dst;
     AVFilterLink *outlink = ctx->outputs[0];
     QuircContext *quirc = ctx->priv;
@@ -104,7 +89,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     codes_count = quirc_count(quirc->quirc);
     av_log(ctx, AV_LOG_VERBOSE,
-           "Found count %d codes in image #%ld\n", codes_count, inlink->frame_count_out);
+           "Found count %d codes in image #%ld\n", codes_count, inl->frame_count_out);
 
     if (codes_count) {
         int i, j;
@@ -152,6 +137,18 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
     return ff_filter_frame(outlink, frame);
 }
 
+static const enum AVPixelFormat pix_fmts[] = {
+    AV_PIX_FMT_GRAY8,
+    AV_PIX_FMT_YUV410P, AV_PIX_FMT_YUV411P,
+    AV_PIX_FMT_YUV420P, AV_PIX_FMT_YUV422P,
+    AV_PIX_FMT_YUV440P, AV_PIX_FMT_YUV444P,
+    AV_PIX_FMT_NV12, AV_PIX_FMT_NV21,
+    AV_PIX_FMT_YUVJ411P, AV_PIX_FMT_YUVJ420P,
+    AV_PIX_FMT_YUVJ422P, AV_PIX_FMT_YUVJ444P,
+    AV_PIX_FMT_YUVJ440P,
+    AV_PIX_FMT_NONE
+};
+
 static const AVClass quirc_class = {
     .class_name = "quirc",
     .version    = LIBAVUTIL_VERSION_INT,
@@ -167,17 +164,16 @@ static const AVFilterPad inputs[] = {
     },
 };
 
-const AVFilter ff_vf_quirc = {
-    .name        = "quirc",
-    .description = NULL_IF_CONFIG_SMALL("Decode and show QR codes content."),
+const FFFilter ff_vf_quirc = {
+    .p.name        = "quirc",
+    .p.description = NULL_IF_CONFIG_SMALL("Decode and show QR codes content."),
+    .p.priv_class  = &quirc_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
+                     AVFILTER_FLAG_METADATA_ONLY,
     .priv_size   = sizeof(QuircContext),
-    .priv_class  = &quirc_class,
     .init        = init,
     .uninit      = uninit,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC |
-                   AVFILTER_FLAG_METADATA_ONLY,
+    FILTER_PIXFMTS_ARRAY(pix_fmts),
 };
-

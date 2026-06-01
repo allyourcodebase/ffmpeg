@@ -125,7 +125,7 @@ static av_cold int escape130_decode_init(AVCodecContext *avctx)
         return AVERROR_INVALIDDATA;
     }
 
-    s->old_y_avg = av_malloc(avctx->width * avctx->height / 4);
+    s->old_y_avg = av_mallocz(avctx->width * avctx->height / 4);
     s->buf1      = av_malloc(avctx->width * avctx->height * 3 / 2);
     s->buf2      = av_malloc(avctx->width * avctx->height * 3 / 2);
     if (!s->old_y_avg || !s->buf1 || !s->buf2) {
@@ -211,9 +211,6 @@ static int escape130_decode_frame(AVCodecContext *avctx, AVFrame *pic,
         av_log(avctx, AV_LOG_ERROR, "Insufficient frame data\n");
         return AVERROR_INVALIDDATA;
     }
-
-    if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
-        return ret;
 
     if ((ret = init_get_bits8(&gb, avpkt->data, avpkt->size)) < 0)
         return ret;
@@ -309,6 +306,9 @@ static int escape130_decode_frame(AVCodecContext *avctx, AVFrame *pic,
 
         skip--;
     }
+
+    if ((ret = ff_get_buffer(avctx, pic, 0)) < 0)
+        return ret;
 
     new_y  = s->new_y;
     new_cb = s->new_u;

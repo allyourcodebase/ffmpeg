@@ -30,9 +30,11 @@
 
 #include "libavutil/avassert.h"
 #include "libavutil/eval.h"
+#include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/opt.h"
-#include "internal.h"
+
+#include "filters.h"
 #include "video.h"
 
 static const char *const var_names[] = { "c", NULL };
@@ -810,15 +812,15 @@ static const AVFilterPad dctdnoiz_inputs[] = {
     },
 };
 
-const AVFilter ff_vf_dctdnoiz = {
-    .name          = "dctdnoiz",
-    .description   = NULL_IF_CONFIG_SMALL("Denoise frames using 2D DCT."),
+const FFFilter ff_vf_dctdnoiz = {
+    .p.name        = "dctdnoiz",
+    .p.description = NULL_IF_CONFIG_SMALL("Denoise frames using 2D DCT."),
+    .p.priv_class  = &dctdnoiz_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
     .priv_size     = sizeof(DCTdnoizContext),
     .init          = init,
     .uninit        = uninit,
     FILTER_INPUTS(dctdnoiz_inputs),
     FILTER_OUTPUTS(ff_video_default_filterpad),
     FILTER_PIXFMTS_ARRAY(pix_fmts),
-    .priv_class    = &dctdnoiz_class,
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC | AVFILTER_FLAG_SLICE_THREADS,
 };

@@ -18,9 +18,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "avfilter.h"
-#include "internal.h"
+#include "filters.h"
 #include "audio.h"
 #include "generate_wave_table.h"
 
@@ -165,14 +166,14 @@ static const AVFilterPad avfilter_af_vibrato_inputs[] = {
     },
 };
 
-const AVFilter ff_af_vibrato = {
-    .name          = "vibrato",
-    .description   = NULL_IF_CONFIG_SMALL("Apply vibrato effect."),
+const FFFilter ff_af_vibrato = {
+    .p.name        = "vibrato",
+    .p.description = NULL_IF_CONFIG_SMALL("Apply vibrato effect."),
+    .p.priv_class  = &vibrato_class,
+    .p.flags       = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
     .priv_size     = sizeof(VibratoContext),
-    .priv_class    = &vibrato_class,
     .uninit        = uninit,
     FILTER_INPUTS(avfilter_af_vibrato_inputs),
     FILTER_OUTPUTS(ff_audio_default_filterpad),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_DBLP),
-    .flags         = AVFILTER_FLAG_SUPPORT_TIMELINE_GENERIC,
 };

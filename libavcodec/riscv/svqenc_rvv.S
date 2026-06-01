@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Institue of Software Chinese Academy of Sciences (ISCAS).
+ * Copyright (c) 2023 Institute of Software Chinese Academy of Sciences (ISCAS).
  *
  * This file is part of FFmpeg.
  *
@@ -20,7 +20,8 @@
 
 #include "libavutil/riscv/asm.S"
 
-func ff_ssd_int8_vs_int16_rvv, zve32x
+func ff_ssd_int8_vs_int16_rvv, zve32x, zba
+        lpad    0
         vsetvli      t0, zero, e32, m8, ta, ma
         vmv.v.x      v24, zero
 1:

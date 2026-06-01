@@ -23,6 +23,7 @@
 #include "rtpdec_formats.h"
 #include "internal.h"
 #include "libavutil/avstring.h"
+#include "libavutil/mem.h"
 #include "libavcodec/get_bits.h"
 
 struct PayloadContext {
@@ -72,11 +73,15 @@ static int latm_parse_packet(AVFormatContext *ctx, PayloadContext *data,
     cur_len = 0;
     while (data->pos < data->len) {
         uint8_t val = data->buf[data->pos++];
+        if (val > data->len - cur_len) {
+            av_log(ctx, AV_LOG_ERROR, "Malformed LATM packet\n");
+            return AVERROR_INVALIDDATA;
+        }
         cur_len += val;
         if (val != 0xff)
             break;
     }
-    if (data->pos + cur_len > data->len) {
+    if (cur_len > data->len - data->pos) {
         av_log(ctx, AV_LOG_ERROR, "Malformed LATM packet\n");
         return AVERROR(EIO);
     }
@@ -103,7 +108,7 @@ static int parse_fmtp_config(AVStream *st, const char *value)
     ff_hex_to_data(config, value);
     ret = init_get_bits(&gb, config, len*8);
     if (ret < 0)
-        return ret;
+        goto end;
     audio_mux_version = get_bits(&gb, 1);
     same_time_framing = get_bits(&gb, 1);
     skip_bits(&gb, 6); /* num_sub_frames */

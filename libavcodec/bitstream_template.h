@@ -157,6 +157,14 @@ static inline int BS_FUNC(size)(const BSCTX *bc)
 }
 
 /**
+ * Return buffer size in bytes.
+ */
+static inline int BS_FUNC(bytesize)(const BSCTX *bc, int round_up)
+{
+    return (bc->size_in_bits + (round_up ? 7 : 0)) >> 3;
+}
+
+/**
  * Return the number of the bits left in a buffer.
  */
 static inline int BS_FUNC(left)(const BSCTX *bc)
@@ -542,7 +550,7 @@ static inline int BS_FUNC(read_vlc_multi)(BSCTX *bc, uint8_t dst[8],
     unsigned idx = BS_FUNC(peek)(bc, bits);
     int ret, nb_bits, code, n = Jtable[idx].len;
     if (Jtable[idx].num) {
-        AV_COPY64U(dst, Jtable[idx].val);
+        AV_COPY64U(dst, Jtable[idx].val8);
         ret = Jtable[idx].num;
     } else {
         code = table[idx].sym;

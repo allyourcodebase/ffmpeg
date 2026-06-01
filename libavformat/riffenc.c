@@ -72,7 +72,7 @@ int ff_put_wav_header(AVFormatContext *s, AVIOContext *pb,
     }
 
     /* We use the known constant frame size for the codec if known, otherwise
-     * fall back on using AVCodecContext.frame_size, which is not as reliable
+     * fall back on using AVCodecParameters.frame_size, which is not as reliable
      * for indicating packet duration. */
     frame_size = av_get_audio_frame_duration2(par, par->block_align);
 
@@ -92,6 +92,7 @@ int ff_put_wav_header(AVFormatContext *s, AVIOContext *pb,
     avio_wl32(pb, par->sample_rate);
     if (par->codec_id == AV_CODEC_ID_ATRAC3 ||
         par->codec_id == AV_CODEC_ID_G723_1 ||
+        par->codec_id == AV_CODEC_ID_G728   ||
         par->codec_id == AV_CODEC_ID_MP2    ||
         par->codec_id == AV_CODEC_ID_MP3    ||
         par->codec_id == AV_CODEC_ID_GSM_MS) {

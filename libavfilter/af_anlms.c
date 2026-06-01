@@ -21,13 +21,13 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/common.h"
 #include "libavutil/float_dsp.h"
+#include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
 #include "audio.h"
 #include "avfilter.h"
 #include "filters.h"
 #include "formats.h"
-#include "internal.h"
 
 enum OutModes {
     IN_MODE,
@@ -87,9 +87,11 @@ static const AVOption anlms_options[] = {
 
 AVFILTER_DEFINE_CLASS_EXT(anlms, "anlm(f|s)", anlms_options);
 
-static int query_formats(AVFilterContext *ctx)
+static int query_formats(const AVFilterContext *ctx,
+                         AVFilterFormatsConfig **cfg_in,
+                         AVFilterFormatsConfig **cfg_out)
 {
-    AudioNLMSContext *s = ctx->priv;
+    const AudioNLMSContext *s = ctx->priv;
     static const enum AVSampleFormat sample_fmts[3][3] = {
         { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_DBLP, AV_SAMPLE_FMT_NONE },
         { AV_SAMPLE_FMT_FLTP, AV_SAMPLE_FMT_NONE },
@@ -97,13 +99,11 @@ static int query_formats(AVFilterContext *ctx)
     };
     int ret;
 
-    if ((ret = ff_set_common_all_channel_counts(ctx)) < 0)
+    if ((ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out,
+                                                sample_fmts[s->precision])) < 0)
         return ret;
 
-    if ((ret = ff_set_common_formats_from_list(ctx, sample_fmts[s->precision])) < 0)
-        return ret;
-
-    return ff_set_common_all_samplerates(ctx);
+    return 0;
 }
 
 static int activate(AVFilterContext *ctx)
@@ -251,34 +251,34 @@ static const AVFilterPad outputs[] = {
     },
 };
 
-const AVFilter ff_af_anlms = {
-    .name           = "anlms",
-    .description    = NULL_IF_CONFIG_SMALL("Apply Normalized Least-Mean-Squares algorithm to first audio stream."),
+const FFFilter ff_af_anlms = {
+    .p.name         = "anlms",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply Normalized Least-Mean-Squares algorithm to first audio stream."),
+    .p.priv_class   = &anlms_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                      AVFILTER_FLAG_SLICE_THREADS,
     .priv_size      = sizeof(AudioNLMSContext),
-    .priv_class     = &anlms_class,
     .init           = init,
     .uninit         = uninit,
     .activate       = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
     FILTER_SINGLE_SAMPLEFMT(AV_SAMPLE_FMT_FLTP),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                      AVFILTER_FLAG_SLICE_THREADS,
     .process_command = ff_filter_process_command,
 };
 
-const AVFilter ff_af_anlmf = {
-    .name           = "anlmf",
-    .description    = NULL_IF_CONFIG_SMALL("Apply Normalized Least-Mean-Fourth algorithm to first audio stream."),
+const FFFilter ff_af_anlmf = {
+    .p.name         = "anlmf",
+    .p.description  = NULL_IF_CONFIG_SMALL("Apply Normalized Least-Mean-Fourth algorithm to first audio stream."),
+    .p.priv_class   = &anlms_class,
+    .p.flags        = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
+                      AVFILTER_FLAG_SLICE_THREADS,
     .priv_size      = sizeof(AudioNLMSContext),
-    .priv_class     = &anlms_class,
     .init           = init,
     .uninit         = uninit,
     .activate       = activate,
     FILTER_INPUTS(inputs),
     FILTER_OUTPUTS(outputs),
-    FILTER_QUERY_FUNC(query_formats),
-    .flags          = AVFILTER_FLAG_SUPPORT_TIMELINE_INTERNAL |
-                      AVFILTER_FLAG_SLICE_THREADS,
+    FILTER_QUERY_FUNC2(query_formats),
     .process_command = ff_filter_process_command,
 };
