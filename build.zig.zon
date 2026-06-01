@@ -56,8 +56,6 @@
         "build.zig",
         "build.zig.zon",
         "compat",
-        "config_components.h",
-        "doc",
         "libavcodec",
         "libavdevice",
         "libavfilter",
