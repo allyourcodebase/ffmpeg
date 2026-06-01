@@ -109,8 +109,6 @@ static const FFCodec * const codec_list[] = {
     &ff_opus_encoder,
     &ff_ra_144_encoder,
     &ff_sbc_encoder,
-    &ff_sonic_encoder,
-    &ff_sonic_ls_encoder,
     &ff_truehd_encoder,
     &ff_tta_encoder,
     &ff_vorbis_encoder,
@@ -202,6 +200,7 @@ static const FFCodec * const codec_list[] = {
     &ff_anm_decoder,
     &ff_ansi_decoder,
     &ff_apng_decoder,
+    &ff_apv_decoder,
     &ff_arbc_decoder,
     &ff_argo_decoder,
     &ff_asv1_decoder,
@@ -276,18 +275,12 @@ static const FFCodec * const codec_list[] = {
     &ff_h263_decoder,
     &ff_h263i_decoder,
     &ff_h263p_decoder,
-#if CONFIG_H263_V4L2M2M_DECODER
     &ff_h263_v4l2m2m_decoder,
-#endif
     &ff_h264_decoder,
-#if CONFIG_H264_V4L2M2M_DECODER
     &ff_h264_v4l2m2m_decoder,
-#endif
     &ff_hap_decoder,
     &ff_hevc_decoder,
-#if CONFIG_HEVC_V4L2M2M_DECODER
     &ff_hevc_v4l2m2m_decoder,
-#endif
     &ff_hnm4_video_decoder,
     &ff_hq_hqa_decoder,
     &ff_hqx_decoder,
@@ -325,16 +318,10 @@ static const FFCodec * const codec_list[] = {
     &ff_mpeg1video_decoder,
     &ff_mpeg2video_decoder,
     &ff_mpeg4_decoder,
-#if CONFIG_MPEG4_V4L2M2M_DECODER
     &ff_mpeg4_v4l2m2m_decoder,
-#endif
     &ff_mpegvideo_decoder,
-#if CONFIG_MPEG1_V4L2M2M_DECODER
     &ff_mpeg1_v4l2m2m_decoder,
-#endif
-#if CONFIG_MPEG2_V4L2M2M_DECODER
     &ff_mpeg2_v4l2m2m_decoder,
-#endif
     &ff_msa1_decoder,
     &ff_mscc_decoder,
     &ff_msmpeg4v1_decoder,
@@ -372,6 +359,7 @@ static const FFCodec * const codec_list[] = {
     &ff_png_decoder,
     &ff_ppm_decoder,
     &ff_prores_decoder,
+    &ff_prores_raw_decoder,
     &ff_prosumer_decoder,
     &ff_psd_decoder,
     &ff_ptx_decoder,
@@ -393,6 +381,7 @@ static const FFCodec * const codec_list[] = {
     &ff_rv20_decoder,
     &ff_rv30_decoder,
     &ff_rv40_decoder,
+    &ff_rv60_decoder,
     &ff_s302m_decoder,
     &ff_sanm_decoder,
     &ff_scpr_decoder,
@@ -439,9 +428,7 @@ static const FFCodec * const codec_list[] = {
     &ff_vble_decoder,
     &ff_vc1_decoder,
     &ff_vc1image_decoder,
-#if CONFIG_VC1_V4L2M2M_DECODER
     &ff_vc1_v4l2m2m_decoder,
-#endif
     &ff_vcr1_decoder,
     &ff_vmdvideo_decoder,
     &ff_vmix_decoder,
@@ -454,13 +441,9 @@ static const FFCodec * const codec_list[] = {
     &ff_vp6f_decoder,
     &ff_vp7_decoder,
     &ff_vp8_decoder,
-#if CONFIG_VP8_V4L2M2M_DECODER
     &ff_vp8_v4l2m2m_decoder,
-#endif
     &ff_vp9_decoder,
-#if CONFIG_VP9_V4L2M2M_DECODER
     &ff_vp9_v4l2m2m_decoder,
-#endif
     &ff_vqa_decoder,
     &ff_vqc_decoder,
     &ff_vvc_decoder,
@@ -530,6 +513,7 @@ static const FFCodec * const codec_list[] = {
     &ff_flac_decoder,
     &ff_ftr_decoder,
     &ff_g723_1_decoder,
+    &ff_g728_decoder,
     &ff_g729_decoder,
     &ff_gsm_decoder,
     &ff_gsm_ms_decoder,
@@ -675,9 +659,11 @@ static const FFCodec * const codec_list[] = {
     &ff_adpcm_ima_smjpeg_decoder,
     &ff_adpcm_ima_wav_decoder,
     &ff_adpcm_ima_ws_decoder,
+    &ff_adpcm_ima_xbox_decoder,
     &ff_adpcm_ms_decoder,
     &ff_adpcm_mtaf_decoder,
     &ff_adpcm_psx_decoder,
+    &ff_adpcm_sanyo_decoder,
     &ff_adpcm_sbpro_2_decoder,
     &ff_adpcm_sbpro_3_decoder,
     &ff_adpcm_sbpro_4_decoder,
