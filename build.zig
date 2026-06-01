@@ -891,6 +891,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RTPDEC = true,
         .CONFIG_RTPENC_CHAIN = true,
         .CONFIG_RV34DSP = true,
+        .CONFIG_RV40_DECODER = true,
         .CONFIG_SCENE_SAD = true,
         .CONFIG_SINEWIN = true,
         .CONFIG_SMPTE_436M = true,
@@ -952,11 +953,7 @@ pub fn build(b: *std.Build) void {
     config_h.addValues(common_config);
     lib.root_module.addConfigHeader(config_h);
 
-    const config_components_h = b.addConfigHeader(.{
-        .style = .blank,
-        .include_path = "config_components.h",
-        .include_guard = "FFMPEG_CONFIG_COMPONENTS_H",
-    }, .{
+    const config_components_values = .{
         .CONFIG_AAC_ADTSTOASC_BSF = true,
         .CONFIG_AHX_TO_MP2_BSF = false,
         .CONFIG_APV_METADATA_BSF = true,
@@ -3261,8 +3258,18 @@ pub fn build(b: *std.Build) void {
         .CONFIG_LIBZMQ_PROTOCOL = false,
         .CONFIG_IPFS_GATEWAY_PROTOCOL = false,
         .CONFIG_IPNS_GATEWAY_PROTOCOL = false,
-    });
+    };
+    const config_components_h = b.addConfigHeader(.{
+        .style = .blank,
+        .include_path = "config_components.h",
+        .include_guard = "FFMPEG_CONFIG_COMPONENTS_H",
+    }, config_components_values);
     lib.root_module.addConfigHeader(config_components_h);
+
+    const config_components_asm = b.addConfigHeader(.{
+        .style = .nasm,
+        .include_path = "config_components.asm",
+    }, config_components_values);
 
     const sources = categorizeSources(b.allocator, t, switch (tls) {
         else => tls,
@@ -3313,6 +3320,7 @@ pub fn build(b: *std.Build) void {
                 // nasm requires a trailing slash on include directories
                 nasm_run.addDecoratedDirectoryArg("-I", b.path("."), "/");
                 nasm_run.addDecoratedDirectoryArg("-I", b.path(std.fs.path.dirname(input_file).?), "/");
+                nasm_run.addDecoratedDirectoryArg("-I", config_components_asm.getOutputDir(), "/");
 
                 nasm_run.addArgs(&.{"--include"});
                 nasm_run.addFileArg(config_asm.getOutputFile());
@@ -3533,7 +3541,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
 }
 
 const component_subdirs = [_][]const u8{
-    "dnn/", "bsf/", "vvc/", "aac/", "hevc/", "opus/",
+    "dnn/", "bsf/", "vvc/", "aac/", "hevc/", "opus/", "vulkan/",
 };
 
 fn isComponentSubdir(sub_path: []const u8) bool {
