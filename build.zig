@@ -890,7 +890,7 @@ pub fn build(b: *std.Build) void {
     const config_components_h = b.addConfigHeader(.{
         .style = .blank,
         .include_path = "config_components.h",
-        .include_guard_override = "FFMPEG_CONFIG_COMPONENTS_H",
+        .include_guard = "FFMPEG_CONFIG_COMPONENTS_H",
     }, .{
         .CONFIG_AAC_ADTSTOASC_BSF = true,
         .CONFIG_AV1_FRAME_MERGE_BSF = true,
@@ -3267,13 +3267,15 @@ const CategorizedSources = struct {
 
 /// For x86, files ending in .asm are omitted.
 fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) CategorizedSources {
-    var libs: [@typeInfo(CategorizedSources).@"struct".fields.len]struct {
+    const field_names = @typeInfo(CategorizedSources).@"struct".field_names;
+
+    var libs: [field_names.len]struct {
         prefix: []const u8,
         list: std.ArrayListUnmanaged([]const u8) = .empty,
     } = undefined;
 
-    inline for (@typeInfo(CategorizedSources).@"struct".fields, 0..) |field, i| {
-        libs[i] = .{ .prefix = "lib" ++ field.name ++ "/" };
+    inline for (field_names, 0..) |field_name, i| {
+        libs[i] = .{ .prefix = "lib" ++ field_name ++ "/" };
     }
     for (all_sources) |prefixed_path| {
         const path = if (std.mem.startsWith(u8, prefixed_path, "/L/")) p: {
@@ -3360,8 +3362,8 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
     }
 
     var result: CategorizedSources = undefined;
-    inline for (@typeInfo(CategorizedSources).@"struct".fields, 0..) |field, i| {
-        @field(result, field.name) = libs[i].list.items;
+    inline for (field_names, 0..) |field_name, i| {
+        @field(result, field_name) = libs[i].list.items;
     }
     return result;
 }
