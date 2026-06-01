@@ -23,6 +23,7 @@
 #include "avformat.h"
 #include "internal.h"
 #include "mux.h"
+#include "version.h"
 
 #include "libavcodec/codec_id.h"
 #include "libavcodec/smpte_436m.h"
@@ -30,7 +31,6 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avstring.h"
 #include "libavutil/error.h"
-#include "libavutil/ffversion.h"
 #include "libavutil/log.h"
 #include "libavutil/macros.h"
 #include "libavutil/opt.h"
@@ -58,83 +58,47 @@ typedef enum MCCVersion
     MCC_VERSION_MAX = MCC_VERSION_2,
 } MCCVersion;
 
-static const char mcc_header_v1[] = //
-    "File Format=MacCaption_MCC V1.0\n"
-    "\n"
+#define MCC_HEADER                                                                                       \
+    "File Format=MacCaption_MCC V%c.0\n"                                                                 \
+    "\n"                                                                                                 \
+    "///////////////////////////////////////////////////////////////////////////////////\n"              \
+    "// Computer Prompting and Captioning Company\n"                                                     \
+    "// Ancillary Data Packet Transfer File\n"                                                           \
+    "//\n"                                                                                               \
+    "// Permission to generate this format is granted provided that\n"                                   \
+    "//   1. This ANC Transfer file format is used on an as-is basis and no warranty is given, and\n"    \
+    "//   2. This entire descriptive information text is included in a generated .mcc file.\n"           \
+    "//\n"                                                                                               \
+    "// General file format:\n"                                                                          \
+    "//   HH:MM:SS:FF(tab)[Hexadecimal ANC data in groups of 2 characters]\n"                            \
+    "//     Hexadecimal data starts with the Ancillary Data Packet DID (Data ID defined in S291M)\n"     \
+    "//       and concludes with the Check Sum following the User Data Words.\n"                         \
+    "//     Each time code line must contain at most one complete ancillary data packet.\n"              \
+    "//     To transfer additional ANC Data successive lines may contain identical time code.\n"         \
+    "//     Time Code Rate=[24, 25, 30, 30DF, 50, 60%s]\n"                                               \
+    "//\n"                                                                                               \
+    "//   ANC data bytes may be represented by one ASCII character according to the following schema:\n" \
+    "//     G  FAh 00h 00h\n"                                                                            \
+    "//     H  2 x (FAh 00h 00h)\n"                                                                      \
+    "//     I  3 x (FAh 00h 00h)\n"                                                                      \
+    "//     J  4 x (FAh 00h 00h)\n"                                                                      \
+    "//     K  5 x (FAh 00h 00h)\n"                                                                      \
+    "//     L  6 x (FAh 00h 00h)\n"                                                                      \
+    "//     M  7 x (FAh 00h 00h)\n"                                                                      \
+    "//     N  8 x (FAh 00h 00h)\n"                                                                      \
+    "//     O  9 x (FAh 00h 00h)\n"                                                                      \
+    "//     P  FBh 80h 80h\n"                                                                            \
+    "//     Q  FCh 80h 80h\n"                                                                            \
+    "//     R  FDh 80h 80h\n"                                                                            \
+    "//     S  96h 69h\n"                                                                                \
+    "//     T  61h 01h\n"                                                                                \
+    "//     U  E1h 00h 00h 00h\n"                                                                        \
+    "//     Z  00h\n"                                                                                    \
+    "//\n"                                                                                               \
     "///////////////////////////////////////////////////////////////////////////////////\n"
-    "// Computer Prompting and Captioning Company\n"
-    "// Ancillary Data Packet Transfer File\n"
-    "//\n"
-    "// Permission to generate this format is granted provided that\n"
-    "//   1. This ANC Transfer file format is used on an as-is basis and no warranty is given, and\n"
-    "//   2. This entire descriptive information text is included in a generated .mcc file.\n"
-    "//\n"
-    "// General file format:\n"
-    "//   HH:MM:SS:FF(tab)[Hexadecimal ANC data in groups of 2 characters]\n"
-    "//     Hexadecimal data starts with the Ancillary Data Packet DID (Data ID defined in S291M)\n"
-    "//       and concludes with the Check Sum following the User Data Words.\n"
-    "//     Each time code line must contain at most one complete ancillary data packet.\n"
-    "//     To transfer additional ANC Data successive lines may contain identical time code.\n"
-    "//     Time Code Rate=[24, 25, 30, 30DF, 50, 60]\n"
-    "//\n"
-    "//   ANC data bytes may be represented by one ASCII character according to the following schema:\n"
-    "//     G  FAh 00h 00h\n"
-    "//     H  2 x (FAh 00h 00h)\n"
-    "//     I  3 x (FAh 00h 00h)\n"
-    "//     J  4 x (FAh 00h 00h)\n"
-    "//     K  5 x (FAh 00h 00h)\n"
-    "//     L  6 x (FAh 00h 00h)\n"
-    "//     M  7 x (FAh 00h 00h)\n"
-    "//     N  8 x (FAh 00h 00h)\n"
-    "//     O  9 x (FAh 00h 00h)\n"
-    "//     P  FBh 80h 80h\n"
-    "//     Q  FCh 80h 80h\n"
-    "//     R  FDh 80h 80h\n"
-    "//     S  96h 69h\n"
-    "//     T  61h 01h\n"
-    "//     U  E1h 00h 00h 00h\n"
-    "//     Z  00h\n"
-    "//\n"
-    "///////////////////////////////////////////////////////////////////////////////////\n";
 
-static const char mcc_header_v2[] = //
-    "File Format=MacCaption_MCC V2.0\n"
-    "\n"
-    "///////////////////////////////////////////////////////////////////////////////////\n"
-    "// Computer Prompting and Captioning Company\n"
-    "// Ancillary Data Packet Transfer File\n"
-    "//\n"
-    "// Permission to generate this format is granted provided that\n"
-    "//   1. This ANC Transfer file format is used on an as-is basis and no warranty is given, and\n"
-    "//   2. This entire descriptive information text is included in a generated .mcc file.\n"
-    "//\n"
-    "// General file format:\n"
-    "//   HH:MM:SS:FF(tab)[Hexadecimal ANC data in groups of 2 characters]\n"
-    "//     Hexadecimal data starts with the Ancillary Data Packet DID (Data ID defined in S291M)\n"
-    "//       and concludes with the Check Sum following the User Data Words.\n"
-    "//     Each time code line must contain at most one complete ancillary data packet.\n"
-    "//     To transfer additional ANC Data successive lines may contain identical time code.\n"
-    "//     Time Code Rate=[24, 25, 30, 30DF, 50, 60, 60DF]\n"
-    "//\n"
-    "//   ANC data bytes may be represented by one ASCII character according to the following schema:\n"
-    "//     G  FAh 00h 00h\n"
-    "//     H  2 x (FAh 00h 00h)\n"
-    "//     I  3 x (FAh 00h 00h)\n"
-    "//     J  4 x (FAh 00h 00h)\n"
-    "//     K  5 x (FAh 00h 00h)\n"
-    "//     L  6 x (FAh 00h 00h)\n"
-    "//     M  7 x (FAh 00h 00h)\n"
-    "//     N  8 x (FAh 00h 00h)\n"
-    "//     O  9 x (FAh 00h 00h)\n"
-    "//     P  FBh 80h 80h\n"
-    "//     Q  FCh 80h 80h\n"
-    "//     R  FDh 80h 80h\n"
-    "//     S  96h 69h\n"
-    "//     T  61h 01h\n"
-    "//     U  E1h 00h 00h 00h\n"
-    "//     Z  00h\n"
-    "//\n"
-    "///////////////////////////////////////////////////////////////////////////////////\n";
+#define MCC_HEADER_PRINTF_ARGS(mcc_version) (mcc_version) + '0', \
+                                            (mcc_version) == MCC_VERSION_1 ? "" : ", 60DF"
 
 /**
  * generated with the bash command:
@@ -145,7 +109,7 @@ static const char mcc_header_v2[] = //
  */
 static const char mcc_ffmpeg_uuid[] = "0087C4F6-A6B4-5469-8C8E-BBF44950401D";
 
-static AVRational valid_time_code_rates[] = {
+static const AVRational valid_time_code_rates[] = {
     { .num = 24,    .den = 1    },
     { .num = 25,    .den = 1    },
     { .num = 30000, .den = 1001 },
@@ -158,46 +122,29 @@ static AVRational valid_time_code_rates[] = {
 static int mcc_write_header(AVFormatContext *avf)
 {
     MCCContext *mcc = avf->priv_data;
-    if (avf->nb_streams != 1) {
-        av_log(avf, AV_LOG_ERROR, "mcc muxer supports at most one stream\n");
-        return AVERROR(EINVAL);
-    }
-    avpriv_set_pts_info(avf->streams[0], 64, mcc->timecode.rate.den, mcc->timecode.rate.num);
-    const char *mcc_header = mcc_header_v1;
-    switch ((MCCVersion)mcc->mcc_version) {
-    case MCC_VERSION_1:
-        if (mcc->timecode.fps == 60 && mcc->timecode.flags & AV_TIMECODE_FLAG_DROPFRAME) {
-            av_log(avf, AV_LOG_FATAL, "MCC Version 1.0 doesn't support 60DF (59.94 fps drop-frame)");
-            return AVERROR(EINVAL);
-        }
-        break;
-    case MCC_VERSION_2:
-        mcc_header = mcc_header_v2;
-        break;
-    }
     const char *creation_program = mcc->creation_program;
     if (!creation_program) {
         if (avf->flags & AVFMT_FLAG_BITEXACT)
-            creation_program = "FFmpeg";
+            creation_program = "Lavf";
         else
-            creation_program = "FFmpeg version " FFMPEG_VERSION;
+            creation_program = LIBAVFORMAT_IDENT;
     } else if (strchr(creation_program, '\n')) {
-        av_log(avf, AV_LOG_FATAL, "creation_program must not contain multiple lines of text");
+        av_log(avf, AV_LOG_FATAL, "creation_program must not contain multiple lines of text\n");
         return AVERROR(EINVAL);
     }
     if (avf->flags & AVFMT_FLAG_BITEXACT && !av_strcasecmp(mcc->creation_time, "now"))
-        av_log(avf, AV_LOG_ERROR, "creation_time must be overridden for bit-exact output");
+        av_log(avf, AV_LOG_ERROR, "creation_time must be overridden for bit-exact output\n");
     int64_t timeval = 0;
     int     ret     = av_parse_time(&timeval, mcc->creation_time, 0);
     if (ret < 0) {
-        av_log(avf, AV_LOG_FATAL, "can't parse creation_time");
+        av_log(avf, AV_LOG_FATAL, "can't parse creation_time\n");
         return ret;
     }
     struct tm tm;
     if (!localtime_r((time_t[1]){ timeval / 1000000 }, &tm))
         return AVERROR(EINVAL);
     // we can't rely on having the C locale, so convert the date/time to a string ourselves:
-    static const char *const months[12] = {
+    static const char months[12][10] = {
         "January",
         "February",
         "March",
@@ -212,10 +159,10 @@ static int mcc_write_header(AVFormatContext *avf)
         "December",
     };
     // assert that values are sane so we don't index out of bounds
-    av_assert0(tm.tm_mon >= 0 && tm.tm_mon <= FF_ARRAY_ELEMS(months));
+    av_assert0(tm.tm_mon >= 0 && tm.tm_mon < FF_ARRAY_ELEMS(months));
     const char *month = months[tm.tm_mon];
 
-    static const char *const weekdays[7] = {
+    static const char weekdays[7][10] = {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
     };
     // assert that values are sane so we don't index out of bounds
@@ -223,13 +170,13 @@ static int mcc_write_header(AVFormatContext *avf)
     const char *weekday = weekdays[tm.tm_wday];
 
     avio_printf(avf->pb,
-                "%s\n"
+                MCC_HEADER "\n"
                 "UUID=%s\n"
                 "Creation Program=%s\n"
                 "Creation Date=%s, %s %d, %d\n"
                 "Creation Time=%02d:%02d:%02d\n"
                 "Time Code Rate=%u%s\n\n",
-                mcc_header,
+                MCC_HEADER_PRINTF_ARGS(mcc->mcc_version),
                 mcc_ffmpeg_uuid,
                 creation_program,
                 weekday,
@@ -379,7 +326,7 @@ static int mcc_write_packet(AVFormatContext *avf, AVPacket *pkt)
         default:
             av_log(avf,
                    AV_LOG_WARNING,
-                   "Unsupported SMPTE 436M ANC Wrapping Type %#x -- discarding ANC packet",
+                   "Unsupported SMPTE 436M ANC Wrapping Type %#x -- discarding ANC packet\n",
                    (unsigned)coded_anc.wrapping_type);
             continue;
         }
@@ -397,7 +344,7 @@ static int mcc_write_packet(AVFormatContext *avf, AVPacket *pkt)
                 av_log(avf,
                        AV_LOG_WARNING,
                        "MCC Version 1.0 doesn't support ANC packets where the field number (got %u) isn't 0 and "
-                       "line number (got %u) isn't 9: discarding ANC packet",
+                       "line number (got %u) isn't 9: discarding ANC packet\n",
                        field_number,
                        (unsigned)coded_anc.line_number);
                 continue;
@@ -467,6 +414,13 @@ static int mcc_init(AVFormatContext *avf)
     if (ret < 0)
         return ret;
 
+    if (mcc->mcc_version == MCC_VERSION_1) {
+        if (mcc->timecode.fps == 60 && mcc->timecode.flags & AV_TIMECODE_FLAG_DROPFRAME) {
+            av_log(avf, AV_LOG_FATAL, "MCC Version 1.0 doesn't support 60DF (59.94 fps drop-frame)\n");
+            return AVERROR(EINVAL);
+        }
+    }
+
     // get av_timecode to calculate how many frames are in 24hr
     ret = av_timecode_init_from_components(&twenty_four_hr, time_code_rate, timecode_flags, 24, 0, 0, 0, avf);
     if (ret < 0)
@@ -483,9 +437,7 @@ static int mcc_init(AVFormatContext *avf)
     } else if (st->codecpar->codec_id != AV_CODEC_ID_SMPTE_436M_ANC) {
         av_log(avf,
                AV_LOG_ERROR,
-               "mcc muxer supports only codec %s or codec %s\n",
-               avcodec_get_name(AV_CODEC_ID_SMPTE_436M_ANC),
-               avcodec_get_name(AV_CODEC_ID_EIA_608));
+               "mcc muxer supports only codec smpte_436m_anc or codec eia_608\n");
         return AVERROR(EINVAL);
     }
 

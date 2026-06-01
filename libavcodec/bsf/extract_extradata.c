@@ -22,19 +22,6 @@
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 
-<<<<<<< HEAD
-#include "libavcodec/av1.h"
-#include "libavcodec/av1_parse.h"
-#include "libavcodec/bsf.h"
-#include "libavcodec/bsf_internal.h"
-#include "libavcodec/bytestream.h"
-#include "libavcodec/h2645_parse.h"
-#include "libavcodec/h264.h"
-#include "libavcodec/hevc.h"
-#include "libavcodec/startcode.h"
-#include "libavcodec/vc1_common.h"
-#include "libavcodec/vvc.h"
-||||||| e7d938073e
 #include "av1.h"
 #include "av1_parse.h"
 #include "bsf.h"
@@ -42,22 +29,11 @@
 #include "bytestream.h"
 #include "h2645_parse.h"
 #include "h264.h"
-#include "hevc.h"
+#include "lcevc.h"
+#include "lcevc_parse.h"
 #include "startcode.h"
 #include "vc1_common.h"
 #include "vvc.h"
-=======
-#include "av1.h"
-#include "av1_parse.h"
-#include "bsf.h"
-#include "bsf_internal.h"
-#include "bytestream.h"
-#include "h2645_parse.h"
-#include "h264.h"
-#include "startcode.h"
-#include "vc1_common.h"
-#include "vvc.h"
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 
 #include "hevc/hevc.h"
 
@@ -293,6 +269,179 @@ static int extract_extradata_h2645(AVBSFContext *ctx, AVPacket *pkt,
     return 0;
 }
 
+/**
+ * Rewrite the NALu stripping the unneeded blocks.
+ * Given that length fields coded inside the NALu are not aware of any emulation_3bytes
+ * present in the bitstream, we need to keep track of the raw buffer as we navigate
+ * the stripped buffer.
+ */
+static int write_lcevc_nalu(AVBSFContext *ctx, PutByteContext *pbc, const H2645NAL *nal,
+                            int remove)
+{
+    GetByteContext gbc, raw_gbc;
+    int sc = 0, gc = 0;
+    int skipped_byte_pos = 0;
+
+    bytestream2_init(&gbc, nal->data, nal->size);
+    bytestream2_init(&raw_gbc, nal->raw_data, nal->raw_size);
+    bytestream2_put_be16(pbc, bytestream2_get_be16(&gbc));
+    bytestream2_skip(&raw_gbc, 2);
+
+    while (bytestream2_get_bytes_left(&gbc) > 1) {
+        GetBitContext gb;
+        int payload_size_type, payload_type;
+        uint64_t payload_size;
+        int block_size, raw_block_size, block_end;
+
+        init_get_bits8(&gb, gbc.buffer, bytestream2_get_bytes_left(&gbc));
+
+        payload_size_type = get_bits(&gb, 3);
+        payload_type      = get_bits(&gb, 5);
+        payload_size      = payload_size_type;
+        if (payload_size_type == 6)
+            return AVERROR_PATCHWELCOME;
+        if (payload_size_type == 7)
+            payload_size = get_mb(&gb);
+
+        if (payload_size > INT_MAX - (get_bits_count(&gb) >> 3))
+            return AVERROR_INVALIDDATA;
+
+        block_size = raw_block_size = payload_size + (get_bits_count(&gb) >> 3);
+        if (block_size >= bytestream2_get_bytes_left(&gbc))
+            return AVERROR_INVALIDDATA;
+
+        block_end = bytestream2_tell(&gbc) + block_size;
+        // Take into account removed emulation 3bytes, as payload_size in
+        // the bitstream is not aware of them.
+        for (; skipped_byte_pos < nal->skipped_bytes; skipped_byte_pos++) {
+            if (nal->skipped_bytes_pos[skipped_byte_pos] >= block_end)
+                break;
+            raw_block_size++;
+        }
+
+        switch (payload_type) {
+        case LCEVC_PAYLOAD_TYPE_SEQUENCE_CONFIG:
+        case LCEVC_PAYLOAD_TYPE_GLOBAL_CONFIG:
+        case LCEVC_PAYLOAD_TYPE_ADDITIONAL_INFO:
+            if (remove)
+                break;
+            bytestream2_put_buffer(pbc, raw_gbc.buffer, raw_block_size);
+            sc |= payload_type == LCEVC_PAYLOAD_TYPE_SEQUENCE_CONFIG;
+            gc |= payload_type == LCEVC_PAYLOAD_TYPE_GLOBAL_CONFIG;
+            break;
+        default:
+            if (!remove)
+                break;
+            bytestream2_put_buffer(pbc, raw_gbc.buffer, raw_block_size);
+            break;
+        }
+
+        bytestream2_skip(&gbc, block_size);
+        bytestream2_skip(&raw_gbc, raw_block_size);
+    }
+
+    if (!remove && !sc && !gc)
+        return AVERROR_INVALIDDATA;
+
+    bytestream2_put_byte(pbc, 0x80); // rbsp_alignment bits
+
+    return bytestream2_tell_p(pbc);
+}
+
+static int extract_extradata_lcevc(AVBSFContext *ctx, AVPacket *pkt,
+                                   uint8_t **data, int *size)
+{
+    static const int extradata_nal_types[] = {
+        LCEVC_IDR_NUT, LCEVC_NON_IDR_NUT,
+    };
+
+    ExtractExtradataContext *s = ctx->priv_data;
+    PutByteContext pb_extradata;
+    int extradata_size = 0, filtered_size = 0;
+    size_t nb_extradata_nal_types = FF_ARRAY_ELEMS(extradata_nal_types);
+    int i, ret = 0;
+
+    ret = ff_h2645_packet_split(&s->h2645_pkt, pkt->data, pkt->size,
+                                ctx, 0, ctx->par_in->codec_id, H2645_FLAG_SMALL_PADDING);
+    if (ret < 0)
+        return ret;
+
+    for (i = 0; i < s->h2645_pkt.nb_nals; i++) {
+        H2645NAL *nal = &s->h2645_pkt.nals[i];
+        if (val_in_array(extradata_nal_types, nb_extradata_nal_types, nal->type)) {
+            // dummy pass to find sc, gc or ai. A dummy pointer is used to prevent
+            // UB in PutByteContext. Nothing will be written.
+            bytestream2_init_writer(&pb_extradata, nal->data, 0);
+            if (!write_lcevc_nalu(ctx, &pb_extradata, nal, 0))
+                extradata_size += nal->raw_size + 3;
+        }
+        filtered_size += nal->raw_size + 3;
+    }
+
+    if (extradata_size) {
+        AVBufferRef *filtered_buf = NULL;
+        PutByteContext pb_filtered_data;
+        uint8_t *extradata;
+
+        if (s->remove) {
+            filtered_buf = av_buffer_alloc(filtered_size + AV_INPUT_BUFFER_PADDING_SIZE);
+            if (!filtered_buf) {
+                return AVERROR(ENOMEM);
+            }
+            memset(filtered_buf->data + filtered_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+        }
+
+        extradata = av_malloc(extradata_size + AV_INPUT_BUFFER_PADDING_SIZE);
+        if (!extradata) {
+            av_buffer_unref(&filtered_buf);
+            return AVERROR(ENOMEM);
+        }
+
+        bytestream2_init_writer(&pb_extradata, extradata, extradata_size);
+        if (s->remove)
+            bytestream2_init_writer(&pb_filtered_data, filtered_buf->data, filtered_size);
+
+        for (i = 0; i < s->h2645_pkt.nb_nals; i++) {
+            H2645NAL *nal = &s->h2645_pkt.nals[i];
+            if (val_in_array(extradata_nal_types, nb_extradata_nal_types,
+                             nal->type)) {
+                bytestream2_put_be24(&pb_extradata, 1); //startcode
+                ret = write_lcevc_nalu(ctx, &pb_extradata, nal, 0);
+                if (ret < 0) {
+                    av_freep(&extradata);
+                    av_buffer_unref(&filtered_buf);
+                    return ret;
+                }
+                if (s->remove) {
+                    bytestream2_put_be24(&pb_filtered_data, 1); //startcode
+                    ret = write_lcevc_nalu(ctx, &pb_filtered_data, nal, 1);
+                    if (ret < 0) {
+                        av_freep(&extradata);
+                        av_buffer_unref(&filtered_buf);
+                        return ret;
+                    }
+                }
+            } else if (s->remove) {
+                bytestream2_put_be24(&pb_filtered_data, 1); //startcode
+                bytestream2_put_bufferu(&pb_filtered_data, nal->raw_data, nal->raw_size);
+            }
+        }
+        *data = extradata;
+        *size = bytestream2_tell_p(&pb_extradata);
+        av_assert0(*size <= extradata_size);
+
+        if (s->remove) {
+            av_assert0(bytestream2_tell_p(&pb_filtered_data) <= filtered_size);
+            av_buffer_unref(&pkt->buf);
+            pkt->buf  = filtered_buf;
+            pkt->data = filtered_buf->data;
+            pkt->size = bytestream2_tell_p(&pb_filtered_data);
+        }
+    }
+
+    return 0;
+}
+
 static int extract_extradata_vc1(AVBSFContext *ctx, AVPacket *pkt,
                                  uint8_t **data, int *size)
 {
@@ -397,6 +546,7 @@ static const struct {
     { AV_CODEC_ID_CAVS,       extract_extradata_mpeg4   },
     { AV_CODEC_ID_H264,       extract_extradata_h2645   },
     { AV_CODEC_ID_HEVC,       extract_extradata_h2645   },
+    { AV_CODEC_ID_LCEVC,      extract_extradata_lcevc   },
     { AV_CODEC_ID_MPEG1VIDEO, extract_extradata_mpeg12  },
     { AV_CODEC_ID_MPEG2VIDEO, extract_extradata_mpeg12  },
     { AV_CODEC_ID_MPEG4,      extract_extradata_mpeg4   },
@@ -467,6 +617,7 @@ static const enum AVCodecID codec_ids[] = {
     AV_CODEC_ID_CAVS,
     AV_CODEC_ID_H264,
     AV_CODEC_ID_HEVC,
+    AV_CODEC_ID_LCEVC,
     AV_CODEC_ID_MPEG1VIDEO,
     AV_CODEC_ID_MPEG2VIDEO,
     AV_CODEC_ID_MPEG4,

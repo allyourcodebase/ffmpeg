@@ -143,7 +143,7 @@ static const AVOption options[] = {
     { "b_ref_mode",   "Use B frames as references",         OFFSET(b_ref_mode),   AV_OPT_TYPE_INT,   { .i64 = -1 }, -1, NV_ENC_BFRAME_REF_MODE_MIDDLE, VE, .unit = "b_ref_mode" },
     { "disabled",     "B frames will not be used for reference", 0,               AV_OPT_TYPE_CONST, { .i64 = NV_ENC_BFRAME_REF_MODE_DISABLED }, 0, 0, VE, .unit = "b_ref_mode" },
     { "each",         "Each B frame will be used for reference", 0,               AV_OPT_TYPE_CONST, { .i64 = NV_ENC_BFRAME_REF_MODE_EACH }, 0, 0, VE, .unit = "b_ref_mode" },
-    { "middle",       "Only (number of B frames)/2 will be used for reference", 0,AV_OPT_TYPE_CONST, { .i64 = NV_ENC_BFRAME_REF_MODE_MIDDLE },  0, 0, VE, .unit = "b_ref_mode" },
+    { "middle",       "Every other B-frame as Altref2 reference, except last in Altref interval", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_BFRAME_REF_MODE_MIDDLE }, 0, 0, VE, .unit = "b_ref_mode" },
     { "dpb_size",     "Specifies the DPB size used for encoding (0 means automatic)",
                                                             OFFSET(dpb_size),     AV_OPT_TYPE_INT,   { .i64 = 0 }, 0, INT_MAX, VE },
     { "ldkfs",        "Low delay key frame scale; Specifies the Scene Change frame size increase allowed in case of single frame VBV and CBR",
@@ -180,6 +180,9 @@ static const AVOption options[] = {
     { "forced",            "Enabled with number of horizontal strips selected by the driver",                0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_AUTO_FORCED_MODE },  0, 0, VE, .unit = "split_encode_mode" },
     { "2",                 "Enabled with number of horizontal strips forced to 2 when number of NVENCs > 1", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_TWO_FORCED_MODE },   0, 0, VE, .unit = "split_encode_mode" },
     { "3",                 "Enabled with number of horizontal strips forced to 3 when number of NVENCs > 2", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_THREE_FORCED_MODE }, 0, 0, VE, .unit = "split_encode_mode" },
+#ifdef NVENC_HAVE_SFE_FOUR_WAYS_SUPPORT
+    { "4",                 "Enabled with number of horizontal strips forced to 4 when number of NVENCs > 3", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_FOUR_FORCED_MODE }, 0, 0, VE, .unit = "split_encode_mode" },
+#endif
 #endif
     { NULL }
 };

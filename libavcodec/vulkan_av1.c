@@ -252,9 +252,11 @@ static int vk_av1_start_frame(AVCodecContext          *avctx,
     int err;
     int ref_count = 0;
     AV1DecContext *s = avctx->priv_data;
+    const AV1RawSequenceHeader *seq = s->raw_seq;
     const AV1Frame *pic = &s->cur_frame;
     FFVulkanDecodeContext *dec = avctx->internal->hwaccel_priv_data;
     uint32_t frame_id_alloc_mask = 0;
+    uint16_t sb_shift = seq->use_128x128_superblock ? 5 : 4;
 
     AV1VulkanDecodePicture *ap = pic->hwaccel_picture_private;
     FFVulkanDecodePicture *vp = &ap->vp;
@@ -498,8 +500,8 @@ static int vk_av1_start_frame(AVCodecContext          *avctx,
     for (int i = 0; i < 64; i++) {
         ap->width_in_sbs_minus1[i] = frame_header->width_in_sbs_minus_1[i];
         ap->height_in_sbs_minus1[i] = frame_header->height_in_sbs_minus_1[i];
-        ap->mi_col_starts[i] = frame_header->tile_start_col_sb[i];
-        ap->mi_row_starts[i] = frame_header->tile_start_row_sb[i];
+        ap->mi_col_starts[i] = frame_header->tile_start_col_sb[i] << sb_shift;
+        ap->mi_row_starts[i] = frame_header->tile_start_row_sb[i] << sb_shift;
     }
 
     for (int i = 0; i < STD_VIDEO_AV1_MAX_SEGMENTS; i++) {
@@ -634,7 +636,7 @@ static int vk_av1_end_frame(AVCodecContext *avctx)
         rav[i] = ap->ref_src[i]->f;
     }
 
-    av_log(avctx, AV_LOG_DEBUG, "Decoding frame, %"SIZE_SPECIFIER" bytes, %i tiles\n",
+    av_log(avctx, AV_LOG_DEBUG, "Decoding frame, %zu bytes, %i tiles\n",
            vp->slices_size, ap->av1_pic_info.tileCount);
 
     return ff_vk_decode_frame(avctx, pic->f, vp, rav, rvp);
@@ -662,7 +664,6 @@ const FFHWAccel ff_av1_vulkan_hwaccel = {
     .init                  = &ff_vk_decode_init,
     .update_thread_context = &ff_vk_update_thread_context,
     .decode_params         = &ff_vk_params_invalidate,
-    .flush                 = &ff_vk_decode_flush,
     .uninit                = &ff_vk_decode_uninit,
     .frame_params          = &ff_vk_frame_params,
     .priv_data_size        = sizeof(FFVulkanDecodeContext),

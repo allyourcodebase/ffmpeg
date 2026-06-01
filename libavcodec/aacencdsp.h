@@ -50,7 +50,7 @@ static inline void quantize_bands(int *out, const float *in, const float *scaled
 {
     for (int i = 0; i < size; i++) {
         float qc = scaled[i] * Q34;
-        int tmp = (int)FFMIN(qc + rounding, (float)maxval);
+        int tmp = (int)FFMIN((float)(qc + rounding), (float)maxval);
         if (is_signed && in[i] < 0.0f) {
             tmp = -tmp;
         }
@@ -65,7 +65,7 @@ static inline void ff_aacenc_dsp_init(AACEncDSPContext *s)
 
 #if ARCH_RISCV
     ff_aacenc_dsp_init_riscv(s);
-#elif ARCH_X86
+#elif ARCH_X86 && HAVE_X86ASM
     ff_aacenc_dsp_init_x86(s);
 #elif ARCH_AARCH64
     ff_aacenc_dsp_init_aarch64(s);

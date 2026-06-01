@@ -906,6 +906,7 @@ av_cold int ff_ffv1_encode_setup_plane_info(AVCodecContext *avctx,
         s->use32bit = 1;
         s->version = FFMAX(s->version, 1);
         break;
+    case AV_PIX_FMT_GBRP:
     case AV_PIX_FMT_0RGB32:
         s->colorspace = 1;
         s->chroma_planes = 1;
@@ -914,6 +915,8 @@ av_cold int ff_ffv1_encode_setup_plane_info(AVCodecContext *avctx,
     case AV_PIX_FMT_GBRP9:
         if (!avctx->bits_per_raw_sample)
             s->bits_per_raw_sample = 9;
+    case AV_PIX_FMT_X2BGR10:
+    case AV_PIX_FMT_X2RGB10:
     case AV_PIX_FMT_GBRP10:
     case AV_PIX_FMT_GBRAP10:
         if (!avctx->bits_per_raw_sample && !s->bits_per_raw_sample)

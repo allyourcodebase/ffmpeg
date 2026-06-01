@@ -30,12 +30,12 @@
 #include "internal.h"
 #include "mux.h"
 
+#include "libavutil/attributes_internal.h"
+#include "libavutil/bprint.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/mathematics.h"
-
-#define MAX_FILENAME_SIZE 1024
 
 typedef struct WebMChunkContext {
     const AVClass *class;
@@ -52,7 +52,6 @@ typedef struct WebMChunkContext {
 static int webm_chunk_init(AVFormatContext *s)
 {
     WebMChunkContext *wc = s->priv_data;
-    const AVOutputFormat *oformat;
     AVFormatContext *oc;
     AVStream *st, *ost = s->streams[0];
     AVDictionary *dict = NULL;
@@ -69,11 +68,9 @@ static int webm_chunk_init(AVFormatContext *s)
 
     wc->prev_pts = AV_NOPTS_VALUE;
 
-    oformat = av_guess_format("webm", s->url, "video/webm");
-    if (!oformat)
-        return AVERROR_MUXER_NOT_FOUND;
+    EXTERN const FFOutputFormat ff_webm_muxer;
 
-    ret = avformat_alloc_output_context2(&wc->avf, oformat, NULL, NULL);
+    ret = avformat_alloc_output_context2(&wc->avf, &ff_webm_muxer.p, NULL, NULL);
     if (ret < 0)
         return ret;
     oc = wc->avf;
@@ -133,16 +130,13 @@ fail:
     return 0;
 }
 
-static int get_chunk_filename(AVFormatContext *s, char filename[MAX_FILENAME_SIZE])
+static int get_chunk_filename(AVFormatContext *s, AVBPrint *filename)
 {
     WebMChunkContext *wc = s->priv_data;
-    if (!filename) {
-        return AVERROR(EINVAL);
-    }
-    if (av_get_frame_filename(filename, MAX_FILENAME_SIZE,
-                              s->url, wc->chunk_index - 1) < 0) {
+    int ret = ff_bprint_get_frame_filename(filename, s->url, wc->chunk_index - 1, 0);
+    if (ret < 0) {
         av_log(s, AV_LOG_ERROR, "Invalid chunk filename template '%s'\n", s->url);
-        return AVERROR(EINVAL);
+        return ret;
     }
     return 0;
 }
@@ -185,7 +179,7 @@ static int chunk_end(AVFormatContext *s, int flush)
     int buffer_size;
     uint8_t *buffer;
     AVIOContext *pb;
-    char filename[MAX_FILENAME_SIZE];
+    AVBPrint filename;
     AVDictionary *options = NULL;
 
     if (!oc->pb)
@@ -196,19 +190,21 @@ static int chunk_end(AVFormatContext *s, int flush)
         av_write_frame(oc, NULL);
     buffer_size = avio_close_dyn_buf(oc->pb, &buffer);
     oc->pb = NULL;
-    ret = get_chunk_filename(s, filename);
+    av_bprint_init(&filename, 0, AV_BPRINT_SIZE_UNLIMITED);
+    ret = get_chunk_filename(s, &filename);
     if (ret < 0)
         goto fail;
     if (wc->http_method)
         if ((ret = av_dict_set(&options, "method", wc->http_method, 0)) < 0)
             goto fail;
-    ret = s->io_open(s, &pb, filename, AVIO_FLAG_WRITE, &options);
+    ret = s->io_open(s, &pb, filename.str, AVIO_FLAG_WRITE, &options);
     av_dict_free(&options);
     if (ret < 0)
         goto fail;
     avio_write(pb, buffer, buffer_size);
     ff_format_io_close(s, &pb);
 fail:
+    av_bprint_finalize(&filename, NULL);
     av_free(buffer);
     return (ret < 0) ? ret : 0;
 }

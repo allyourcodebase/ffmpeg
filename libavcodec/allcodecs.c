@@ -28,11 +28,13 @@
 #include <string.h>
 
 #include "config.h"
+#include "libavutil/avassert.h"
 #include "libavutil/thread.h"
 #include "avcodec.h"
 #include "codec.h"
 #include "codec_id.h"
 #include "codec_internal.h"
+#include "codec_desc.h"
 
 extern const FFCodec ff_a64multi_encoder;
 extern const FFCodec ff_a64multi5_encoder;
@@ -156,11 +158,13 @@ extern const FFCodec ff_h264_mediacodec_encoder;
 extern const FFCodec ff_h264_mmal_decoder;
 extern const FFCodec ff_h264_qsv_decoder;
 extern const FFCodec ff_h264_rkmpp_decoder;
+extern const FFCodec ff_h264_rkmpp_encoder;
 extern const FFCodec ff_hap_encoder;
 extern const FFCodec ff_hap_decoder;
 extern const FFCodec ff_hevc_decoder;
 extern const FFCodec ff_hevc_qsv_decoder;
 extern const FFCodec ff_hevc_rkmpp_decoder;
+extern const FFCodec ff_hevc_rkmpp_encoder;
 extern const FFCodec ff_hevc_v4l2m2m_decoder;
 extern const FFCodec ff_hnm4_video_decoder;
 extern const FFCodec ff_hq_hqa_decoder;
@@ -269,6 +273,7 @@ extern const FFCodec ff_prores_encoder;
 extern const FFCodec ff_prores_decoder;
 extern const FFCodec ff_prores_aw_encoder;
 extern const FFCodec ff_prores_ks_encoder;
+extern const FFCodec ff_prores_ks_vulkan_encoder;
 extern const FFCodec ff_prores_raw_decoder;
 extern const FFCodec ff_prosumer_decoder;
 extern const FFCodec ff_psd_decoder;
@@ -434,6 +439,7 @@ extern const FFCodec ff_ac3_decoder;
 extern const FFCodec ff_ac3_fixed_encoder;
 extern const FFCodec ff_ac3_fixed_decoder;
 extern const FFCodec ff_acelp_kelvin_decoder;
+extern const FFCodec ff_ahx_decoder;
 extern const FFCodec ff_alac_encoder;
 extern const FFCodec ff_alac_decoder;
 extern const FFCodec ff_als_decoder;
@@ -648,6 +654,7 @@ extern const FFCodec ff_adpcm_agm_decoder;
 extern const FFCodec ff_adpcm_aica_decoder;
 extern const FFCodec ff_adpcm_argo_decoder;
 extern const FFCodec ff_adpcm_argo_encoder;
+extern const FFCodec ff_adpcm_circus_decoder;
 extern const FFCodec ff_adpcm_ct_decoder;
 extern const FFCodec ff_adpcm_dtk_decoder;
 extern const FFCodec ff_adpcm_ea_decoder;
@@ -676,10 +683,15 @@ extern const FFCodec ff_adpcm_ima_dk3_decoder;
 extern const FFCodec ff_adpcm_ima_dk4_decoder;
 extern const FFCodec ff_adpcm_ima_ea_eacs_decoder;
 extern const FFCodec ff_adpcm_ima_ea_sead_decoder;
+extern const FFCodec ff_adpcm_ima_escape_decoder;
+extern const FFCodec ff_adpcm_ima_hvqm2_decoder;
+extern const FFCodec ff_adpcm_ima_hvqm4_decoder;
 extern const FFCodec ff_adpcm_ima_iss_decoder;
+extern const FFCodec ff_adpcm_ima_magix_decoder;
 extern const FFCodec ff_adpcm_ima_moflex_decoder;
 extern const FFCodec ff_adpcm_ima_mtf_decoder;
 extern const FFCodec ff_adpcm_ima_oki_decoder;
+extern const FFCodec ff_adpcm_ima_pda_decoder;
 extern const FFCodec ff_adpcm_ima_qt_encoder;
 extern const FFCodec ff_adpcm_ima_qt_decoder;
 extern const FFCodec ff_adpcm_ima_rad_decoder;
@@ -694,7 +706,9 @@ extern const FFCodec ff_adpcm_ima_xbox_decoder;
 extern const FFCodec ff_adpcm_ms_encoder;
 extern const FFCodec ff_adpcm_ms_decoder;
 extern const FFCodec ff_adpcm_mtaf_decoder;
+extern const FFCodec ff_adpcm_n64_decoder;
 extern const FFCodec ff_adpcm_psx_decoder;
+extern const FFCodec ff_adpcm_psxc_decoder;
 extern const FFCodec ff_adpcm_sanyo_decoder;
 extern const FFCodec ff_adpcm_sbpro_2_decoder;
 extern const FFCodec ff_adpcm_sbpro_3_decoder;
@@ -790,6 +804,7 @@ extern const FFCodec ff_libjxl_encoder;
 extern const FFCodec ff_liblc3_encoder;
 extern const FFCodec ff_liblc3_decoder;
 extern const FFCodec ff_libmp3lame_encoder;
+extern const FFCodec ff_libmpeghdec_decoder;
 extern const FFCodec ff_liboapv_encoder;
 extern const FFCodec ff_libopencore_amrnb_encoder;
 extern const FFCodec ff_libopencore_amrnb_decoder;
@@ -803,6 +818,8 @@ extern const FFCodec ff_libshine_encoder;
 extern const FFCodec ff_libspeex_encoder;
 extern const FFCodec ff_libspeex_decoder;
 extern const FFCodec ff_libsvtav1_encoder;
+extern const FFCodec ff_libsvtjpegxs_encoder;
+extern const FFCodec ff_libsvtjpegxs_decoder;
 extern const FFCodec ff_libtheora_encoder;
 extern const FFCodec ff_libtwolame_encoder;
 extern const FFCodec ff_libuavs3d_decoder;
@@ -845,6 +862,7 @@ extern const FFCodec ff_libaom_av1_decoder;
 /* hwaccel hooks only, so prefer external decoders */
 extern const FFCodec ff_av1_decoder;
 extern const FFCodec ff_av1_cuvid_decoder;
+extern const FFCodec ff_av1_d3d12va_encoder;
 extern const FFCodec ff_av1_mediacodec_decoder;
 extern const FFCodec ff_av1_mediacodec_encoder;
 extern const FFCodec ff_av1_nvenc_encoder;
@@ -860,6 +878,7 @@ extern const FFCodec ff_libopenh264_decoder;
 extern const FFCodec ff_h264_amf_encoder;
 extern const FFCodec ff_h264_amf_decoder;
 extern const FFCodec ff_h264_cuvid_decoder;
+extern const FFCodec ff_h264_d3d12va_encoder;
 extern const FFCodec ff_h264_mf_encoder;
 extern const FFCodec ff_h264_nvenc_encoder;
 extern const FFCodec ff_h264_oh_decoder;
@@ -1001,6 +1020,7 @@ static enum AVCodecID remap_deprecated_codec_id(enum AVCodecID id)
 static const AVCodec *find_codec(enum AVCodecID id, int (*x)(const AVCodec *))
 {
     const AVCodec *p, *experimental = NULL;
+    av_unused const AVCodecDescriptor *desc = avcodec_descriptor_get(id);
     void *i = 0;
 
     id = remap_deprecated_codec_id(id);
@@ -1009,6 +1029,7 @@ static const AVCodec *find_codec(enum AVCodecID id, int (*x)(const AVCodec *))
         if (!x(p))
             continue;
         if (p->id == id) {
+            av_assert1(!desc || !(desc->props & AV_CODEC_PROP_ENHANCEMENT));
             if (p->capabilities & AV_CODEC_CAP_EXPERIMENTAL && !experimental) {
                 experimental = p;
             } else

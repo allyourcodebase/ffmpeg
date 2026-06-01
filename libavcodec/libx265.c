@@ -38,7 +38,6 @@
 #include "codec_internal.h"
 #include "dovi_rpu.h"
 #include "encode.h"
-#include "packet_internal.h"
 #include "atsc_a53.h"
 #include "sei.h"
 
@@ -72,6 +71,7 @@ typedef struct libx265Context {
     char *preset;
     char *tune;
     char *profile;
+    char *stats;
     AVDictionary *x265_opts;
 
     void *sei_data;
@@ -251,6 +251,24 @@ static int handle_side_data(AVCodecContext *avctx, const x265_api *api,
     return 0;
 }
 
+static int get_x265_log_level(AVCodecContext *avctx)
+{
+    int level = av_log_get_level() + avctx->log_level_offset;
+
+    if (level <= AV_LOG_QUIET)
+        return X265_LOG_NONE;
+    if (level <= AV_LOG_ERROR)
+        return X265_LOG_ERROR;
+    if (level <= AV_LOG_WARNING)
+        return X265_LOG_WARNING;
+    if (level <= AV_LOG_INFO)
+        return X265_LOG_INFO;
+    if (level <= AV_LOG_DEBUG)
+        return X265_LOG_DEBUG;
+
+    return X265_LOG_FULL;
+}
+
 static av_cold int libx265_encode_init(AVCodecContext *avctx)
 {
     libx265Context *ctx = avctx->priv_data;
@@ -286,6 +304,7 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
         return AVERROR(EINVAL);
     }
 
+    ctx->params->logLevel = get_x265_log_level(avctx);
     ctx->params->frameNumThreads = avctx->thread_count;
     if (avctx->framerate.num > 0 && avctx->framerate.den > 0) {
         ctx->params->fpsNum      = avctx->framerate.num;
@@ -293,7 +312,6 @@ static av_cold int libx265_encode_init(AVCodecContext *avctx)
     } else {
         ctx->params->fpsNum      = avctx->time_base.den;
         ctx->params->fpsDenom    = avctx->time_base.num;
-FF_ENABLE_DEPRECATION_WARNINGS
     }
     ctx->params->sourceWidth     = avctx->width;
     ctx->params->sourceHeight    = avctx->height;
@@ -531,6 +549,24 @@ FF_ENABLE_DEPRECATION_WARNINGS
         }
     }
 
+    if (avctx->flags & AV_CODEC_FLAG_PASS1) {
+        if (ctx->api->param_parse(ctx->params, "pass", "1") == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid value for param \"pass\".\n");
+            return AVERROR(EINVAL);
+        }
+    } else if (avctx->flags & AV_CODEC_FLAG_PASS2) {
+        if (ctx->api->param_parse(ctx->params, "pass", "2") == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid value for param \"pass\".\n");
+            return AVERROR(EINVAL);
+        }
+    }
+    if (ctx->stats) {
+        if (ctx->api->param_parse(ctx->params, "stats", ctx->stats) == X265_PARAM_BAD_VALUE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid value \"%s\" for param \"stats\".\n", ctx->stats);
+            return AVERROR(EINVAL);
+        }
+    }
+
     if (ctx->params->rc.vbvBufferSize && avctx->rc_initial_buffer_occupancy > 1000 &&
         ctx->params->rc.vbvBufferInit == 0.9) {
         ctx->params->rc.vbvBufferInit = (float)avctx->rc_initial_buffer_occupancy / 1000;
@@ -695,7 +731,6 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     x265_nal *nal;
     x265_sei *sei;
     uint8_t *dst;
-    int pict_type;
     int payload = 0;
     int nnal;
     int ret;
@@ -773,7 +808,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 sei_payload = &sei->payloads[sei->numPayloads];
                 sei_payload->payload = sei_data;
                 sei_payload->payloadSize = sei_size;
-                sei_payload->payloadType = SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35;
+                sei_payload->payloadType = (SEIPayloadType)SEI_TYPE_USER_DATA_REGISTERED_ITU_T_T35;
                 sei->numPayloads++;
             }
         }
@@ -804,7 +839,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
                 }
                 sei_payload->payloadSize = side_data->size;
                 /* Equal to libx265 USER_DATA_UNREGISTERED */
-                sei_payload->payloadType = SEI_TYPE_USER_DATA_UNREGISTERED;
+                sei_payload->payloadType = (SEIPayloadType)SEI_TYPE_USER_DATA_UNREGISTERED;
                 sei->numPayloads++;
             }
         }
@@ -871,6 +906,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     pkt->pts = x265pic_out->pts;
     pkt->dts = x265pic_out->dts;
 
+    enum AVPictureType pict_type;
     switch (x265pic_out->sliceType) {
     case X265_TYPE_IDR:
     case X265_TYPE_I:
@@ -895,7 +931,7 @@ static int libx265_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
 #endif
         pkt->flags |= AV_PKT_FLAG_DISPOSABLE;
 
-    ff_side_data_set_encoder_stats(pkt, x265pic_out->frameData.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
+    ff_encode_add_stats_side_data(pkt, x265pic_out->frameData.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
 
     if (x265pic_out->userData) {
         int idx = (int)(intptr_t)x265pic_out->userData - 1;
@@ -1011,6 +1047,7 @@ static const AVOption options[] = {
     { "preset",      "set the x265 preset",                                                         OFFSET(preset),    AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "tune",        "set the x265 tune parameter",                                                 OFFSET(tune),      AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "profile",     "set the x265 profile",                                                        OFFSET(profile),   AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
+    { "x265-stats",  "Filename for 2 pass stats",                                                   OFFSET(stats),     AV_OPT_TYPE_STRING, { 0 }, 0, 0, VE },
     { "udu_sei",     "Use user data unregistered SEI if available",                                 OFFSET(udu_sei),   AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
     { "a53cc",       "Use A53 Closed Captions (if available)",                                      OFFSET(a53_cc),    AV_OPT_TYPE_BOOL,   { .i64 = 0 }, 0, 1, VE },
     { "x265-params", "set the x265 configuration using a :-separated list of key=value parameters", OFFSET(x265_opts), AV_OPT_TYPE_DICT,   { 0 }, 0, 0, VE },

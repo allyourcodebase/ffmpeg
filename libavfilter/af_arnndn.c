@@ -337,7 +337,7 @@ static int query_formats(const AVFilterContext *ctx,
     };
     int ret, sample_rates[] = { 48000, -1 };
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -361,9 +361,9 @@ static int config_input(AVFilterLink *inlink)
         DenoiseState *st = &s->st[i];
 
         st->rnn[0].model = s->model[0];
-        st->rnn[0].vad_gru_state = av_calloc(sizeof(float), FFALIGN(s->model[0]->vad_gru_size, 16));
-        st->rnn[0].noise_gru_state = av_calloc(sizeof(float), FFALIGN(s->model[0]->noise_gru_size, 16));
-        st->rnn[0].denoise_gru_state = av_calloc(sizeof(float), FFALIGN(s->model[0]->denoise_gru_size, 16));
+        st->rnn[0].vad_gru_state = av_calloc(FFALIGN(s->model[0]->vad_gru_size, 16), sizeof(float));
+        st->rnn[0].noise_gru_state = av_calloc(FFALIGN(s->model[0]->noise_gru_size, 16), sizeof(float));
+        st->rnn[0].denoise_gru_state = av_calloc(FFALIGN(s->model[0]->denoise_gru_size, 16), sizeof(float));
         if (!st->rnn[0].vad_gru_state ||
             !st->rnn[0].noise_gru_state ||
             !st->rnn[0].denoise_gru_state)

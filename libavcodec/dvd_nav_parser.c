@@ -18,9 +18,10 @@
  * License along with FFmpeg; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
+
 #include "avcodec.h"
-#include "get_bits.h"
-#include "parser.h"
+#include "parser_internal.h"
+#include "libavutil/intreadwrite.h"
 
 #define PCI_SIZE  980
 #define DSI_SIZE 1018
@@ -107,9 +108,9 @@ static int dvd_nav_parse(AVCodecParserContext *s,
     return buf_size;
 }
 
-const AVCodecParser ff_dvd_nav_parser = {
-    .codec_ids      = { AV_CODEC_ID_DVD_NAV },
+const FFCodecParser ff_dvd_nav_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_DVD_NAV),
     .priv_data_size = sizeof(DVDNavParseContext),
-    .parser_init    = dvd_nav_parse_init,
-    .parser_parse   = dvd_nav_parse,
+    .init           = dvd_nav_parse_init,
+    .parse          = dvd_nav_parse,
 };

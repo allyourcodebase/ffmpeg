@@ -50,6 +50,7 @@
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/refstruct.h"
 #include "libavutil/slicethread.h"
 #include "libavutil/thread.h"
 #include "libavutil/aarch64/cpu.h"
@@ -62,6 +63,10 @@
 #include "swscale.h"
 #include "swscale_internal.h"
 #include "graph.h"
+
+#if CONFIG_VULKAN
+#include "vulkan/ops.h"
+#endif
 
 /**
  * Allocate and return an SwsContext without performing initialization.
@@ -728,36 +733,37 @@ static av_cold void init_xyz_tables(void)
     }
 }
 
-static int fill_xyztables(SwsInternal *c)
+av_cold int ff_sws_fill_xyztables(SwsInternal *c)
 {
-    static const int16_t xyz2rgb_matrix[3][4] = {
+    static const int16_t xyz2rgb_matrix[3][3] = {
         {13270, -6295, -2041},
         {-3969,  7682,   170},
         {  228,  -835,  4329} };
-    static const int16_t rgb2xyz_matrix[3][4] = {
+    static const int16_t rgb2xyz_matrix[3][3] = {
         {1689, 1464,  739},
         { 871, 2929,  296},
         {  79,  488, 3891} };
 
-    if (c->xyzgamma)
+    if (c->xyz2rgb.gamma.in)
         return 0;
 
-    memcpy(c->xyz2rgb_matrix, xyz2rgb_matrix, sizeof(c->xyz2rgb_matrix));
-    memcpy(c->rgb2xyz_matrix, rgb2xyz_matrix, sizeof(c->rgb2xyz_matrix));
+    memcpy(c->xyz2rgb.mat, xyz2rgb_matrix, sizeof(c->xyz2rgb.mat));
+    memcpy(c->rgb2xyz.mat, rgb2xyz_matrix, sizeof(c->rgb2xyz.mat));
 
 #if CONFIG_SMALL
-    c->xyzgamma = av_malloc(sizeof(uint16_t) * 2 * (4096 + 65536));
-    if (!c->xyzgamma)
+    c->xyz2rgb.gamma.in = av_malloc(sizeof(uint16_t) * 2 * (4096 + 65536));
+    if (!c->xyz2rgb.gamma.in)
         return AVERROR(ENOMEM);
-    c->rgbgammainv = c->xyzgamma + 4096;
-    c->rgbgamma = c->rgbgammainv + 4096;
-    c->xyzgammainv = c->rgbgamma + 65536;
-    init_xyz_tables(c->xyzgamma, c->xyzgammainv, c->rgbgamma, c->rgbgammainv);
+    c->rgb2xyz.gamma.in  = c->xyz2rgb.gamma.in  + 4096;
+    c->xyz2rgb.gamma.out = c->rgb2xyz.gamma.in  + 4096;
+    c->rgb2xyz.gamma.out = c->xyz2rgb.gamma.out + 65536;
+    init_xyz_tables(c->xyz2rgb.gamma.in,  c->rgb2xyz.gamma.out,
+                    c->xyz2rgb.gamma.out, c->rgb2xyz.gamma.in);
 #else
-    c->xyzgamma = xyzgamma_tab;
-    c->rgbgamma = rgbgamma_tab;
-    c->xyzgammainv = xyzgammainv_tab;
-    c->rgbgammainv = rgbgammainv_tab;
+    c->xyz2rgb.gamma.in  = xyzgamma_tab;
+    c->xyz2rgb.gamma.out = rgbgamma_tab;
+    c->rgb2xyz.gamma.in  = rgbgammainv_tab;
+    c->rgb2xyz.gamma.out = xyzgammainv_tab;
 
     static AVOnce xyz_init_static_once = AV_ONCE_INIT;
     ff_thread_once(&xyz_init_static_once, init_xyz_tables);
@@ -765,7 +771,7 @@ static int fill_xyztables(SwsInternal *c)
     return 0;
 }
 
-static int handle_jpeg(enum AVPixelFormat *format)
+static int handle_jpeg(/* enum AVPixelFormat */ int *format)
 {
     switch (*format) {
     case AV_PIX_FMT_YUVJ420P:
@@ -803,7 +809,7 @@ static int handle_jpeg(enum AVPixelFormat *format)
     }
 }
 
-static int handle_0alpha(enum AVPixelFormat *format)
+static int handle_0alpha(/* enum AVPixelFormat */ int *format)
 {
     switch (*format) {
     case AV_PIX_FMT_0BGR    : *format = AV_PIX_FMT_ABGR   ; return 1;
@@ -814,7 +820,7 @@ static int handle_0alpha(enum AVPixelFormat *format)
     }
 }
 
-static int handle_xyz(enum AVPixelFormat *format)
+static int handle_xyz(/* enum AVPixelFormat */ int *format)
 {
     switch (*format) {
     case AV_PIX_FMT_XYZ12BE : *format = AV_PIX_FMT_RGB48BE; return 1;
@@ -831,7 +837,7 @@ static int handle_formats(SwsContext *sws)
     c->srcXYZ    |= handle_xyz(&sws->src_format);
     c->dstXYZ    |= handle_xyz(&sws->dst_format);
     if (c->srcXYZ || c->dstXYZ)
-        return fill_xyztables(c);
+        return ff_sws_fill_xyztables(c);
     else
         return 0;
 }
@@ -1026,7 +1032,7 @@ int sws_getColorspaceDetails(SwsContext *sws, int **inv_table,
 
 SwsContext *sws_alloc_context(void)
 {
-    SwsInternal *c = (SwsInternal *) av_mallocz(sizeof(SwsInternal));
+    SwsInternal *c = av_mallocz(sizeof(*c) + SWSINTERNAL_ADDITIONAL_ASM_SIZE);
     if (!c)
         return NULL;
 
@@ -1207,7 +1213,7 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
         return AVERROR(EINVAL);
     }
     if (flags & SWS_FAST_BILINEAR) {
-        if (srcW < 8 || dstW < 8) {
+        if (srcW < 8 || dstW <= 8) {
             flags ^= SWS_FAST_BILINEAR | SWS_BILINEAR;
             sws->flags = flags;
         }
@@ -1741,24 +1747,9 @@ av_cold int ff_sws_init_single_context(SwsContext *sws, SwsFilter *srcFilter,
         }
 
 #if HAVE_ALTIVEC
-        c->vYCoeffsBank = av_malloc_array(sws->dst_h, c->vLumFilterSize * sizeof(*c->vYCoeffsBank));
-        c->vCCoeffsBank = av_malloc_array(c->chrDstH, c->vChrFilterSize * sizeof(*c->vCCoeffsBank));
-        if (c->vYCoeffsBank == NULL || c->vCCoeffsBank == NULL)
-            goto nomem;
-
-        for (i = 0; i < c->vLumFilterSize * sws->dst_h; i++) {
-            int j;
-            short *p = (short *)&c->vYCoeffsBank[i];
-            for (j = 0; j < 8; j++)
-                p[j] = c->vLumFilter[i];
-        }
-
-        for (i = 0; i < c->vChrFilterSize * c->chrDstH; i++) {
-            int j;
-            short *p = (short *)&c->vCCoeffsBank[i];
-            for (j = 0; j < 8; j++)
-                p[j] = c->vChrFilter[i];
-        }
+        ret = ff_sws_init_altivec_bufs(c);
+        if (ret < 0)
+            goto fail;
 #endif
     }
 
@@ -1911,6 +1902,7 @@ av_cold int sws_init_context(SwsContext *sws, SwsFilter *srcFilter,
     enum AVPixelFormat src_format, dst_format;
     int ret;
 
+    c->is_legacy_init = 1;
     c->frame_src = av_frame_alloc();
     c->frame_dst = av_frame_alloc();
     if (!c->frame_src || !c->frame_dst)
@@ -2275,6 +2267,8 @@ void sws_freeContext(SwsContext *sws)
     if (!c)
         return;
 
+    av_refstruct_unref(&c->hw_priv);
+
     for (i = 0; i < FF_ARRAY_ELEMS(c->graph); i++)
         ff_sws_graph_free(&c->graph[i]);
 
@@ -2298,8 +2292,7 @@ void sws_freeContext(SwsContext *sws)
     av_freep(&c->hLumFilter);
     av_freep(&c->hChrFilter);
 #if HAVE_ALTIVEC
-    av_freep(&c->vYCoeffsBank);
-    av_freep(&c->vCCoeffsBank);
+    ff_sws_free_altivec_bufs(c);
 #endif
 
     av_freep(&c->vLumFilterPos);
@@ -2339,7 +2332,7 @@ void sws_freeContext(SwsContext *sws)
     av_freep(&c->gamma);
     av_freep(&c->inv_gamma);
 #if CONFIG_SMALL
-    av_freep(&c->xyzgamma);
+    av_freep(&c->xyz2rgb.gamma.in);
 #endif
 
     av_freep(&c->rgb0_scratch);

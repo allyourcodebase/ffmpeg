@@ -240,7 +240,7 @@ int ff_iamf_add_audio_element(IAMFContext *iamf, const AVStreamGroup *stg, void 
             av_log(log_ctx, AV_LOG_ERROR, "Invalid channel layout for SCENE_BASED audio element\n");
             return AVERROR(EINVAL);
         }
-        if (layer->ambisonics_mode >= AV_IAMF_AMBISONICS_MODE_PROJECTION) {
+        if (layer->ambisonics_mode > AV_IAMF_AMBISONICS_MODE_PROJECTION) {
             av_log(log_ctx, AV_LOG_ERROR, "Unsupported ambisonics mode %d\n", layer->ambisonics_mode);
             return AVERROR_PATCHWELCOME;
         }
@@ -670,16 +670,25 @@ static int ambisonics_config(const IAMFAudioElement *audio_element,
     if (audio_element->nb_substreams != ilayer->substream_count)
         return AVERROR(EINVAL);
 
-    ffio_write_leb(dyn_bc, 0); // ambisonics_mode
+    ffio_write_leb(dyn_bc, layer->ambisonics_mode);
     avio_w8(dyn_bc, layer->ch_layout.nb_channels); // output_channel_count
     avio_w8(dyn_bc, audio_element->nb_substreams); // substream_count
 
-    if (layer->ch_layout.order == AV_CHANNEL_ORDER_AMBISONIC)
-        for (int i = 0; i < layer->ch_layout.nb_channels; i++)
-            avio_w8(dyn_bc, i);
-    else
-        for (int i = 0; i < layer->ch_layout.nb_channels; i++)
-            avio_w8(dyn_bc, layer->ch_layout.u.map[i].id);
+    if (layer->ambisonics_mode == AV_IAMF_AMBISONICS_MODE_MONO) {
+        if (layer->ch_layout.order == AV_CHANNEL_ORDER_AMBISONIC)
+            for (int i = 0; i < layer->ch_layout.nb_channels; i++)
+                avio_w8(dyn_bc, i);
+        else
+            for (int i = 0; i < layer->ch_layout.nb_channels; i++)
+                avio_w8(dyn_bc, layer->ch_layout.u.map[i].id);
+    } else {
+        int nb_demixing_matrix = (ilayer->coupled_substream_count + ilayer->substream_count) * layer->ch_layout.nb_channels;
+        if (nb_demixing_matrix != layer->nb_demixing_matrix)
+            return AVERROR(EINVAL);
+        avio_w8(dyn_bc, ilayer->coupled_substream_count);
+        for (int i = 0; i < layer->nb_demixing_matrix; i++)
+            avio_wb16(dyn_bc, rescale_rational(layer->demixing_matrix[i], 1 << 15));
+    }
 
     return 0;
 }
@@ -762,8 +771,16 @@ static int iamf_write_audio_element(const IAMFContext *iamf,
         int layout = 0, expanded_layout = 0;
         get_loudspeaker_layout(element->layers[0], &layout, &expanded_layout);
         /* When the loudspeaker_layout = 15, the type PARAMETER_DEFINITION_DEMIXING SHALL NOT be present. */
-        if (layout == 15)
+        if (layout == 15) {
             param_definition_types &= ~AV_IAMF_PARAMETER_DEFINITION_DEMIXING;
+            /* expanded_loudspeaker_layout SHALL only be present when num_layers = 1 and loudspeaker_layout is set to 15 */
+            if (element->nb_layers > 1) {
+                av_log(log_ctx, AV_LOG_ERROR, "expanded_loudspeaker_layout present when using more than one layer in "
+                                              "Stream Group #%u\n",
+                       audio_element->audio_element_id);
+                return AVERROR(EINVAL);
+            }
+        }
         /* When the loudspeaker_layout of the (non-)scalable channel audio (i.e., num_layers = 1) is less than or equal to 3.1.2ch,
          * (i.e., Mono, Stereo, or 3.1.2ch), the type PARAMETER_DEFINITION_DEMIXING SHALL NOT be present. */
         else if (element->nb_layers == 1 && (layout == 0 || layout == 1 || layout == 8))
@@ -1134,7 +1151,7 @@ static int write_parameter_block(const IAMFContext *iamf, AVIOContext *pb,
             break;
         }
         default:
-            av_assert0(0);
+            av_unreachable("param_definition_type should have been checked above");
         }
     }
 

@@ -406,6 +406,7 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
         int substream_count, coupled_substream_count;
         int expanded_loudspeaker_layout = -1;
         int ret, byte = avio_r8(pb);
+        int channels;
 
         layer = av_iamf_audio_element_add_layer(audio_element->element);
         if (!layer)
@@ -418,7 +419,8 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
         substream_count = avio_r8(pb);
         coupled_substream_count = avio_r8(pb);
 
-        if (substream_count + k > audio_element->nb_substreams)
+        if (!substream_count || coupled_substream_count > substream_count ||
+            substream_count + k > audio_element->nb_substreams)
             return AVERROR_INVALIDDATA;
 
         audio_element->layers[i].substream_count         = substream_count;
@@ -428,8 +430,14 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
             layer->output_gain = av_make_q(sign_extend(avio_rb16(pb), 16), 1 << 8);
         }
 
-        if (!i && loudspeaker_layout == 15)
+        if (loudspeaker_layout == 15) {
+            if (i) {
+                av_log(s, AV_LOG_ERROR, "expanded_loudspeaker_layout set with more than one layer in Audio Element #%d\n",
+                       audio_element->audio_element_id);
+                return AVERROR_INVALIDDATA;
+            }
             expanded_loudspeaker_layout = avio_r8(pb);
+        }
         if (expanded_loudspeaker_layout >= 0 && expanded_loudspeaker_layout < 13) {
             av_channel_layout_copy(&ch_layout, &ff_iamf_expanded_scalable_ch_layouts[expanded_loudspeaker_layout]);
         } else if (loudspeaker_layout < 10) {
@@ -451,7 +459,13 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
             return AVERROR_PATCHWELCOME;
         }
 
-        if (i && ch_layout.nb_channels <= audio_element->element->layers[i-1]->ch_layout.nb_channels)
+        channels = ch_layout.nb_channels;
+        if (i) {
+            if (ch_layout.nb_channels <= audio_element->element->layers[i-1]->ch_layout.nb_channels)
+                return AVERROR_INVALIDDATA;
+            channels -= audio_element->element->layers[i-1]->ch_layout.nb_channels;
+        }
+        if (channels != substream_count + coupled_substream_count)
             return AVERROR_INVALIDDATA;
 
         for (int j = 0; j < substream_count; j++) {
@@ -488,6 +502,9 @@ static int scalable_channel_layout_config(void *s, AVIOContext *pb,
                     ch_layout.u.mask &= ~AV_CH_LOW_FREQUENCY;
                 }
             }
+
+            if (n != ch_layout.nb_channels)
+                return AVERROR_INVALIDDATA;
 
             ret = av_channel_layout_retype(&layer->ch_layout, AV_CHANNEL_ORDER_NATIVE, 0);
             if (ret < 0 && ret != AVERROR(ENOSYS))
@@ -558,17 +575,19 @@ static int ambisonics_config(void *s, AVIOContext *pb,
             return ret;
     } else {
         int coupled_substream_count = avio_r8(pb);  // M
-        int nb_demixing_matrix = substream_count + coupled_substream_count;
-        int demixing_matrix_size = nb_demixing_matrix * output_channel_count;
+        int count = substream_count + coupled_substream_count;
+        int nb_demixing_matrix = count * output_channel_count;
 
         audio_element->layers->coupled_substream_count = coupled_substream_count;
 
         layer->ch_layout = (AVChannelLayout){ .order = AV_CHANNEL_ORDER_AMBISONIC, .nb_channels = output_channel_count };
-        layer->demixing_matrix = av_malloc_array(demixing_matrix_size, sizeof(*layer->demixing_matrix));
+        layer->demixing_matrix = av_malloc_array(nb_demixing_matrix, sizeof(*layer->demixing_matrix));
         if (!layer->demixing_matrix)
             return AVERROR(ENOMEM);
 
-        for (int i = 0; i < demixing_matrix_size; i++)
+        layer->nb_demixing_matrix = nb_demixing_matrix;
+
+        for (int i = 0; i < layer->nb_demixing_matrix; i++)
             layer->demixing_matrix[i] = av_make_q(sign_extend(avio_rb16(pb), 16), 1 << 15);
 
         for (int i = 0; i < substream_count; i++) {
@@ -614,13 +633,29 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
         duration = ffio_read_leb(pb);
         if (!duration)
             return AVERROR_INVALIDDATA;
+        if (audio_element) {
+            const IAMFCodecConfig *codec_config = ff_iamf_get_codec_config(c, audio_element->codec_config_id);
+            if (duration > av_rescale(codec_config->nb_samples, codec_config->sample_rate, parameter_rate)) {
+                av_log(s, AV_LOG_ERROR, "Invalid block duration in parameter_id %u\n", parameter_id);
+                return AVERROR_INVALIDDATA;
+            }
+        }
         constant_subblock_duration = ffio_read_leb(pb);
         if (constant_subblock_duration == 0)
             nb_subblocks = ffio_read_leb(pb);
         else {
+            if (constant_subblock_duration > duration) {
+                av_log(s, AV_LOG_ERROR, "Invalid block duration in parameter_id %u\n", parameter_id);
+                return AVERROR_INVALIDDATA;
+            }
             nb_subblocks = duration / constant_subblock_duration;
             total_duration = duration;
         }
+    }
+
+    if (nb_subblocks > duration) {
+        av_log(s, AV_LOG_ERROR, "Invalid duration or subblock count in parameter_id %u\n", parameter_id);
+        return AVERROR_INVALIDDATA;
     }
 
     param = av_iamf_param_definition_alloc(type, nb_subblocks, &param_size);
@@ -633,6 +668,11 @@ static int param_parse(void *s, IAMFContext *c, AVIOContext *pb,
 
         if (constant_subblock_duration == 0) {
             subblock_duration = ffio_read_leb(pb);
+            if (duration - total_duration > subblock_duration) {
+                av_log(s, AV_LOG_ERROR, "Invalid subblock durations in parameter_id %u\n", parameter_id);
+                av_free(param);
+                return AVERROR_INVALIDDATA;
+            }
             total_duration += subblock_duration;
         } else if (i == nb_subblocks - 1)
             subblock_duration = duration - i * constant_subblock_duration;
@@ -876,7 +916,7 @@ static int audio_element_obu(void *s, IAMFContext *c, AVIOContext *pb, int len)
         if (ret < 0)
             goto fail;
     } else {
-        av_assert0(0);
+        av_unreachable("audio_element_type should have been checked above");
     }
 
     c->audio_elements[c->nb_audio_elements++] = audio_element;
@@ -1042,7 +1082,7 @@ static int mix_presentation_obu(void *s, IAMFContext *c, AVIOContext *pb, int le
             avio_skip(pbc, rendering_config_extension_size);
 
             ret = param_parse(s, c, pbc, AV_IAMF_PARAMETER_DEFINITION_MIX_GAIN,
-                              NULL,
+                              audio_element,
                               &submix_element->element_mix_config);
             if (ret < 0)
                 goto fail;

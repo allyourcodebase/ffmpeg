@@ -26,6 +26,7 @@
 #include "libavcodec/bytestream.h"
 #include "libavcodec/codec_id.h"
 #include "libavcodec/smpte_436m.h"
+#include "libavutil/attributes_internal.h"
 #include "libavutil/avstring.h"
 #include "libavutil/avutil.h"
 #include "libavutil/error.h"
@@ -84,7 +85,7 @@ typedef struct alias {
 #define CCPAD "\xFA\x0\x0"
 #define CCPAD3 CCPAD CCPAD CCPAD
 
-static const char cc_pad[27] = CCPAD3 CCPAD3 CCPAD3;
+static attribute_nonstring const char cc_pad[27] = CCPAD3 CCPAD3 CCPAD3;
 
 static const alias aliases[20] = {
     // clang-format off
@@ -155,10 +156,10 @@ static int time_tracker_set_time(TimeTracker *tt, const MCCTimecode *tc, void *l
 
 struct ValidTimeCodeRate {
     AVRational  rate;
-    const char *str;
+    char        str[5];
 };
 
-static struct ValidTimeCodeRate valid_time_code_rates[] = {
+static const struct ValidTimeCodeRate valid_time_code_rates[] = {
     { .rate = { .num = 24, .den = 1 },       .str = "24"   },
     { .rate = { .num = 25, .den = 1 },       .str = "25"   },
     { .rate = { .num = 30000, .den = 1001 }, .str = "30DF" },

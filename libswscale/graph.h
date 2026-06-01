@@ -24,30 +24,15 @@
 #include <stdbool.h>
 
 #include "libavutil/slicethread.h"
+#include "libavutil/buffer.h"
+
 #include "swscale.h"
 #include "format.h"
-
-/**
- * Represents a view into a single field of frame data.
- */
-typedef struct SwsImg {
-    enum AVPixelFormat fmt;
-    uint8_t *data[4]; /* points to y=0 */
-    int linesize[4];
-} SwsImg;
 
 static av_always_inline av_const int ff_fmt_vshift(enum AVPixelFormat fmt, int plane)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(fmt);
     return (plane == 1 || plane == 2) ? desc->log2_chroma_h : 0;
-}
-
-static av_const inline SwsImg ff_sws_img_shift(const SwsImg *base, const int y)
-{
-    SwsImg img = *base;
-    for (int i = 0; i < 4 && img.data[i]; i++)
-        img.data[i] += (y >> ff_fmt_vshift(img.fmt, i)) * img.linesize[i];
-    return img;
 }
 
 typedef struct SwsPass  SwsPass;
@@ -57,8 +42,18 @@ typedef struct SwsGraph SwsGraph;
  * Output `h` lines of filtered data. `out` and `in` point to the
  * start of the image buffer for this pass.
  */
-typedef void (*sws_filter_run_t)(const SwsImg *out, const SwsImg *in,
+typedef void (*sws_filter_run_t)(const SwsFrame *out, const SwsFrame *in,
                                  int y, int h, const SwsPass *pass);
+
+/**
+ * Represents an allocated output buffer for a filter pass.
+ */
+typedef struct SwsPassBuffer {
+    SwsFrame frame;
+
+    int width, height; /* dimensions of this buffer */
+    AVFrame *avframe;  /* backing storage for `frame` */
+} SwsPassBuffer;
 
 /**
  * Represents a single filter pass in the scaling graph. Each filter will
@@ -88,14 +83,12 @@ struct SwsPass {
     /**
      * Filter output buffer. Allocated on demand and freed automatically.
      */
-    SwsImg output;
+    SwsPassBuffer *output; /* refstruct */
 
     /**
      * Called once from the main thread before running the filter. Optional.
-     * `out` and `in` always point to the main image input/output, regardless
-     * of `input` and `output` fields.
      */
-    void (*setup)(const SwsImg *out, const SwsImg *in, const SwsPass *pass);
+    void (*setup)(const SwsFrame *out, const SwsFrame *in, const SwsPass *pass);
 
     /**
      * Optional private state and associated free() function.
@@ -114,6 +107,8 @@ typedef struct SwsGraph {
     bool incomplete; /* set during init() if formats had to be inferred */
     bool noop;       /* set during init() if the graph is a no-op */
 
+    AVBufferRef *hw_frames_ref;
+
     /** Sorted sequence of filter passes to apply */
     SwsPass **passes;
     int num_passes;
@@ -130,11 +125,14 @@ typedef struct SwsGraph {
     SwsFormat src, dst;
     int field;
 
-    /** Temporary execution state inside ff_sws_graph_run */
+    /**
+     * Temporary execution state inside ff_sws_graph_run(); used to pass
+     * data to worker threads.
+     */
     struct {
         const SwsPass *pass; /* current filter pass */
-        SwsImg input;
-        SwsImg output;
+        const SwsFrame *input; /* current filter pass input/output */
+        const SwsFrame *output;
     } exec;
 } SwsGraph;
 
@@ -156,11 +154,13 @@ int ff_sws_graph_create(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *
  * @param align  Minimum slice alignment for this pass, or 0 for no threading.
  * @param priv   Private state for the filter run function.
  * @param run    Filter function to run.
- * @return The newly created pass, or NULL on error.
+ * @param out_pass The newly added pass will be written here on success.
+ * @return 0 or a negative error code
  */
-SwsPass *ff_sws_graph_add_pass(SwsGraph *graph, enum AVPixelFormat fmt,
-                               int width, int height, SwsPass *input,
-                               int align, void *priv, sws_filter_run_t run);
+int ff_sws_graph_add_pass(SwsGraph *graph, enum AVPixelFormat fmt,
+                          int width, int height, SwsPass *input,
+                          int align, void *priv, sws_filter_run_t run,
+                          SwsPass **out_pass);
 
 /**
  * Uninitialize any state associate with this filter graph and free it.
@@ -182,11 +182,9 @@ int ff_sws_graph_reinit(SwsContext *ctx, const SwsFormat *dst, const SwsFormat *
                         int field, SwsGraph **graph);
 
 /**
- * Dispatch the filter graph on a single field. Internally threaded.
+ * Dispatch the filter graph on a single field of the given frames. Internally
+ * threaded.
  */
-void ff_sws_graph_run(SwsGraph *graph, uint8_t *const out_data[4],
-                      const int out_linesize[4],
-                      const uint8_t *const in_data[4],
-                      const int in_linesize[4]);
+void ff_sws_graph_run(SwsGraph *graph, const AVFrame *dst, const AVFrame *src);
 
 #endif /* SWSCALE_GRAPH_H */

@@ -145,7 +145,6 @@ typedef struct MXFSequence {
     UID *structural_components_refs;
     int structural_components_count;
     int64_t duration;
-    uint8_t origin;
 } MXFSequence;
 
 typedef struct MXFTimecodeComponent {
@@ -189,6 +188,7 @@ typedef struct {
     int body_sid;
     MXFWrappingScheme wrapping;
     int edit_units_per_packet; /* how many edit units to read at a time (PCM, ClipWrapped) */
+    int64_t origin;
 } MXFTrack;
 
 typedef struct MXFDescriptor {
@@ -1155,6 +1155,9 @@ static int mxf_read_track(void *arg, AVIOContext *pb, int tag, int size, UID uid
         track->edit_rate.num = avio_rb32(pb);
         track->edit_rate.den = avio_rb32(pb);
         break;
+    case 0x4b02:
+        track->origin = avio_rb64(pb);
+        break;
     case 0x4803:
         avio_read(pb, track->sequence_ref, 16);
         break;
@@ -1171,9 +1174,6 @@ static int mxf_read_sequence(void *arg, AVIOContext *pb, int tag, int size, UID 
         break;
     case 0x0201:
         avio_read(pb, sequence->data_definition_ul, 16);
-        break;
-        case 0x4b02:
-        sequence->origin = avio_r8(pb);
         break;
     case 0x1001:
         return mxf_read_strong_ref_array(pb, &sequence->structural_components_refs,
@@ -1966,16 +1966,6 @@ static int mxf_edit_unit_absolute_offset(MXFContext *mxf, MXFIndexTable *index_t
                     s->edit_unit_byte_count * index > INT64_MAX - offset_temp)
                     return AVERROR_INVALIDDATA;
 
-<<<<<<< HEAD
-            if (s->edit_unit_byte_count) {
-                if (index > INT64_MAX / s->edit_unit_byte_count ||
-                    s->edit_unit_byte_count * index > INT64_MAX - offset_temp)
-                    return AVERROR_INVALIDDATA;
-
-||||||| e7d938073e
-            if (s->edit_unit_byte_count)
-=======
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
                 offset_temp += s->edit_unit_byte_count * index;
             } else {
                 if (s->nb_index_entries == 2 * s->index_duration + 1)
@@ -3035,11 +3025,11 @@ static int mxf_parse_structural_metadata(MXFContext *mxf)
                 }
             }
             sti->need_parsing = AVSTREAM_PARSE_HEADERS;
-            if (material_track->sequence->origin) {
-                av_dict_set_int(&st->metadata, "material_track_origin", material_track->sequence->origin, 0);
+            if (material_track->origin) {
+                av_dict_set_int(&st->metadata, "material_track_origin", material_track->origin, 0);
             }
-            if (source_track->sequence->origin) {
-                av_dict_set_int(&st->metadata, "source_track_origin", source_track->sequence->origin, 0);
+            if (source_track->origin) {
+                av_dict_set_int(&st->metadata, "source_track_origin", source_track->origin, 0);
             }
             if (descriptor->aspect_ratio.num && descriptor->aspect_ratio.den)
                 sti->display_aspect_ratio = descriptor->aspect_ratio;

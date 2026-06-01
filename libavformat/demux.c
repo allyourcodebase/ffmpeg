@@ -224,6 +224,10 @@ static int update_stream_avctx(AVFormatContext *s)
     return 0;
 }
 
+static av_always_inline int is_id3v2_format(const AVInputFormat *fmt) {
+    return ffifmt(fmt)->flags_internal & FF_INFMT_FLAG_ID3V2_AUTO;
+}
+
 int avformat_open_input(AVFormatContext **ps, const char *filename,
                         const AVInputFormat *fmt, AVDictionary **options)
 {
@@ -312,7 +316,7 @@ int avformat_open_input(AVFormatContext **ps, const char *filename,
     }
 
     /* e.g. AVFMT_NOFILE formats will not have an AVIOContext */
-    if (s->pb)
+    if (s->pb && is_id3v2_format(s->iformat))
         ff_id3v2_read_dict(s->pb, &si->id3v2_meta, ID3v2_DEFAULT_MAGIC, &id3v2_extra_meta);
 
     if (ffifmt(s->iformat)->read_header)
@@ -331,16 +335,12 @@ int avformat_open_input(AVFormatContext **ps, const char *filename,
     }
 
     if (id3v2_extra_meta) {
-        if (!strcmp(s->iformat->name, "mp3") || !strcmp(s->iformat->name, "aac") ||
-            !strcmp(s->iformat->name, "tta") || !strcmp(s->iformat->name, "wav")) {
-            if ((ret = ff_id3v2_parse_apic(s, id3v2_extra_meta)) < 0)
-                goto close;
-            if ((ret = ff_id3v2_parse_chapters(s, id3v2_extra_meta)) < 0)
-                goto close;
-            if ((ret = ff_id3v2_parse_priv(s, id3v2_extra_meta)) < 0)
-                goto close;
-        } else
-            av_log(s, AV_LOG_DEBUG, "demuxer does not support additional id3 data, skipping\n");
+        if ((ret = ff_id3v2_parse_apic(s, id3v2_extra_meta)) < 0)
+            goto close;
+        if ((ret = ff_id3v2_parse_chapters(s, id3v2_extra_meta)) < 0)
+            goto close;
+        if ((ret = ff_id3v2_parse_priv(s, id3v2_extra_meta)) < 0)
+            goto close;
         ff_id3v2_free_extra_meta(&id3v2_extra_meta);
     }
 
@@ -762,8 +762,9 @@ static int has_decode_delay_been_guessed(AVStream *st)
     if (st->codecpar->codec_id != AV_CODEC_ID_H264) return 1;
     if (!sti->info) // if we have left find_stream_info then nb_decoded_frames won't increase anymore for stream copy
         return 1;
+    av_assert0(sti->avctx->codec_id == AV_CODEC_ID_H264 || (sti->avctx->codec_id == AV_CODEC_ID_NONE && !avcodec_is_open(sti->avctx)));
 #if CONFIG_H264_DECODER
-    if (sti->avctx->has_b_frames &&
+    if (sti->avctx->has_b_frames && avcodec_is_open(sti->avctx) &&
         avpriv_h264_has_num_reorder_frames(sti->avctx) == sti->avctx->has_b_frames)
         return 1;
 #endif
@@ -1178,16 +1179,15 @@ static int parse_packet(AVFormatContext *s, AVPacket *pkt,
                         int stream_index, int flush)
 {
     FormatContextInternal *const fci = ff_fc_internal(s);
-    FFFormatContext *const si = &fci->fc;
-    AVPacket *out_pkt = si->parse_pkt;
     AVStream *st = s->streams[stream_index];
     FFStream *const sti = ffstream(st);
+    AVPacket *out_pkt = sti->parse_pkt;
     const AVPacketSideData *sd = NULL;
     const uint8_t *data = pkt->data;
     uint8_t *extradata = sti->avctx->extradata;
     int extradata_size = sti->avctx->extradata_size;
     int size = pkt->size;
-    int ret = 0, got_output = flush;
+    int ret = 0, got_output = flush, pkt_side_data_consumed = 0;
 
     if (!size && !flush && sti->parser->flags & PARSER_FLAG_COMPLETE_FRAMES) {
         // preserve 0-size sync packets
@@ -1230,6 +1230,24 @@ static int parse_packet(AVFormatContext *s, AVPacket *pkt,
 
         got_output = !!out_pkt->size;
 
+        if (pkt->side_data && !out_pkt->side_data) {
+            /* for the first iteration, side_data are simply moved to output.
+             * in case of additional iterations, they are duplicated each time. */
+            if (!pkt_side_data_consumed) {
+                pkt_side_data_consumed = 1;
+                out_pkt->side_data       = pkt->side_data;
+                out_pkt->side_data_elems = pkt->side_data_elems;
+            } else for (int i = 0; i < pkt->side_data_elems; i++) {
+                const AVPacketSideData *const src_sd = &pkt->side_data[i];
+                uint8_t *dst_data = av_packet_new_side_data(out_pkt, src_sd->type, src_sd->size);
+                if (!dst_data) {
+                    ret = AVERROR(ENOMEM);
+                    goto fail;
+                }
+                memcpy(dst_data, src_sd->data, src_sd->size);
+            }
+        }
+
         if (!out_pkt->size)
             continue;
 
@@ -1249,17 +1267,10 @@ static int parse_packet(AVFormatContext *s, AVPacket *pkt,
                 goto fail;
         }
 
-        if (pkt->side_data) {
-            out_pkt->side_data       = pkt->side_data;
-            out_pkt->side_data_elems = pkt->side_data_elems;
-            pkt->side_data          = NULL;
-            pkt->side_data_elems    = 0;
-        }
-
         /* set the duration */
         out_pkt->duration = (sti->parser->flags & PARSER_FLAG_COMPLETE_FRAMES) ? pkt->duration : 0;
         if (st->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-            if (sti->avctx->sample_rate > 0) {
+            if (sti->avctx->sample_rate > 0 && !out_pkt->duration && sti->parser->duration > 0) {
                 out_pkt->duration =
                     av_rescale_q_rnd(sti->parser->duration,
                                      (AVRational) { 1, sti->avctx->sample_rate },
@@ -1308,6 +1319,10 @@ fail:
     if (sd) {
         sti->avctx->extradata      = extradata;
         sti->avctx->extradata_size = extradata_size;
+    }
+    if (pkt_side_data_consumed) {
+        pkt->side_data          = NULL;
+        pkt->side_data_elems    = 0;
     }
 
     if (ret < 0)
@@ -2548,6 +2563,47 @@ static int extract_extradata(FFFormatContext *si, AVStream *st, const AVPacket *
     return 0;
 }
 
+static int parameters_from_context(AVFormatContext *ic, AVCodecParameters *par,
+                                   const AVCodecContext *avctx)
+{
+    AVCodecParameters *par_tmp;
+    int ret;
+
+    par_tmp = avcodec_parameters_alloc();
+    if (!par_tmp)
+        return AVERROR(ENOMEM);
+
+    ret = avcodec_parameters_copy(par_tmp, par);
+    if (ret < 0)
+        goto fail;
+
+    ret = avcodec_parameters_from_context(par, avctx);
+    if (ret < 0)
+        goto fail;
+
+    /* Restore some values if they are signaled at the container level
+     * given they may have been replaced by codec level values as read
+     * internally by avformat_find_stream_info().
+     */
+    if (par_tmp->color_range != AVCOL_RANGE_UNSPECIFIED)
+        par->color_range = par_tmp->color_range;
+    if (par_tmp->color_primaries != AVCOL_PRI_UNSPECIFIED ||
+        par_tmp->color_trc != AVCOL_TRC_UNSPECIFIED ||
+        par_tmp->color_space != AVCOL_SPC_UNSPECIFIED) {
+        par->color_primaries = par_tmp->color_primaries;
+        par->color_trc = par_tmp->color_trc;
+        par->color_space = par_tmp->color_space;
+    }
+    if (par_tmp->chroma_location != AVCHROMA_LOC_UNSPECIFIED)
+        par->chroma_location = par_tmp->chroma_location;
+
+    ret = 0;
+fail:
+    avcodec_parameters_free(&par_tmp);
+
+    return ret;
+}
+
 int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
 {
     FFFormatContext *const si = ffformatcontext(ic);
@@ -3080,7 +3136,7 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         FFStream *const sti = ffstream(st);
 
         if (sti->avctx_inited) {
-            ret = avcodec_parameters_from_context(st->codecpar, sti->avctx);
+            ret = parameters_from_context(ic, st->codecpar, sti->avctx);
             if (ret < 0)
                 goto find_stream_info_err;
 
@@ -3105,6 +3161,25 @@ int avformat_find_stream_info(AVFormatContext *ic, AVDictionary **options)
         }
 
         sti->avctx_inited = 0;
+    }
+
+    /* update the stream group parameters from the stream contexts if needed */
+    for (unsigned i = 0; i < ic->nb_stream_groups; i++) {
+        AVStreamGroup *const stg  = ic->stream_groups[i];
+        AVStreamGroupLCEVC *lcevc;
+        const AVStream *st;
+
+        if (stg->type != AV_STREAM_GROUP_PARAMS_LCEVC)
+            continue;
+
+        /* For LCEVC in mpegts, the parser is needed to get the enhancement layer
+         * dimensions */
+        lcevc = stg->params.lcevc;
+        if (lcevc->width && lcevc->height)
+            continue;
+        st = stg->streams[lcevc->lcevc_index];
+        lcevc->width  = st->codecpar->width;
+        lcevc->height = st->codecpar->height;
     }
 
 find_stream_info_err:

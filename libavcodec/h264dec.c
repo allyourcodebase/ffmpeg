@@ -29,6 +29,7 @@
 
 #include "config_components.h"
 
+#include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
@@ -219,8 +220,6 @@ int ff_h264_alloc_tables(H264Context *h)
         }
 
     if (CONFIG_ERROR_RESILIENCE) {
-        const int er_size = h->mb_height * h->mb_stride * (4*sizeof(int) + 1);
-        int mb_array_size = h->mb_height * h->mb_stride;
         int y_size  = (2 * h->mb_width + 1) * (2 * h->mb_height + 1);
         int yc_size = y_size + 2 * big_mb_num;
 
@@ -238,8 +237,6 @@ int ff_h264_alloc_tables(H264Context *h)
 
         // error resilience code looks cleaner with this
         if (!FF_ALLOCZ_TYPED_ARRAY(er->mb_index2xy,        h->mb_num + 1) ||
-            !FF_ALLOCZ_TYPED_ARRAY(er->error_status_table, mb_array_size) ||
-            !FF_ALLOCZ_TYPED_ARRAY(er->er_temp_buffer,     er_size)       ||
             !FF_ALLOCZ_TYPED_ARRAY(h->dc_val_base,         yc_size))
             return AVERROR(ENOMEM); // ff_h264_free_tables will clean up for us
 
@@ -254,6 +251,8 @@ int ff_h264_alloc_tables(H264Context *h)
         er->dc_val[2] = er->dc_val[1] + big_mb_num;
         for (int i = 0; i < yc_size; i++)
             h->dc_val_base[i] = 1024;
+
+        return ff_er_init(er);
     }
 
     return 0;
@@ -474,7 +473,7 @@ void ff_h264_flush_change(H264Context *h)
     h->mmco_reset = 1;
 }
 
-static void h264_decode_flush(AVCodecContext *avctx)
+static av_cold void h264_decode_flush(AVCodecContext *avctx)
 {
     H264Context *h = avctx->priv_data;
     int i;

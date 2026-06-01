@@ -175,21 +175,11 @@ static const FFCodec * const codec_list[] = {
     &ff_xsub_encoder,
     &ff_libmp3lame_encoder,
     &ff_libvorbis_encoder,
-#if CONFIG_H263_V4L2M2M_ENCODER
     &ff_h263_v4l2m2m_encoder,
-#endif
-#if CONFIG_H264_V4L2M2M_ENCODER
     &ff_h264_v4l2m2m_encoder,
-#endif
-#if CONFIG_HEVC_V4L2M2M_ENCODER
     &ff_hevc_v4l2m2m_encoder,
-#endif
-#if CONFIG_MPEG4_V4L2M2M_ENCODER
     &ff_mpeg4_v4l2m2m_encoder,
-#endif
-#if CONFIG_VP8_V4L2M2M_ENCODER
     &ff_vp8_v4l2m2m_encoder,
-#endif
     &ff_vnull_encoder,
     &ff_anull_encoder,
     &ff_aasc_decoder,

@@ -1476,7 +1476,7 @@ static int jpeg2000_decode_packet(Jpeg2000DecoderContext *s, Jpeg2000Tile *tile,
                 }
                 if (tmp_length > cblk->data_allocated) {
                     avpriv_request_sample(s->avctx,
-                                        "Block with lengthinc greater than %"SIZE_SPECIFIER"",
+                                        "Block with lengthinc greater than %zu",
                                         cblk->data_allocated);
                     return AVERROR_PATCHWELCOME;
                 }
@@ -2071,7 +2071,7 @@ static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *cod
                 return AVERROR_INVALIDDATA;
             }
             if (FFABS(cblk->data + cblk->data_start[term_cnt + 1] - 2 - t1->mqc.bp) > 0) {
-                av_log(s->avctx, AV_LOG_WARNING, "Mid mismatch %"PTRDIFF_SPECIFIER" in pass %d of %d\n",
+                av_log(s->avctx, AV_LOG_WARNING, "Mid mismatch %td in pass %d of %d\n",
                     cblk->data + cblk->data_start[term_cnt + 1] - 2 - t1->mqc.bp,
                     pass_cnt, cblk->npasses);
             }
@@ -2088,7 +2088,7 @@ static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *cod
     }
 
     if (cblk->data + cblk->length - 2 > t1->mqc.bp) {
-        av_log(s->avctx, AV_LOG_WARNING, "End mismatch %"PTRDIFF_SPECIFIER"\n",
+        av_log(s->avctx, AV_LOG_WARNING, "End mismatch %td\n",
                cblk->data + cblk->length - 2 - t1->mqc.bp);
     }
 
@@ -2261,14 +2261,8 @@ static inline int tile_codeblocks(const Jpeg2000DecoderContext *s, Jpeg2000Tile 
                 int nb_precincts, precno;
                 Jpeg2000Band *band = rlevel->band + bandno;
                 int cblkno = 0, bandpos;
-<<<<<<< HEAD
-                /* See Rec. ITU-T T.800, Equation E-2 */
-                int magp = quantsty->expn[subbandno] + quantsty->nguardbits - 1;
-||||||| e7d938073e
-=======
                 /* See Rec. ITU-T T.800, Equation E-2 */
                 int M_b = quantsty->expn[subbandno] + quantsty->nguardbits - 1;
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 
                 bandpos = bandno + (reslevelno > 0);
 
@@ -2276,20 +2270,11 @@ static inline int tile_codeblocks(const Jpeg2000DecoderContext *s, Jpeg2000Tile 
                     band->coord[1][0] == band->coord[1][1])
                     continue;
 
-<<<<<<< HEAD
-                if ((codsty->cblk_style & JPEG2000_CTSY_HTJ2K_F) && magp >= 31) {
-                    avpriv_request_sample(s->avctx, "JPEG2000_CTSY_HTJ2K_F and magp >= 31");
-                    return AVERROR_PATCHWELCOME;
-                }
-
-||||||| e7d938073e
-=======
                 if (M_b > 31) {
                     avpriv_request_sample(s->avctx, "M_b (%d) > 31", M_b);
                     return AVERROR_PATCHWELCOME;
                 }
 
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
                 nb_precincts = rlevel->num_precincts_x * rlevel->num_precincts_y;
                 /* Loop on precincts */
                 for (precno = 0; precno < nb_precincts; precno++) {
@@ -2799,7 +2784,7 @@ static int jp2_find_codestream(Jpeg2000DecoderContext *s)
                     int n = bytestream2_get_be16u(&s->g);
                     for (; n>0; n--) {
                         int cn   = bytestream2_get_be16(&s->g);
-                        int av_unused typ  = bytestream2_get_be16(&s->g);
+                        av_unused int typ  = bytestream2_get_be16(&s->g);
                         int asoc = bytestream2_get_be16(&s->g);
                         if (cn < 4 && asoc < 4)
                             s->cdef[cn] = asoc;

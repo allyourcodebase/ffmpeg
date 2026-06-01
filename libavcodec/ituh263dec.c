@@ -240,9 +240,11 @@ int ff_h263_resync(H263DecContext *const h)
 
     if (show_bits(&h->gb, 16) ==0) {
         pos = get_bits_count(&h->gb);
-        if(CONFIG_MPEG4_DECODER && h->c.codec_id==AV_CODEC_ID_MPEG4)
+#if CONFIG_MPEG4_DECODER
+        if (h->c.codec_id == AV_CODEC_ID_MPEG4)
             ret = ff_mpeg4_decode_video_packet_header(h);
         else
+#endif
             ret = h263_decode_gob_header(h);
         if(ret>=0)
             return pos;
@@ -257,9 +259,11 @@ int ff_h263_resync(H263DecContext *const h)
             GetBitContext bak = h->gb;
 
             pos = get_bits_count(&h->gb);
-            if(CONFIG_MPEG4_DECODER && h->c.codec_id==AV_CODEC_ID_MPEG4)
+#if CONFIG_MPEG4_DECODER
+            if (h->c.codec_id == AV_CODEC_ID_MPEG4)
                 ret = ff_mpeg4_decode_video_packet_header(h);
             else
+#endif
                 ret = h263_decode_gob_header(h);
             if(ret>=0)
                 return pos;
@@ -538,23 +542,23 @@ static int h263_decode_block(H263DecContext *const h, int16_t block[64],
         rl = &ff_rl_intra_aic;
         if (h->c.ac_pred) {
             if (h->c.h263_aic_dir)
-                scan_table = h->c.permutated_intra_v_scantable; /* left */
+                scan_table = h->permutated_intra_v_scantable; /* left */
             else
-                scan_table = h->c.permutated_intra_h_scantable; /* top */
+                scan_table = h->permutated_intra_h_scantable; /* top */
         }
     } else if (h->c.mb_intra) {
         /* DC coef */
         if (CONFIG_RV10_DECODER && h->c.codec_id == AV_CODEC_ID_RV10) {
             if (h->rv10_version == 3 && h->c.pict_type == AV_PICTURE_TYPE_I) {
                 int component = (n <= 3 ? 0 : n - 4 + 1);
-                level = h->c.last_dc[component];
+                level = h->last_dc[component];
                 if (h->rv10_first_dc_coded[component]) {
                     int diff = ff_rv_decode_dc(h, n);
                     if (diff < 0)
                         return -1;
                     level += diff;
                     level = level & 0xff; /* handle wrap round */
-                    h->c.last_dc[component] = level;
+                    h->last_dc[component] = level;
                 } else {
                     h->rv10_first_dc_coded[component] = 1;
                 }

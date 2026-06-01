@@ -123,6 +123,11 @@ typedef struct AVBufferSrcParameters {
 
     AVFrameSideData **side_data;
     int nb_side_data;
+
+    /**
+     * Video only, the alpha mode.
+     */
+    enum AVAlphaMode alpha_mode;
 } AVBufferSrcParameters;
 
 /**
@@ -210,6 +215,14 @@ int av_buffersrc_add_frame_flags(AVFilterContext *buffer_src,
  * of the last frame.
  */
 int av_buffersrc_close(AVFilterContext *ctx, int64_t pts, unsigned flags);
+
+/**
+ * Returns 0 or a negative AVERROR code. Currently, this will only ever
+ * return AVERROR(EOF), to indicate that the buffer source has been closed,
+ * either as a result of av_buffersrc_close(), or because the downstream
+ * filter is no longer accepting new data.
+ */
+int av_buffersrc_get_status(AVFilterContext *ctx);
 
 /**
  * @}

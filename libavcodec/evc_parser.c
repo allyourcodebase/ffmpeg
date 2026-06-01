@@ -24,6 +24,9 @@
 #include "bytestream.h"
 #include "evc.h"
 #include "evc_parse.h"
+#include "parser_internal.h"
+
+#include "libavutil/attributes.h"
 
 typedef struct EVCParserContext {
     EVCParamSets ps;
@@ -362,16 +365,16 @@ static int evc_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-static void evc_parser_close(AVCodecParserContext *s)
+static av_cold void evc_parser_close(AVCodecParserContext *s)
 {
     EVCParserContext *ctx = s->priv_data;
 
     ff_evc_ps_free(&ctx->ps);
 }
 
-const AVCodecParser ff_evc_parser = {
-    .codec_ids      = { AV_CODEC_ID_EVC },
+const FFCodecParser ff_evc_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_EVC),
     .priv_data_size = sizeof(EVCParserContext),
-    .parser_parse   = evc_parse,
-    .parser_close   = evc_parser_close,
+    .parse          = evc_parse,
+    .close          = evc_parser_close,
 };

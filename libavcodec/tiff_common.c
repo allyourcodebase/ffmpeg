@@ -64,9 +64,9 @@ double ff_tget_double(GetByteContext *gb, int le)
 unsigned ff_tget(GetByteContext *gb, int type, int le)
 {
     switch (type) {
-    case TIFF_BYTE:  return bytestream2_get_byte(gb);
-    case TIFF_SHORT: return ff_tget_short(gb, le);
-    case TIFF_LONG:  return ff_tget_long(gb, le);
+    case AV_TIFF_BYTE:  return bytestream2_get_byte(gb);
+    case AV_TIFF_SHORT: return ff_tget_short(gb, le);
+    case AV_TIFF_LONG:  return ff_tget_long(gb, le);
     default:         return UINT_MAX;
     }
 }
@@ -96,51 +96,6 @@ static int bprint_to_avdict(AVBPrint *bp, const char *name,
 
     return av_dict_set(metadata, name, ap, AV_DICT_DONT_STRDUP_VAL);
 }
-
-int ff_tadd_rational_metadata(int count, const char *name, const char *sep,
-                              GetByteContext *gb, int le, AVDictionary **metadata)
-{
-    AVBPrint bp;
-    int32_t nom, denom;
-    int i;
-
-    if (count >= INT_MAX / sizeof(int64_t) || count <= 0)
-        return AVERROR_INVALIDDATA;
-    if (bytestream2_get_bytes_left(gb) < count * sizeof(int64_t))
-        return AVERROR_INVALIDDATA;
-
-    av_bprint_init(&bp, 10 * count, AV_BPRINT_SIZE_UNLIMITED);
-
-    for (i = 0; i < count; i++) {
-        nom   = ff_tget_long(gb, le);
-        denom = ff_tget_long(gb, le);
-        av_bprintf(&bp, "%s%7"PRId32":%-7"PRId32, auto_sep(count, sep, i, 4), nom, denom);
-    }
-
-    return bprint_to_avdict(&bp, name, metadata);
-}
-
-
-int ff_tadd_long_metadata(int count, const char *name, const char *sep,
-                          GetByteContext *gb, int le, AVDictionary **metadata)
-{
-    AVBPrint bp;
-    int i;
-
-    if (count >= INT_MAX / sizeof(int32_t) || count <= 0)
-        return AVERROR_INVALIDDATA;
-    if (bytestream2_get_bytes_left(gb) < count * sizeof(int32_t))
-        return AVERROR_INVALIDDATA;
-
-    av_bprint_init(&bp, 10 * count, AV_BPRINT_SIZE_UNLIMITED);
-
-    for (i = 0; i < count; i++) {
-        av_bprintf(&bp, "%s%7i", auto_sep(count, sep, i, 8), ff_tget_long(gb, le));
-    }
-
-    return bprint_to_avdict(&bp, name, metadata);
-}
-
 
 int ff_tadd_doubles_metadata(int count, const char *name, const char *sep,
                              GetByteContext *gb, int le, AVDictionary **metadata)
@@ -179,28 +134,6 @@ int ff_tadd_shorts_metadata(int count, const char *name, const char *sep,
     for (i = 0; i < count; i++) {
         int v = is_signed ? (int16_t)ff_tget_short(gb, le) :  ff_tget_short(gb, le);
         av_bprintf(&bp, "%s%5i", auto_sep(count, sep, i, 8), v);
-    }
-
-    return bprint_to_avdict(&bp, name, metadata);
-}
-
-
-int ff_tadd_bytes_metadata(int count, const char *name, const char *sep,
-                           GetByteContext *gb, int le, int is_signed, AVDictionary **metadata)
-{
-    AVBPrint bp;
-    int i;
-
-    if (count >= INT_MAX / sizeof(int8_t) || count < 0)
-        return AVERROR_INVALIDDATA;
-    if (bytestream2_get_bytes_left(gb) < count * sizeof(int8_t))
-        return AVERROR_INVALIDDATA;
-
-    av_bprint_init(&bp, 10 * count, AV_BPRINT_SIZE_UNLIMITED);
-
-    for (i = 0; i < count; i++) {
-        int v = is_signed ? (int8_t)bytestream2_get_byte(gb) :  bytestream2_get_byte(gb);
-        av_bprintf(&bp, "%s%3i", auto_sep(count, sep, i, 16), v);
     }
 
     return bprint_to_avdict(&bp, name, metadata);
@@ -273,7 +206,7 @@ int ff_tread_tag(GetByteContext *gb, int le, unsigned *tag, unsigned *type,
 
     // seek to offset if this is an IFD-tag or
     // if count values do not fit into the offset value
-    if (ifd_tag || (*count > 4 || !(type_sizes[*type] * (*count) <= 4 || *type == TIFF_STRING))) {
+    if (ifd_tag || (*count > 4 || !(type_sizes[*type] * (*count) <= 4 || *type == AV_TIFF_STRING))) {
         bytestream2_seek(gb, ff_tget_long (gb, le), SEEK_SET);
     }
 

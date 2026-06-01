@@ -42,6 +42,7 @@ typedef struct SetParamsContext {
     int color_trc;
     int colorspace;
     int chroma_location;
+    int alpha_mode;
 } SetParamsContext;
 
 #define OFFSET(x) offsetof(SetParamsContext, x)
@@ -65,7 +66,7 @@ static const AVOption setparams_options[] = {
     {"pc",                           NULL,   0, AV_OPT_TYPE_CONST, {.i64=AVCOL_RANGE_JPEG},         0, 0, FLAGS, .unit = "range"},
     {"jpeg",                         NULL,   0, AV_OPT_TYPE_CONST, {.i64=AVCOL_RANGE_JPEG},         0, 0, FLAGS, .unit = "range"},
 
-    {"color_primaries", "select color primaries", OFFSET(color_primaries), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_PRI_NB-1, FLAGS, .unit = "color_primaries"},
+    {"color_primaries", "select color primaries", OFFSET(color_primaries), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_PRI_EXT_NB-1, FLAGS, .unit = "color_primaries"},
     {"auto", "keep the same color primaries",  0, AV_OPT_TYPE_CONST, {.i64=-1},                     0, 0, FLAGS, .unit = "color_primaries"},
     {"bt709",                           NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_BT709},        0, 0, FLAGS, .unit = "color_primaries"},
     {"unknown",                         NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_UNSPECIFIED},  0, 0, FLAGS, .unit = "color_primaries"},
@@ -80,8 +81,9 @@ static const AVOption setparams_options[] = {
     {"smpte432",                        NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_SMPTE432},     0, 0, FLAGS, .unit = "color_primaries"},
     {"jedec-p22",                       NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_JEDEC_P22},    0, 0, FLAGS, .unit = "color_primaries"},
     {"ebu3213",                         NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_EBU3213},      0, 0, FLAGS, .unit = "color_primaries"},
+    {"vgamut",                          NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_PRI_V_GAMUT},      0, 0, FLAGS, .unit = "color_primaries"},
 
-    {"color_trc", "select color transfer", OFFSET(color_trc), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_TRC_NB-1, FLAGS, .unit = "color_trc"},
+    {"color_trc", "select color transfer", OFFSET(color_trc), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_TRC_EXT_NB-1, FLAGS, .unit = "color_trc"},
     {"auto", "keep the same color transfer",  0, AV_OPT_TYPE_CONST, {.i64=-1},                     0, 0, FLAGS, .unit = "color_trc"},
     {"bt709",                          NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_BT709},        0, 0, FLAGS, .unit = "color_trc"},
     {"unknown",                        NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_UNSPECIFIED},  0, 0, FLAGS, .unit = "color_trc"},
@@ -100,6 +102,7 @@ static const AVOption setparams_options[] = {
     {"smpte2084",                      NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_SMPTE2084},    0, 0, FLAGS, .unit = "color_trc"},
     {"smpte428",                       NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_SMPTE428},     0, 0, FLAGS, .unit = "color_trc"},
     {"arib-std-b67",                   NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_ARIB_STD_B67}, 0, 0, FLAGS, .unit = "color_trc"},
+    {"vlog",                           NULL,  0, AV_OPT_TYPE_CONST, {.i64=AVCOL_TRC_V_LOG},        0, 0, FLAGS, .unit = "color_trc"},
 
     {"colorspace", "select colorspace", OFFSET(colorspace), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVCOL_SPC_NB-1, FLAGS, .unit = "colorspace"},
     {"auto", "keep the same colorspace",  0, AV_OPT_TYPE_CONST, {.i64=-1},                          0, 0, FLAGS, .unit = "colorspace"},
@@ -131,6 +134,13 @@ static const AVOption setparams_options[] = {
     {"top",                              NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_TOP},         0, 0, FLAGS, .unit = "chroma_location"},
     {"bottomleft",                       NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_BOTTOMLEFT},  0, 0, FLAGS, .unit = "chroma_location"},
     {"bottom",                           NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVCHROMA_LOC_BOTTOM},      0, 0, FLAGS, .unit = "chroma_location"},
+
+    {"alpha_mode", "select alpha moda", OFFSET(alpha_mode), AV_OPT_TYPE_INT, {.i64=-1}, -1, AVALPHA_MODE_NB-1, FLAGS, .unit = "alpha_mode"},
+    {"auto", "keep the same alpha mode",  0, AV_OPT_TYPE_CONST, {.i64=-1},                              0, 0, FLAGS, .unit = "alpha_mode"},
+    {"unspecified",                      NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_UNSPECIFIED},   0, 0, FLAGS, .unit = "alpha_mode"},
+    {"unknown",                          NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_UNSPECIFIED},   0, 0, FLAGS, .unit = "alpha_mode"},
+    {"premultiplied",                    NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_PREMULTIPLIED}, 0, 0, FLAGS, .unit = "alpha_mode"},
+    {"straight",                         NULL, 0, AV_OPT_TYPE_CONST, {.i64=AVALPHA_MODE_STRAIGHT},      0, 0, FLAGS, .unit = "alpha_mode"},
     {NULL}
 };
 
@@ -153,6 +163,13 @@ static int query_formats(const AVFilterContext *ctx,
     if (s->color_range >= 0) {
         ret = ff_formats_ref(ff_make_formats_list_singleton(s->color_range),
                              &cfg_out[0]->color_ranges);
+        if (ret < 0)
+            return ret;
+    }
+
+    if (s->alpha_mode >= 0) {
+        ret = ff_formats_ref(ff_make_formats_list_singleton(s->alpha_mode),
+                             &cfg_out[0]->alpha_modes);
         if (ret < 0)
             return ret;
     }
@@ -187,6 +204,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
         frame->colorspace = s->colorspace;
     if (s->chroma_location >= 0)
         frame->chroma_location = s->chroma_location;
+    if (s->alpha_mode >= 0)
+        frame->alpha_mode = s->alpha_mode;
 
     return ff_filter_frame(ctx->outputs[0], frame);
 }
@@ -237,6 +256,7 @@ static av_cold int init_setrange(AVFilterContext *ctx)
     s->color_trc       = -1;
     s->colorspace      = -1;
     s->chroma_location = -1;
+    s->alpha_mode      = -1;
     return 0;
 }
 
@@ -274,6 +294,7 @@ static av_cold int init_setfield(AVFilterContext *ctx)
     s->color_trc       = -1;
     s->colorspace      = -1;
     s->chroma_location = -1;
+    s->alpha_mode      = -1;
     return 0;
 }
 

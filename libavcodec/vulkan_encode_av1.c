@@ -80,6 +80,8 @@ typedef struct VulkanEncodeAV1Context {
     AV1RawOBU seq_hdr_obu;
     AV1RawOBU meta_cll_obu;
     AV1RawOBU meta_mastering_obu;
+    AV1RawOBU hidden_obu;
+    AV1RawOBU tail_obu;
 
     VkVideoEncodeAV1ProfileInfoKHR profile;
 
@@ -171,7 +173,6 @@ static void set_name_slot(int slot, int *slot_indices, uint32_t allowed_idx, int
 
     av_assert0(0);
 }
-
 
 static int init_pic_params(AVCodecContext *avctx, FFHWBaseEncodePicture *pic,
                            VkVideoEncodeInfoKHR *encode_info)
@@ -542,6 +543,45 @@ static int init_pic_params(AVCodecContext *avctx, FFHWBaseEncodePicture *pic,
         }
     }
 
+    FFVulkanEncodePicture *vp = pic->priv;
+    vp->tail_size = 0;
+    vp->non_independent_frame = pic->encode_order < pic->display_order;
+    if (vp->non_independent_frame) {
+        AV1RawOBU *obu = &enc->hidden_obu;
+        AV1RawFrameHeader *fh = &obu->obu.frame_header;
+
+        /** hidden frame header */
+        memset(obu, 0, sizeof(*obu));
+        obu->header.obu_type = AV1_OBU_FRAME_HEADER;
+        obu->header.obu_has_size_field = 1;
+
+        fh->frame_type = AV1_FRAME_INTER;
+        fh->refresh_frame_flags = 1 << ap->slot;
+        fh->frame_width_minus_1   = base_ctx->surface_width - 1;
+        fh->frame_height_minus_1  = base_ctx->surface_height - 1;
+        fh->render_width_minus_1  = fh->frame_width_minus_1;
+        fh->render_height_minus_1 = fh->frame_height_minus_1;
+
+        memcpy(fh->loop_filter_ref_deltas, default_loop_filter_ref_deltas,
+               AV1_TOTAL_REFS_PER_FRAME * sizeof(int8_t));
+
+        obu = &enc->tail_obu;
+        fh = &obu->obu.frame_header;
+
+        /** tail frame header */
+        memset(obu, 0, sizeof(*obu));
+        obu->header.obu_type = AV1_OBU_FRAME_HEADER;
+        obu->header.obu_has_size_field = 1;
+
+        fh->show_existing_frame   = 1;
+        fh->frame_to_show_map_idx = ap->slot != 0;
+        fh->frame_type            = AV1_FRAME_INTER;
+        fh->frame_width_minus_1   = base_ctx->surface_width - 1;
+        fh->frame_height_minus_1  = base_ctx->surface_height - 1;
+        fh->render_width_minus_1  = fh->frame_width_minus_1;
+        fh->render_height_minus_1 = fh->frame_height_minus_1;
+    }
+
     return 0;
 }
 
@@ -605,7 +645,7 @@ static int init_profile(AVCodecContext *avctx,
                                    enc->tile_cols, framerate);
         if (level) {
             av_log(avctx, AV_LOG_VERBOSE, "Using level %s.\n", level->name);
-            enc->seq_level_idx = ff_vk_av1_level_to_vk(level->level_idx);
+            enc->seq_level_idx = level->level_idx;
         } else {
             av_log(avctx, AV_LOG_VERBOSE, "Stream will not conform to "
                    "any normal level, using level 7.3 by default.\n");
@@ -981,7 +1021,7 @@ static int init_base_units(AVCodecContext *avctx)
         if (!data)
             return AVERROR(ENOMEM);
     } else {
-        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for AV1 sequence header = %"SIZE_SPECIFIER"\n",
+        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for AV1 sequence header = %zu\n",
                data_size);
         return err;
     }
@@ -1079,9 +1119,32 @@ static int write_extra_headers(AVCodecContext *avctx,
     int err;
     VulkanEncodeAV1Context *enc = avctx->priv_data;
     VulkanEncodeAV1Picture  *ap = base_pic->codec_priv;
+    FFVulkanEncodePicture *vp = base_pic->priv;
     CodedBitstreamFragment *obu = &enc->current_access_unit;
 
-    if (ap->units_needed & AV_FRAME_DATA_MASTERING_DISPLAY_METADATA) {
+    if (vp->non_independent_frame) {
+        err = vulkan_encode_av1_add_obu(avctx, obu, AV1_OBU_FRAME_HEADER, &enc->hidden_obu);
+        if (err < 0)
+            goto fail;
+
+        // Only for tracking ref frame in context, not to be output
+        err = ff_cbs_write_fragment_data(enc->cbs, obu);
+        if (err < 0)
+            goto fail;
+
+        ff_cbs_fragment_reset(obu);
+        ((CodedBitstreamAV1Context *)enc->cbs->priv_data)->seen_frame_header = 0;
+
+        err = vulkan_encode_av1_add_obu(avctx, obu, AV1_OBU_FRAME_HEADER, &enc->tail_obu);
+        if (err < 0)
+            goto fail;
+
+        err = vulkan_encode_av1_write_obu(avctx, vp->tail_data, &vp->tail_size, obu);
+        if (err < 0)
+            goto fail;
+    }
+
+    if (ap->units_needed & UNIT_MASTERING_DISPLAY) {
         err = vulkan_encode_av1_add_obu(avctx, obu,
                                         AV1_OBU_METADATA,
                                         &enc->meta_mastering_obu);
@@ -1367,6 +1430,7 @@ static const FFCodecDefault vulkan_encode_av1_defaults[] = {
     { "g",              "300" },
     { "qmin",           "1"   },
     { "qmax",           "255" },
+    { "refs",           "0"   },
     { NULL },
 };
 

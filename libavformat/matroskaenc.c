@@ -19,6 +19,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "config_components.h"
@@ -69,6 +70,7 @@
 #include "libavcodec/itut35.h"
 #include "libavcodec/xiph.h"
 #include "libavcodec/mpeg4audio.h"
+#include "libavcodec/opus/tab.h"
 
 /* Level 1 elements we create a SeekHead entry for:
  * Info, Tracks, Chapters, Attachments, Tags (potentially twice) and Cues */
@@ -280,6 +282,34 @@ typedef struct MatroskaMuxContext {
 
 /** Seek preroll value for opus */
 #define OPUS_SEEK_PREROLL 80000000
+
+/**
+ * Returns the duration of an Opus packet in samples.
+ */
+static int parse_opus_packet_duration(const uint8_t *buf, int buf_size)
+{
+    int code   = buf[0] & 0x3;
+    int config = buf[0] >> 3;
+    int frame_count;
+
+    switch (code) {
+    default:
+        av_unreachable("code is in 0..3");
+    case 0:
+        frame_count = 1;
+        break;
+    case 1:
+    case 2:
+        frame_count = 2;
+        break;
+    case 3:
+        if (buf_size <= 1)
+            return AVERROR_INVALIDDATA;
+        frame_count = buf[1] & 0x3F;
+        break;
+    }
+    return frame_count * ff_opus_frame_duration[config];
+}
 
 static int ebml_id_size(uint32_t id)
 {
@@ -859,6 +889,7 @@ static void mkv_deinit(AVFormatContext *s)
 
     av_freep(&mkv->cur_block.h2645_nalu_list.nalus);
     av_freep(&mkv->cues.entries);
+
     av_freep(&mkv->tracks);
 }
 
@@ -1061,12 +1092,14 @@ static int put_flac_codecpriv(AVFormatContext *s, AVIOContext *pb,
                              "Lavf" : LIBAVFORMAT_IDENT;
         AVDictionary *dict = NULL;
         uint8_t buf[32];
-        int64_t len;
+        int len;
 
         snprintf(buf, sizeof(buf), "0x%"PRIx64, par->ch_layout.u.mask);
         av_dict_set(&dict, "WAVEFORMATEXTENSIBLE_CHANNEL_MASK", buf, 0);
 
         len = ff_vorbiscomment_length(dict, vendor, NULL, 0);
+        if (len < 0)
+            return len;
         av_assert1(len < (1 << 24) - 4);
 
         avio_w8(pb, 0x84);
@@ -1201,7 +1234,7 @@ static int mkv_assemble_codecprivate(AVFormatContext *s, AVIOContext *dyn_cp,
                                      uint8_t **codecpriv, int *codecpriv_size,
                                      unsigned *max_payload_size)
 {
-    MatroskaMuxContext av_unused *const mkv = s->priv_data;
+    av_unused MatroskaMuxContext *const mkv = s->priv_data;
     unsigned size_to_reserve = 0;
     int ret;
 
@@ -1755,11 +1788,24 @@ static void mkv_write_blockadditionmapping(AVFormatContext *s, const MatroskaMux
 #endif
 }
 
+static bool codec_has_blockadditional_alpha(AVFormatContext *s, const AVStream *st,
+                                            const AVCodecParameters *par)
+{
+    const AVDictionaryEntry *tag;
+    if (par->codec_id != AV_CODEC_ID_VP8 &&
+        par->codec_id != AV_CODEC_ID_VP9)
+        return false;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(par->format);
+    if (desc && (desc->flags & AV_PIX_FMT_FLAG_ALPHA))
+        return true;
+    return ((tag = av_dict_get(st->metadata, "alpha_mode", NULL, 0)) ||
+            (tag = av_dict_get( s->metadata, "alpha_mode", NULL, 0))) && strtol(tag->value, NULL, 0);
+}
+
 static int mkv_write_track_video(AVFormatContext *s, MatroskaMuxContext *mkv,
                                  const AVStream *st, const AVCodecParameters *par,
                                  AVIOContext *pb)
 {
-    const AVDictionaryEntry *tag;
     int display_width_div = 1, display_height_div = 1;
     uint8_t color_space[4], projection_private[20];
     const AVPacketSideData *sd;
@@ -1783,9 +1829,7 @@ static int mkv_write_track_video(AVFormatContext *s, MatroskaMuxContext *mkv,
     if (ret < 0)
         return ret;
 
-    if (par->format == AV_PIX_FMT_YUVA420P ||
-        ((tag = av_dict_get(st->metadata, "alpha_mode", NULL, 0)) ||
-         (tag = av_dict_get( s->metadata, "alpha_mode", NULL, 0))) && strtol(tag->value, NULL, 0))
+    if (codec_has_blockadditional_alpha(s, st, par))
         ebml_writer_add_uint(&writer, MATROSKA_ID_VIDEOALPHAMODE, 1);
 
     sd = av_packet_side_data_get(par->coded_side_data,
@@ -2797,11 +2841,12 @@ static void mkv_write_blockadditional(EbmlWriter *writer, const uint8_t *buf,
 }
 
 static int mkv_write_block(void *logctx, MatroskaMuxContext *mkv,
-                           AVIOContext *pb, const AVCodecParameters *par,
+                           AVIOContext *pb, const AVStream *st,
                            mkv_track *track, const AVPacket *pkt,
                            int keyframe, int64_t ts, uint64_t duration,
                            int force_blockgroup, int64_t relative_packet_pos)
 {
+    const AVCodecParameters *par  = st->codecpar;
     uint8_t t35_buf[6 + AV_HDR_PLUS_MAX_PAYLOAD_SIZE];
     uint8_t *side_data;
     size_t side_data_size;
@@ -2827,6 +2872,17 @@ static int mkv_write_block(void *logctx, MatroskaMuxContext *mkv,
         duration != track->default_duration_high &&
         duration != track->default_duration_low))
         ebml_writer_add_uint(&writer, MATROSKA_ID_BLOCKDURATION, duration);
+    else if (par->codec_id == AV_CODEC_ID_OPUS) {
+        ret = parse_opus_packet_duration(pkt->data, pkt->size);
+        if (ret >= 0) {
+            /* If the packet's duration is inconsistent with the coded duration,
+             * add an explicit duration element. */
+            uint64_t parsed_duration = av_rescale_q(ret, (AVRational){1, 48000},
+                                                    st->time_base);
+            if (parsed_duration != duration)
+                ebml_writer_add_uint(&writer, MATROSKA_ID_BLOCKDURATION, duration);
+        }
+    }
 
     av_log(logctx, AV_LOG_DEBUG,
            "Writing block of size %d with pts %" PRId64 ", dts %" PRId64 ", "
@@ -2997,6 +3053,7 @@ static int mkv_write_packet_internal(AVFormatContext *s, const AVPacket *pkt)
 {
     MatroskaMuxContext *mkv = s->priv_data;
     AVIOContext *pb;
+    AVStream *st            = s->streams[pkt->stream_index];
     AVCodecParameters *par  = s->streams[pkt->stream_index]->codecpar;
     mkv_track *track        = &mkv->tracks[pkt->stream_index];
     int is_sub              = par->codec_type == AVMEDIA_TYPE_SUBTITLE;
@@ -3043,7 +3100,7 @@ static int mkv_write_packet_internal(AVFormatContext *s, const AVPacket *pkt)
 
     /* The WebM spec requires WebVTT to be muxed in BlockGroups;
      * so we force it even for packets without duration. */
-    ret = mkv_write_block(s, mkv, pb, par, track, pkt,
+    ret = mkv_write_block(s, mkv, pb, st, track, pkt,
                           keyframe, ts, duration,
                           par->codec_id == AV_CODEC_ID_WEBVTT,
                           relative_packet_pos);

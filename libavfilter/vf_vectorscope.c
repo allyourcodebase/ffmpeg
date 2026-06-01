@@ -229,7 +229,7 @@ static int query_formats(AVFilterContext *ctx)
             in_pix_fmts = in2_pix_fmts;
         else
             in_pix_fmts = in1_pix_fmts;
-        if ((ret = ff_formats_ref(ff_make_format_list(in_pix_fmts), &ctx->inputs[0]->outcfg.formats)) < 0)
+        if ((ret = ff_formats_ref(ff_make_pixel_format_list(in_pix_fmts), &ctx->inputs[0]->outcfg.formats)) < 0)
             return ret;
     }
 
@@ -262,7 +262,7 @@ static int query_formats(AVFilterContext *ctx)
         out_pix_fmts = out_yuv12_pix_fmts;
     else
         return AVERROR(EAGAIN);
-    if ((ret = ff_formats_ref(ff_make_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats)) < 0)
+    if ((ret = ff_formats_ref(ff_make_pixel_format_list(out_pix_fmts), &ctx->outputs[0]->incfg.formats)) < 0)
         return ret;
 
     return 0;
@@ -1469,6 +1469,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         return AVERROR(ENOMEM);
     }
     av_frame_copy_props(out, in);
+    out->sample_aspect_ratio = outlink->sample_aspect_ratio;
 
     s->vectorscope(s, in, out, s->pd);
     s->graticulef(s, out, s->x, s->y, s->pd, s->cs);

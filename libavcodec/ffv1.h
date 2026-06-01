@@ -139,6 +139,8 @@ typedef struct FFV1Context {
     uint32_t crcref;
     enum AVPixelFormat pix_fmt;
     enum AVPixelFormat configured_pix_fmt;
+    int configured_width, configured_height;
+    int configured_ac;
 
     const AVFrame *cur_enc_frame;
     int plane_count;

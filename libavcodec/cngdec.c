@@ -97,7 +97,7 @@ static void make_lpc_coefs(float *lpc, const float *refl, int order)
         memcpy(lpc, cur, sizeof(*lpc) * order);
 }
 
-static void cng_decode_flush(AVCodecContext *avctx)
+static av_cold void cng_decode_flush(AVCodecContext *avctx)
 {
     CNGContext *p = avctx->priv_data;
     p->inited = 0;
@@ -173,7 +173,6 @@ const FFCodec ff_comfortnoise_decoder = {
     FF_CODEC_DECODE_CB(cng_decode_frame),
     .flush          = cng_decode_flush,
     .close          = cng_decode_close,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16),
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_CHANNEL_CONF,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

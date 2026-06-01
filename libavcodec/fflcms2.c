@@ -50,10 +50,7 @@ void ff_icc_context_uninit(FFIccContext *s)
 static int get_curve(FFIccContext *s, enum AVColorTransferCharacteristic trc,
                      cmsToneCurve **out_curve)
 {
-    if (trc >= AVCOL_TRC_NB)
-        return AVERROR_INVALIDDATA;
-
-    if (s->curves[trc])
+    if ((unsigned)trc < AVCOL_TRC_NB && s->curves[trc])
         goto done;
 
     switch (trc) {
@@ -128,6 +125,7 @@ static int get_curve(FFIccContext *s, enum AVColorTransferCharacteristic trc,
     case AVCOL_TRC_BT1361_ECG:
     case AVCOL_TRC_SMPTE2084:
     case AVCOL_TRC_ARIB_STD_B67:
+    case AVCOL_TRC_V_LOG:
         return AVERROR_PATCHWELCOME;
 
     default:

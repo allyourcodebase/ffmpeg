@@ -6075,7 +6075,7 @@ const all_sources = [_][]const u8{
     "libavfilter/vf_smartblur.c",
     "libavfilter/vf_spp.c",
     "libavfilter/vf_sr.c",
-    "libavfilter/vf_sr_amf.c",
+    //"libavfilter/vf_sr_amf.c",
     "libavfilter/vf_ssim.c",
     "libavfilter/vf_ssim360.c",
     "libavfilter/vf_stack.c",

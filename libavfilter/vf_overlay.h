@@ -62,7 +62,7 @@ typedef struct OverlayContext {
     uint8_t overlay_rgba_map[4];
     uint8_t overlay_has_alpha;
     int format;                 ///< OverlayFormat
-    int alpha_format;
+    int alpha_mode;
     int eval_mode;              ///< EvalMode
 
     FFFrameSync fs;
@@ -82,7 +82,6 @@ typedef struct OverlayContext {
     int (*blend_slice)(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs);
 } OverlayContext;
 
-void ff_overlay_init_x86(OverlayContext *s, int format, int pix_format,
-                         int alpha_format, int main_has_alpha);
+void ff_overlay_init_x86(AVFilterContext *ctx);
 
 #endif /* AVFILTER_OVERLAY_H */

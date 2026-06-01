@@ -57,7 +57,8 @@ typedef struct TonemapOpenCLContext {
     enum AVColorRange range, range_in, range_out;
     enum AVChromaLocation chroma_loc;
 
-    enum TonemapAlgorithm tonemap;
+    /* enum TonemapAlgorithm */
+    int                   tonemap;
     enum AVPixelFormat    format;
     double                peak;
     double                param;
@@ -70,12 +71,12 @@ typedef struct TonemapOpenCLContext {
     cl_mem                util_mem;
 } TonemapOpenCLContext;
 
-static const char *const linearize_funcs[AVCOL_TRC_NB] = {
+static const char *const linearize_funcs[] = {
     [AVCOL_TRC_SMPTE2084] = "eotf_st2084",
     [AVCOL_TRC_ARIB_STD_B67] = "inverse_oetf_hlg",
 };
 
-static const char *const delinearize_funcs[AVCOL_TRC_NB] = {
+static const char *const delinearize_funcs[] = {
     [AVCOL_TRC_BT709]     = "inverse_eotf_bt1886",
     [AVCOL_TRC_BT2020_10] = "inverse_eotf_bt1886",
 };

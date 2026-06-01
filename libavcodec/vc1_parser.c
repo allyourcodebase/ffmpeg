@@ -28,6 +28,7 @@
 #include "libavutil/attributes.h"
 #include "libavutil/avassert.h"
 #include "parser.h"
+#include "parser_internal.h"
 #include "vc1.h"
 #include "get_bits.h"
 #include "vc1dsp.h"
@@ -179,6 +180,7 @@ static int vc1_parse(AVCodecParserContext *s,
             // start codes if we know it contains a complete frame and
             // we've already unescaped all we need of the frame header
             vc1_extract_header(s, avctx, unesc_buffer, unesc_index);
+            unesc_index = 0;
             break;
         }
         if (unesc_index >= UNESCAPED_THRESHOLD && !start_code_found) {
@@ -215,7 +217,8 @@ static int vc1_parse(AVCodecParserContext *s,
                 if (!pic_found && (b == (VC1_CODE_FRAME & 0xFF) || b == (VC1_CODE_FIELD & 0xFF))) {
                     pic_found = 1;
                 }
-                else if (pic_found && b != (VC1_CODE_FIELD & 0xFF) && b != (VC1_CODE_SLICE & 0xFF)) {
+                else if (pic_found && b != (VC1_CODE_FIELD & 0xFF) && b != (VC1_CODE_SLICE & 0xFF)
+                                   && b != (VC1_CODE_ENDOFSEQ & 0xFF)) {
                     next = i - 4;
                     pic_found = b == (VC1_CODE_FRAME & 0xFF);
                     break;
@@ -269,10 +272,10 @@ static av_cold int vc1_parse_init(AVCodecParserContext *s)
     return 0;
 }
 
-const AVCodecParser ff_vc1_parser = {
-    .codec_ids      = { AV_CODEC_ID_VC1 },
+const FFCodecParser ff_vc1_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_VC1),
     .priv_data_size = sizeof(VC1ParseContext),
-    .parser_init    = vc1_parse_init,
-    .parser_parse   = vc1_parse,
-    .parser_close   = ff_parse_close,
+    .init           = vc1_parse_init,
+    .parse          = vc1_parse,
+    .close          = ff_parse_close,
 };

@@ -31,9 +31,13 @@
 #include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
 #include "libavutil/pixdesc.h"
+#include "libavutil/hwcontext.h"
 #include "config.h"
 #include "swscale_internal.h"
 #include "swscale.h"
+#if CONFIG_VULKAN
+#include "vulkan/ops.h"
+#endif
 
 DECLARE_ALIGNED(8, const uint8_t, ff_dither_8x8_128)[9][8] = {
     {  36, 68,  60, 92,  34, 66,  58, 90, },
@@ -660,6 +664,8 @@ static av_cold void sws_init_swscale(SwsInternal *c)
 {
     enum AVPixelFormat srcFormat = c->opts.src_format;
 
+    ff_sws_init_xyzdsp(c);
+
     ff_sws_init_output_funcs(c, &c->yuv2plane1, &c->yuv2planeX,
                              &c->yuv2nv12cX, &c->yuv2packed1,
                              &c->yuv2packed2, &c->yuv2packedX, &c->yuv2anyX);
@@ -737,8 +743,8 @@ static int check_image_pointers(const uint8_t * const data[4], enum AVPixelForma
     return 1;
 }
 
-void ff_xyz12Torgb48(const SwsInternal *c, uint8_t *dst, int dst_stride,
-                     const uint8_t *src, int src_stride, int w, int h)
+static void xyz12Torgb48_c(const SwsInternal *c, uint8_t *dst, int dst_stride,
+                           const uint8_t *src, int src_stride, int w, int h)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->opts.src_format);
 
@@ -759,20 +765,20 @@ void ff_xyz12Torgb48(const SwsInternal *c, uint8_t *dst, int dst_stride,
                 z = AV_RL16(src16 + xp + 2);
             }
 
-            x = c->xyzgamma[x >> 4];
-            y = c->xyzgamma[y >> 4];
-            z = c->xyzgamma[z >> 4];
+            x = c->xyz2rgb.gamma.in[x >> 4];
+            y = c->xyz2rgb.gamma.in[y >> 4];
+            z = c->xyz2rgb.gamma.in[z >> 4];
 
             // convert from XYZlinear to sRGBlinear
-            r = c->xyz2rgb_matrix[0][0] * x +
-                c->xyz2rgb_matrix[0][1] * y +
-                c->xyz2rgb_matrix[0][2] * z >> 12;
-            g = c->xyz2rgb_matrix[1][0] * x +
-                c->xyz2rgb_matrix[1][1] * y +
-                c->xyz2rgb_matrix[1][2] * z >> 12;
-            b = c->xyz2rgb_matrix[2][0] * x +
-                c->xyz2rgb_matrix[2][1] * y +
-                c->xyz2rgb_matrix[2][2] * z >> 12;
+            r = c->xyz2rgb.mat[0][0] * x +
+                c->xyz2rgb.mat[0][1] * y +
+                c->xyz2rgb.mat[0][2] * z >> 12;
+            g = c->xyz2rgb.mat[1][0] * x +
+                c->xyz2rgb.mat[1][1] * y +
+                c->xyz2rgb.mat[1][2] * z >> 12;
+            b = c->xyz2rgb.mat[2][0] * x +
+                c->xyz2rgb.mat[2][1] * y +
+                c->xyz2rgb.mat[2][2] * z >> 12;
 
             // limit values to 16-bit depth
             r = av_clip_uint16(r);
@@ -781,13 +787,13 @@ void ff_xyz12Torgb48(const SwsInternal *c, uint8_t *dst, int dst_stride,
 
             // convert from sRGBlinear to RGB and scale from 12bit to 16bit
             if (desc->flags & AV_PIX_FMT_FLAG_BE) {
-                AV_WB16(dst16 + xp + 0, c->rgbgamma[r] << 4);
-                AV_WB16(dst16 + xp + 1, c->rgbgamma[g] << 4);
-                AV_WB16(dst16 + xp + 2, c->rgbgamma[b] << 4);
+                AV_WB16(dst16 + xp + 0, c->xyz2rgb.gamma.out[r] << 4);
+                AV_WB16(dst16 + xp + 1, c->xyz2rgb.gamma.out[g] << 4);
+                AV_WB16(dst16 + xp + 2, c->xyz2rgb.gamma.out[b] << 4);
             } else {
-                AV_WL16(dst16 + xp + 0, c->rgbgamma[r] << 4);
-                AV_WL16(dst16 + xp + 1, c->rgbgamma[g] << 4);
-                AV_WL16(dst16 + xp + 2, c->rgbgamma[b] << 4);
+                AV_WL16(dst16 + xp + 0, c->xyz2rgb.gamma.out[r] << 4);
+                AV_WL16(dst16 + xp + 1, c->xyz2rgb.gamma.out[g] << 4);
+                AV_WL16(dst16 + xp + 2, c->xyz2rgb.gamma.out[b] << 4);
             }
         }
 
@@ -796,8 +802,8 @@ void ff_xyz12Torgb48(const SwsInternal *c, uint8_t *dst, int dst_stride,
     }
 }
 
-void ff_rgb48Toxyz12(const SwsInternal *c, uint8_t *dst, int dst_stride,
-                     const uint8_t *src, int src_stride, int w, int h)
+static void rgb48Toxyz12_c(const SwsInternal *c, uint8_t *dst, int dst_stride,
+                           const uint8_t *src, int src_stride, int w, int h)
 {
     const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(c->opts.dst_format);
 
@@ -818,20 +824,20 @@ void ff_rgb48Toxyz12(const SwsInternal *c, uint8_t *dst, int dst_stride,
                 b = AV_RL16(src16 + xp + 2);
             }
 
-            r = c->rgbgammainv[r>>4];
-            g = c->rgbgammainv[g>>4];
-            b = c->rgbgammainv[b>>4];
+            r = c->rgb2xyz.gamma.in[r >> 4];
+            g = c->rgb2xyz.gamma.in[g >> 4];
+            b = c->rgb2xyz.gamma.in[b >> 4];
 
             // convert from sRGBlinear to XYZlinear
-            x = c->rgb2xyz_matrix[0][0] * r +
-                c->rgb2xyz_matrix[0][1] * g +
-                c->rgb2xyz_matrix[0][2] * b >> 12;
-            y = c->rgb2xyz_matrix[1][0] * r +
-                c->rgb2xyz_matrix[1][1] * g +
-                c->rgb2xyz_matrix[1][2] * b >> 12;
-            z = c->rgb2xyz_matrix[2][0] * r +
-                c->rgb2xyz_matrix[2][1] * g +
-                c->rgb2xyz_matrix[2][2] * b >> 12;
+            x = c->rgb2xyz.mat[0][0] * r +
+                c->rgb2xyz.mat[0][1] * g +
+                c->rgb2xyz.mat[0][2] * b >> 12;
+            y = c->rgb2xyz.mat[1][0] * r +
+                c->rgb2xyz.mat[1][1] * g +
+                c->rgb2xyz.mat[1][2] * b >> 12;
+            z = c->rgb2xyz.mat[2][0] * r +
+                c->rgb2xyz.mat[2][1] * g +
+                c->rgb2xyz.mat[2][2] * b >> 12;
 
             // limit values to 16-bit depth
             x = av_clip_uint16(x);
@@ -840,13 +846,13 @@ void ff_rgb48Toxyz12(const SwsInternal *c, uint8_t *dst, int dst_stride,
 
             // convert from XYZlinear to X'Y'Z' and scale from 12bit to 16bit
             if (desc->flags & AV_PIX_FMT_FLAG_BE) {
-                AV_WB16(dst16 + xp + 0, c->xyzgammainv[x] << 4);
-                AV_WB16(dst16 + xp + 1, c->xyzgammainv[y] << 4);
-                AV_WB16(dst16 + xp + 2, c->xyzgammainv[z] << 4);
+                AV_WB16(dst16 + xp + 0, c->rgb2xyz.gamma.out[x] << 4);
+                AV_WB16(dst16 + xp + 1, c->rgb2xyz.gamma.out[y] << 4);
+                AV_WB16(dst16 + xp + 2, c->rgb2xyz.gamma.out[z] << 4);
             } else {
-                AV_WL16(dst16 + xp + 0, c->xyzgammainv[x] << 4);
-                AV_WL16(dst16 + xp + 1, c->xyzgammainv[y] << 4);
-                AV_WL16(dst16 + xp + 2, c->xyzgammainv[z] << 4);
+                AV_WL16(dst16 + xp + 0, c->rgb2xyz.gamma.out[x] << 4);
+                AV_WL16(dst16 + xp + 1, c->rgb2xyz.gamma.out[y] << 4);
+                AV_WL16(dst16 + xp + 2, c->rgb2xyz.gamma.out[z] << 4);
             }
         }
 
@@ -855,8 +861,24 @@ void ff_rgb48Toxyz12(const SwsInternal *c, uint8_t *dst, int dst_stride,
     }
 }
 
+av_cold void ff_sws_init_xyzdsp(SwsInternal *c)
+{
+    c->xyz12Torgb48 = xyz12Torgb48_c;
+    c->rgb48Toxyz12 = rgb48Toxyz12_c;
+
+#if ARCH_AARCH64
+    ff_sws_init_xyzdsp_aarch64(c);
+#endif
+}
+
 void ff_update_palette(SwsInternal *c, const uint32_t *pal)
 {
+    uint32_t *rgb2yuv = c->input_rgb2yuv_table;
+
+    int32_t ry = rgb2yuv[RY_IDX], gy = rgb2yuv[GY_IDX], by = rgb2yuv[BY_IDX];
+    int32_t ru = rgb2yuv[RU_IDX], gu = rgb2yuv[GU_IDX], bu = rgb2yuv[BU_IDX];
+    int32_t rv = rgb2yuv[RV_IDX], gv = rgb2yuv[GV_IDX], bv = rgb2yuv[BV_IDX];
+
     for (int i = 0; i < 256; i++) {
         int r, g, b, y, u, v, a = 0xff;
         if (c->opts.src_format == AV_PIX_FMT_PAL8) {
@@ -885,20 +907,11 @@ void ff_update_palette(SwsInternal *c, const uint32_t *pal)
             g = ((i >> 1) & 3) * 85;
             r = ( i       & 1) * 255;
         }
-#define RGB2YUV_SHIFT 15
-#define BY ( (int) (0.114 * 219 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define BV (-(int) (0.081 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define BU ( (int) (0.500 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define GY ( (int) (0.587 * 219 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define GV (-(int) (0.419 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define GU (-(int) (0.331 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define RY ( (int) (0.299 * 219 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define RV ( (int) (0.500 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
-#define RU (-(int) (0.169 * 224 / 255 * (1 << RGB2YUV_SHIFT) + 0.5))
 
-        y = av_clip_uint8((RY * r + GY * g + BY * b + ( 33 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
-        u = av_clip_uint8((RU * r + GU * g + BU * b + (257 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
-        v = av_clip_uint8((RV * r + GV * g + BV * b + (257 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
+        y = av_clip_uint8((ry * r + gy * g + by * b + ( 33 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
+        u = av_clip_uint8((ru * r + gu * g + bu * b + (257 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
+        v = av_clip_uint8((rv * r + gv * g + bv * b + (257 << (RGB2YUV_SHIFT - 1))) >> RGB2YUV_SHIFT);
+
         c->pal_yuv[i]= y + (u<<8) + (v<<16) + ((unsigned)a<<24);
 
         switch (c->opts.dst_format) {
@@ -1112,7 +1125,7 @@ static int scale_internal(SwsContext *sws,
         base = srcStride[0] < 0 ? c->xyz_scratch - srcStride[0] * (srcSliceH-1) :
                                   c->xyz_scratch;
 
-        ff_xyz12Torgb48(c, base, srcStride[0], src2[0], srcStride[0], sws->src_w, srcSliceH);
+        c->xyz12Torgb48(c, base, srcStride[0], src2[0], srcStride[0], sws->src_w, srcSliceH);
         src2[0] = base;
     }
 
@@ -1184,7 +1197,7 @@ static int scale_internal(SwsContext *sws,
         }
 
         /* replace on the same data */
-        ff_rgb48Toxyz12(c, dst, dstStride2[0], dst, dstStride2[0], sws->dst_w, ret);
+        c->rgb48Toxyz12(c, dst, dstStride2[0], dst, dstStride2[0], sws->dst_w, ret);
     }
 
     /* reset slice direction at end of frame */
@@ -1197,6 +1210,8 @@ static int scale_internal(SwsContext *sws,
 void sws_frame_end(SwsContext *sws)
 {
     SwsInternal *c = sws_internal(sws);
+    if (!c->is_legacy_init)
+        return;
     av_frame_unref(c->frame_src);
     av_frame_unref(c->frame_dst);
     c->src_ranges.nb_ranges = 0;
@@ -1206,6 +1221,8 @@ int sws_frame_start(SwsContext *sws, AVFrame *dst, const AVFrame *src)
 {
     SwsInternal *c = sws_internal(sws);
     int ret, allocated = 0;
+    if (!c->is_legacy_init)
+        return AVERROR(EINVAL);
 
     ret = av_frame_ref(c->frame_src, src);
     if (ret < 0)
@@ -1238,6 +1255,8 @@ int sws_send_slice(SwsContext *sws, unsigned int slice_start,
 {
     SwsInternal *c = sws_internal(sws);
     int ret;
+    if (!c->is_legacy_init)
+        return AVERROR(EINVAL);
 
     ret = ff_range_add(&c->src_ranges, slice_start, slice_height);
     if (ret < 0)
@@ -1261,6 +1280,8 @@ int sws_receive_slice(SwsContext *sws, unsigned int slice_start,
     SwsInternal *c = sws_internal(sws);
     unsigned int align = sws_receive_slice_alignment(sws);
     uint8_t *dst[4];
+    if (!c->is_legacy_init)
+        return AVERROR(EINVAL);
 
     /* wait until complete input has been received */
     if (!(c->src_ranges.nb_ranges == 1        &&
@@ -1310,34 +1331,6 @@ int sws_receive_slice(SwsContext *sws, unsigned int slice_start,
                           dst, c->frame_dst->linesize, slice_start, slice_height);
 }
 
-static void get_frame_pointers(const AVFrame *frame, uint8_t *data[4],
-                               int linesize[4], int field)
-{
-    for (int i = 0; i < 4; i++) {
-        data[i]     = frame->data[i];
-        linesize[i] = frame->linesize[i];
-    }
-
-    if (!(frame->flags & AV_FRAME_FLAG_INTERLACED)) {
-        av_assert1(!field);
-        return;
-    }
-
-    if (field == FIELD_BOTTOM) {
-        /* Odd rows, offset by one line */
-        const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(frame->format);
-        for (int i = 0; i < 4; i++) {
-            data[i] += linesize[i];
-            if (desc->flags & AV_PIX_FMT_FLAG_PAL)
-                break;
-        }
-    }
-
-    /* Take only every second line */
-    for (int i = 0; i < 4; i++)
-        linesize[i] <<= 1;
-}
-
 /* Subset of av_frame_ref() that only references (video) data buffers */
 static int frame_ref(AVFrame *dst, const AVFrame *src)
 {
@@ -1362,9 +1355,9 @@ int sws_scale_frame(SwsContext *sws, AVFrame *dst, const AVFrame *src)
     if (!src || !dst)
         return AVERROR(EINVAL);
 
-    if (c->frame_src) {
+    if (c->is_legacy_init) {
         /* Context has been initialized with explicit values, fall back to
-         * legacy API */
+         * legacy API behavior. */
         ret = sws_frame_start(sws, dst, src);
         if (ret < 0)
             return ret;
@@ -1402,12 +1395,7 @@ int sws_scale_frame(SwsContext *sws, AVFrame *dst, const AVFrame *src)
 
         for (int field = 0; field < 2; field++) {
             SwsGraph *graph = c->graph[field];
-            uint8_t *dst_data[4], *src_data[4];
-            int dst_linesize[4], src_linesize[4];
-            get_frame_pointers(dst, dst_data, dst_linesize, field);
-            get_frame_pointers(src, src_data, src_linesize, field);
-            ff_sws_graph_run(graph, dst_data, dst_linesize,
-                          (const uint8_t **) src_data, src_linesize);
+            ff_sws_graph_run(graph, dst, src);
             if (!graph->dst.interlaced)
                 break;
         }
@@ -1441,6 +1429,35 @@ int sws_frame_setup(SwsContext *ctx, const AVFrame *dst, const AVFrame *src)
         return AVERROR(EINVAL);
     if ((ret = validate_params(ctx)) < 0)
         return ret;
+
+    /* For now, if a single frame has a context, then both need a context */
+    if (!!src->hw_frames_ctx != !!dst->hw_frames_ctx) {
+        return AVERROR(ENOTSUP);
+    } else if (!!src->hw_frames_ctx) {
+        /* Both hardware frames must already be allocated */
+        if (!src->data[0] || !dst->data[0])
+            return AVERROR(EINVAL);
+
+        AVHWFramesContext *src_hwfc, *dst_hwfc;
+        src_hwfc = (AVHWFramesContext *)src->hw_frames_ctx->data;
+        dst_hwfc = (AVHWFramesContext *)dst->hw_frames_ctx->data;
+
+        /* Both frames must live on the same device */
+        if (src_hwfc->device_ref->data != dst_hwfc->device_ref->data)
+            return AVERROR(EINVAL);
+
+        /* Only Vulkan devices are supported */
+        AVHWDeviceContext *dev_ctx;
+        dev_ctx = (AVHWDeviceContext *)src_hwfc->device_ref->data;
+        if (dev_ctx->type != AV_HWDEVICE_TYPE_VULKAN)
+            return AVERROR(ENOTSUP);
+
+#if CONFIG_UNSTABLE && CONFIG_VULKAN
+        ret = ff_sws_vk_init(ctx, src_hwfc->device_ref);
+        if (ret < 0)
+            return ret;
+#endif
+    }
 
     for (int field = 0; field < 2; field++) {
         SwsFormat src_fmt = ff_fmt_from_frame(src, field);
@@ -1509,6 +1526,9 @@ int attribute_align_arg sws_scale(SwsContext *sws,
                                   const int dstStride[])
 {
     SwsInternal *c = sws_internal(sws);
+    if (!c->is_legacy_init)
+        return AVERROR(EINVAL);
+
     if (c->nb_slice_ctx) {
         sws = c->slice_ctx[0];
         c = sws_internal(sws);

@@ -348,7 +348,7 @@ static int query_formats(const AVFilterContext *ctx,
         static const enum AVPixelFormat pix_fmts[] = {
             AV_PIX_FMT_BGRA, AV_PIX_FMT_ARGB, AV_PIX_FMT_ABGR, AV_PIX_FMT_NONE
         };
-        formats = ff_make_format_list(pix_fmts);
+        formats = ff_make_pixel_format_list(pix_fmts);
     }
 
     if (!formats)
@@ -375,11 +375,15 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
         if (!in2)
             goto fail;
         av_frame_copy(in2, in);
+        if (av_frame_copy_props(in2, in) < 0) {
+            av_frame_free(&in2);
+            goto fail;
+        }
         av_frame_free(&in);
         in = in2;
     }
 
-    s->update(s->instance, in->pts * av_q2d(inlink->time_base) * 1000,
+    s->update(s->instance, in->pts * av_q2d(inlink->time_base),
                    (const uint32_t *)in->data[0],
                    (uint32_t *)out->data[0]);
 

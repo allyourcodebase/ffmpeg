@@ -21,7 +21,6 @@
  */
 
 #include "libavutil/attributes.h"
-#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/mem_internal.h"
@@ -1297,7 +1296,6 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
         if (get_bits_count(&gb) >= bits_count)
             break;
     }
-    emms_c();
 
     if (c->version > 'b') {
         if ((ret = av_frame_replace(c->last, frame)) < 0)
@@ -1411,7 +1409,7 @@ static av_cold int decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-static void flush(AVCodecContext *avctx)
+static av_cold void flush(AVCodecContext *avctx)
 {
     BinkContext * const c = avctx->priv_data;
 

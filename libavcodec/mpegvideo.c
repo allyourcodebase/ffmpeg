@@ -42,7 +42,6 @@
 #include "mpegutils.h"
 #include "mpegvideo.h"
 #include "mpegvideodata.h"
-#include "mpegvideo_unquantize.h"
 #include "libavutil/refstruct.h"
 
 
@@ -79,20 +78,6 @@ static av_cold void dsp_init(MpegEncContext *s)
     }
 }
 
-av_cold void ff_init_scantable(const uint8_t *permutation, ScanTable *st,
-                               const uint8_t *src_scantable)
-{
-    st->scantable = src_scantable;
-
-    for (int i = 0, end = -1; i < 64; i++) {
-        int j = src_scantable[i];
-        st->permutated[i] = permutation[j];
-        if (permutation[j] > end)
-            end = permutation[j];
-        st->raster_end[i] = end;
-    }
-}
-
 av_cold void ff_mpv_idct_init(MpegEncContext *s)
 {
     if (s->codec_id == AV_CODEC_ID_MPEG4)
@@ -109,10 +94,6 @@ av_cold void ff_mpv_idct_init(MpegEncContext *s)
         ff_init_scantable(s->idsp.idct_permutation, &s->inter_scantable, ff_zigzag_direct);
         ff_init_scantable(s->idsp.idct_permutation, &s->intra_scantable, ff_zigzag_direct);
     }
-    ff_permute_scantable(s->permutated_intra_h_scantable, ff_alternate_horizontal_scan,
-                         s->idsp.idct_permutation);
-    ff_permute_scantable(s->permutated_intra_v_scantable, ff_alternate_vertical_scan,
-                         s->idsp.idct_permutation);
 }
 
 av_cold int ff_mpv_init_duplicate_contexts(MpegEncContext *s)

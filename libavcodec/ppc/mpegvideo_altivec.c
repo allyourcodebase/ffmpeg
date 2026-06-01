@@ -40,68 +40,63 @@
 
 /* AltiVec version of dct_unquantize_h263
    this code assumes `block' is 16 bytes-aligned */
-static void dct_unquantize_h263_altivec(MpegEncContext *s,
-                                 int16_t *block, int n, int qscale)
+static av_always_inline
+void dct_unquantize_h263_altivec(int16_t *block, int nb_coeffs, int qadd, int qmul)
 {
-    int i, qmul, qadd;
-    int nCoeffs;
+    register const vector signed short vczero = (const vector signed short)vec_splat_s16(0);
+    DECLARE_ALIGNED(16, short, qmul8) = qmul;
+    DECLARE_ALIGNED(16, short, qadd8) = qadd;
+    register vector signed short blockv, qmulv, qaddv, nqaddv, temp1;
+    register vector bool short blockv_null, blockv_neg;
 
-    qadd = (qscale - 1) | 1;
-    qmul = qscale << 1;
+    qmulv = vec_splat((vec_s16)vec_lde(0, &qmul8), 0);
+    qaddv = vec_splat((vec_s16)vec_lde(0, &qadd8), 0);
+    nqaddv = vec_sub(vczero, qaddv);
 
-    if (s->mb_intra) {
-        if (!s->h263_aic) {
-            if (n < 4)
-                block[0] = block[0] * s->y_dc_scale;
-            else
-                block[0] = block[0] * s->c_dc_scale;
-        }else
-            qadd = 0;
-        i = 1;
-        if (s->ac_pred)
-            nCoeffs = 63;
-        else
-            nCoeffs = s->intra_scantable.raster_end[s->block_last_index[n]];
-    } else {
-        i = 0;
-        av_assert2(s->block_last_index[n]>=0);
-        nCoeffs = s->inter_scantable.raster_end[s->block_last_index[n]];
-    }
-
-    {
-        register const vector signed short vczero = (const vector signed short)vec_splat_s16(0);
-        DECLARE_ALIGNED(16, short, qmul8) = qmul;
-        DECLARE_ALIGNED(16, short, qadd8) = qadd;
-        register vector signed short blockv, qmulv, qaddv, nqaddv, temp1;
-        register vector bool short blockv_null, blockv_neg;
-        register short backup_0 = block[0];
-
-        qmulv = vec_splat((vec_s16)vec_lde(0, &qmul8), 0);
-        qaddv = vec_splat((vec_s16)vec_lde(0, &qadd8), 0);
-        nqaddv = vec_sub(vczero, qaddv);
-
-        // vectorize all the 16 bytes-aligned blocks
-        // of 8 elements
-        for (register int j = 0; j <= nCoeffs ; j += 8) {
-            blockv = vec_ld(j << 1, block);
-            blockv_neg = vec_cmplt(blockv, vczero);
-            blockv_null = vec_cmpeq(blockv, vczero);
-            // choose between +qadd or -qadd as the third operand
-            temp1 = vec_sel(qaddv, nqaddv, blockv_neg);
-            // multiply & add (block{i,i+7} * qmul [+-] qadd)
-            temp1 = vec_mladd(blockv, qmulv, temp1);
-            // put 0 where block[{i,i+7} used to have 0
-            blockv = vec_sel(temp1, blockv, blockv_null);
-            vec_st(blockv, j << 1, block);
-        }
-
-        if (i == 1) {
-            // cheat. this avoid special-casing the first iteration
-            block[0] = backup_0;
-        }
+    // vectorize all the 16 bytes-aligned blocks
+    // of 8 elements
+    for (register int j = 0; j <= nb_coeffs; j += 8) {
+        blockv = vec_ld(j << 1, block);
+        blockv_neg = vec_cmplt(blockv, vczero);
+        blockv_null = vec_cmpeq(blockv, vczero);
+        // choose between +qadd or -qadd as the third operand
+        temp1 = vec_sel(qaddv, nqaddv, blockv_neg);
+        // multiply & add (block{i,i+7} * qmul [+-] qadd)
+        temp1 = vec_mladd(blockv, qmulv, temp1);
+        // put 0 where block[{i,i+7} used to have 0
+        blockv = vec_sel(temp1, blockv, blockv_null);
+        vec_st(blockv, j << 1, block);
     }
 }
 
+static void dct_unquantize_h263_intra_altivec(const MPVContext *s,
+                                              int16_t *block, int n, int qscale)
+{
+    int qadd = (qscale - 1) | 1;
+    int qmul = qscale << 1;
+    int block0 = block[0];
+    if (!s->h263_aic) {
+        block0 *= n < 4 ? s->y_dc_scale : s->c_dc_scale;
+    } else
+        qadd = 0;
+    int nb_coeffs = s->ac_pred ? 63 : s->intra_scantable.raster_end[s->block_last_index[n]];
+
+    dct_unquantize_h263_altivec(block, nb_coeffs, qadd, qmul);
+
+    // cheat. this avoid special-casing the first iteration
+    block[0] = block0;
+}
+
+static void dct_unquantize_h263_inter_altivec(const MPVContext *s,
+                                              int16_t *block, int n, int qscale)
+{
+    int qadd = (qscale - 1) | 1;
+    int qmul = qscale << 1;
+    av_assert2(s->block_last_index[n]>=0);
+    int nb_coeffs = s->inter_scantable.raster_end[s->block_last_index[n]];
+
+    dct_unquantize_h263_altivec(block, nb_coeffs, qadd, qmul);
+}
 #endif /* HAVE_ALTIVEC */
 
 av_cold void ff_mpv_unquantize_init_ppc(MPVUnquantDSPContext *s, int bitexact)
@@ -110,7 +105,7 @@ av_cold void ff_mpv_unquantize_init_ppc(MPVUnquantDSPContext *s, int bitexact)
     if (!PPC_ALTIVEC(av_get_cpu_flags()))
         return;
 
-    s->dct_unquantize_h263_intra = dct_unquantize_h263_altivec;
-    s->dct_unquantize_h263_inter = dct_unquantize_h263_altivec;
+    s->dct_unquantize_h263_intra = dct_unquantize_h263_intra_altivec;
+    s->dct_unquantize_h263_inter = dct_unquantize_h263_inter_altivec;
 #endif /* HAVE_ALTIVEC */
 }

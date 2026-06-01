@@ -28,6 +28,7 @@
 #include "adts_header.h"
 #include "adts_parser.h"
 #include "mpeg4audio.h"
+#include "parser_internal.h"
 
 typedef struct FTRParseContext {
     ParseContext pc;
@@ -96,9 +97,9 @@ static int ftr_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_ftr_parser = {
-    .codec_ids      = { AV_CODEC_ID_FTR },
+const FFCodecParser ff_ftr_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_FTR),
     .priv_data_size = sizeof(FTRParseContext),
-    .parser_parse   = ftr_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = ftr_parse,
+    .close          = ff_parse_close,
 };

@@ -19,7 +19,6 @@
  */
 
 #include "libavutil/avassert.h"
-#include "libavutil/emms.h"
 #include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
@@ -208,7 +207,7 @@ static int config_input(AVFilterLink *inlink)
     s->comb = comb_c;
     s->var  = var_c;
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_pullup_init_x86(s);
 #endif
     return 0;
@@ -597,7 +596,6 @@ static void pullup_submit_field(PullupContext *s, PullupBuffer *b, int parity)
     compute_metric(s, f->diffs, f, parity, f->prev->prev, parity, s->diff);
     compute_metric(s, f->combs, parity ? f->prev : f, 0, parity ? f : f->prev, 1, s->comb);
     compute_metric(s, f->vars, f, parity, f, -1, s->var);
-    emms_c();
 
     /* Advance the circular list */
     if (!s->first)

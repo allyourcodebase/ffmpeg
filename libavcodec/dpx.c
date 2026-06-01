@@ -27,38 +27,12 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "decode.h"
+#include "dpx.h"
 
-enum DPX_TRC {
-    DPX_TRC_USER_DEFINED       = 0,
-    DPX_TRC_PRINTING_DENSITY   = 1,
-    DPX_TRC_LINEAR             = 2,
-    DPX_TRC_LOGARITHMIC        = 3,
-    DPX_TRC_UNSPECIFIED_VIDEO  = 4,
-    DPX_TRC_SMPTE_274          = 5,
-    DPX_TRC_ITU_R_709_4        = 6,
-    DPX_TRC_ITU_R_601_625      = 7,
-    DPX_TRC_ITU_R_601_525      = 8,
-    DPX_TRC_SMPTE_170          = 9,
-    DPX_TRC_ITU_R_624_4_PAL    = 10,
-    DPX_TRC_Z_LINEAR           = 11,
-    DPX_TRC_Z_HOMOGENEOUS      = 12,
-};
-
-enum DPX_COL_SPEC {
-    DPX_COL_SPEC_USER_DEFINED       = 0,
-    DPX_COL_SPEC_PRINTING_DENSITY   = 1,
-    /* 2 = N/A */
-    /* 3 = N/A */
-    DPX_COL_SPEC_UNSPECIFIED_VIDEO  = 4,
-    DPX_COL_SPEC_SMPTE_274          = 5,
-    DPX_COL_SPEC_ITU_R_709_4        = 6,
-    DPX_COL_SPEC_ITU_R_601_625      = 7,
-    DPX_COL_SPEC_ITU_R_601_525      = 8,
-    DPX_COL_SPEC_SMPTE_170          = 9,
-    DPX_COL_SPEC_ITU_R_624_4_PAL    = 10,
-    /* 11 = N/A */
-    /* 12 = N/A */
-};
+#include "thread.h"
+#include "hwconfig.h"
+#include "hwaccel_internal.h"
+#include "config_components.h"
 
 static unsigned int read16(const uint8_t **ptr, int is_big)
 {
@@ -149,25 +123,178 @@ static uint16_t read12in32(const uint8_t **ptr, uint32_t *lbuf,
     }
 }
 
+static void unpack_frame(AVCodecContext *avctx, AVFrame *p, const uint8_t *buf,
+                         int elements, int endian)
+{
+    int i, x, y;
+    DPXDecContext *dpx = avctx->priv_data;
+
+    uint8_t *ptr[AV_NUM_DATA_POINTERS];
+    unsigned int rgbBuffer = 0;
+    int n_datum = 0;
+
+    for (i=0; i<AV_NUM_DATA_POINTERS; i++)
+        ptr[i] = p->data[i];
+
+    switch (avctx->bits_per_raw_sample) {
+    case 10:
+        for (x = 0; x < avctx->height; x++) {
+            uint16_t *dst[4] = {(uint16_t*)ptr[0],
+                                (uint16_t*)ptr[1],
+                                (uint16_t*)ptr[2],
+                                (uint16_t*)ptr[3]};
+            int shift = elements > 1 ? dpx->packing == 1 ? 22 : 20 : dpx->packing == 1 ? 2 : 0;
+            for (y = 0; y < avctx->width; y++) {
+                if (elements >= 3)
+                    *dst[2]++ = read10in32(&buf, &rgbBuffer,
+                                           &n_datum, endian, shift);
+                if (elements == 1)
+                    *dst[0]++ = read10in32_gray(&buf, &rgbBuffer,
+                                                &n_datum, endian, shift);
+                else
+                    *dst[0]++ = read10in32(&buf, &rgbBuffer,
+                                           &n_datum, endian, shift);
+                if (elements >= 2)
+                    *dst[1]++ = read10in32(&buf, &rgbBuffer,
+                                           &n_datum, endian, shift);
+                if (elements == 4)
+                    *dst[3]++ =
+                    read10in32(&buf, &rgbBuffer,
+                               &n_datum, endian, shift);
+            }
+            if (!dpx->unpadded_10bit)
+                n_datum = 0;
+            for (i = 0; i < elements; i++)
+                ptr[i] += p->linesize[i];
+        }
+        break;
+    case 12:
+        for (x = 0; x < avctx->height; x++) {
+            uint16_t *dst[4] = {(uint16_t*)ptr[0],
+                                (uint16_t*)ptr[1],
+                                (uint16_t*)ptr[2],
+                                (uint16_t*)ptr[3]};
+            int shift = dpx->packing == 1 ? 4 : 0;
+            for (y = 0; y < avctx->width; y++) {
+                if (dpx->packing) {
+                    if (elements >= 3)
+                        *dst[2]++ = read16(&buf, endian) >> shift & 0xFFF;
+                    *dst[0]++ = read16(&buf, endian) >> shift & 0xFFF;
+                    if (elements >= 2)
+                        *dst[1]++ = read16(&buf, endian) >> shift & 0xFFF;
+                    if (elements == 4)
+                        *dst[3]++ = read16(&buf, endian) >> shift & 0xFFF;
+                } else {
+                    if (elements >= 3)
+                        *dst[2]++ = read12in32(&buf, &rgbBuffer,
+                                               &n_datum, endian);
+                    *dst[0]++ = read12in32(&buf, &rgbBuffer,
+                                           &n_datum, endian);
+                    if (elements >= 2)
+                        *dst[1]++ = read12in32(&buf, &rgbBuffer,
+                                               &n_datum, endian);
+                    if (elements == 4)
+                        *dst[3]++ = read12in32(&buf, &rgbBuffer,
+                                               &n_datum, endian);
+                }
+            }
+            n_datum = 0;
+            for (i = 0; i < elements; i++)
+                ptr[i] += p->linesize[i];
+            // Jump to next aligned position
+            buf += dpx->need_align;
+        }
+        break;
+    case 32:
+        if (elements == 1) {
+            av_image_copy_plane(ptr[0], p->linesize[0],
+                                buf, dpx->stride,
+                                elements * avctx->width * 4, avctx->height);
+        } else {
+            for (y = 0; y < avctx->height; y++) {
+                ptr[0] = p->data[0] + y * p->linesize[0];
+                ptr[1] = p->data[1] + y * p->linesize[1];
+                ptr[2] = p->data[2] + y * p->linesize[2];
+                ptr[3] = p->data[3] + y * p->linesize[3];
+                for (x = 0; x < avctx->width; x++) {
+                    AV_WN32(ptr[2], AV_RN32(buf));
+                    AV_WN32(ptr[0], AV_RN32(buf + 4));
+                    AV_WN32(ptr[1], AV_RN32(buf + 8));
+                    if (avctx->pix_fmt == AV_PIX_FMT_GBRAPF32BE ||
+                        avctx->pix_fmt == AV_PIX_FMT_GBRAPF32LE) {
+                        AV_WN32(ptr[3], AV_RN32(buf + 12));
+                        buf += 4;
+                        ptr[3] += 4;
+                    }
+
+                    buf += 12;
+                    ptr[2] += 4;
+                    ptr[0] += 4;
+                    ptr[1] += 4;
+                }
+            }
+        }
+        break;
+    case 16:
+        elements *= 2;
+    // fall-through
+    case 8:
+        if (   avctx->pix_fmt == AV_PIX_FMT_YUVA444P
+            || avctx->pix_fmt == AV_PIX_FMT_YUV444P) {
+            for (x = 0; x < avctx->height; x++) {
+                ptr[0] = p->data[0] + x * p->linesize[0];
+                ptr[1] = p->data[1] + x * p->linesize[1];
+                ptr[2] = p->data[2] + x * p->linesize[2];
+                ptr[3] = p->data[3] + x * p->linesize[3];
+                for (y = 0; y < avctx->width; y++) {
+                    *ptr[1]++ = *buf++;
+                    *ptr[0]++ = *buf++;
+                    *ptr[2]++ = *buf++;
+                    if (avctx->pix_fmt == AV_PIX_FMT_YUVA444P)
+                        *ptr[3]++ = *buf++;
+                }
+            }
+        } else {
+        av_image_copy_plane(ptr[0], p->linesize[0],
+                            buf, dpx->stride,
+                            elements * avctx->width, avctx->height);
+        }
+        break;
+    }
+}
+
+static enum AVPixelFormat get_pixel_format(AVCodecContext *avctx,
+                                           enum AVPixelFormat pix_fmt)
+{
+    enum AVPixelFormat pix_fmts[] = {
+#if CONFIG_DPX_VULKAN_HWACCEL
+        AV_PIX_FMT_VULKAN,
+#endif
+        pix_fmt,
+        AV_PIX_FMT_NONE,
+    };
+
+    return ff_get_format(avctx, pix_fmts);
+}
+
 static int decode_frame(AVCodecContext *avctx, AVFrame *p,
                         int *got_frame, AVPacket *avpkt)
 {
+    DPXDecContext *dpx = avctx->priv_data;
+
+    enum AVPixelFormat pix_fmt;
     const uint8_t *buf = avpkt->data;
     int buf_size       = avpkt->size;
-    uint8_t *ptr[AV_NUM_DATA_POINTERS];
     uint32_t header_version, version = 0;
     char creator[101] = { 0 };
     char input_device[33] = { 0 };
 
     unsigned int offset;
-    int magic_num, endian;
-    int x, y, stride, i, j, ret;
-    int w, h, bits_per_color, descriptor, elements, packing;
+    int magic_num;
+    int i, j, ret;
+    int w, h, descriptor;
     int yuv, color_trc, color_spec;
-    int encoding, need_align = 0, unpadded_10bit = 0;
-
-    unsigned int rgbBuffer = 0;
-    int n_datum = 0;
+    int encoding;
 
     if (avpkt->size <= 1634) {
         av_log(avctx, AV_LOG_ERROR, "Packet too small for DPX header\n");
@@ -180,15 +307,15 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     /* Check if the files "magic number" is "SDPX" which means it uses
      * big-endian or XPDS which is for little-endian files */
     if (magic_num == AV_RL32("SDPX")) {
-        endian = 0;
+        dpx->endian = 0;
     } else if (magic_num == AV_RB32("SDPX")) {
-        endian = 1;
+        dpx->endian = 1;
     } else {
         av_log(avctx, AV_LOG_ERROR, "DPX marker not found\n");
         return AVERROR_INVALIDDATA;
     }
 
-    offset = read32(&buf, endian);
+    offset = read32(&buf, dpx->endian);
     if (avpkt->size <= offset) {
         av_log(avctx, AV_LOG_ERROR, "Invalid data start offset\n");
         return AVERROR_INVALIDDATA;
@@ -205,7 +332,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     // Check encryption
     buf = avpkt->data + 660;
-    ret = read32(&buf, endian);
+    ret = read32(&buf, dpx->endian);
     if (ret != 0xFFFFFFFF) {
         avpriv_report_missing_feature(avctx, "Encryption");
         av_log(avctx, AV_LOG_WARNING, "The image is encrypted and may "
@@ -214,8 +341,8 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     // Need to end in 0x304 offset from start of file
     buf = avpkt->data + 0x304;
-    w = read32(&buf, endian);
-    h = read32(&buf, endian);
+    w = read32(&buf, dpx->endian);
+    h = read32(&buf, dpx->endian);
 
     if ((ret = ff_set_dimensions(avctx, w, h)) < 0)
         return ret;
@@ -228,23 +355,22 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     // Need to end in 0x323 to read the bits per color
     buf += 3;
-    avctx->bits_per_raw_sample =
-    bits_per_color = buf[0];
+    avctx->bits_per_raw_sample = buf[0];
     buf++;
-    packing = read16(&buf, endian);
-    encoding = read16(&buf, endian);
+    dpx->packing = read16(&buf, dpx->endian);
+    encoding = read16(&buf, dpx->endian);
 
     if (encoding) {
         avpriv_report_missing_feature(avctx, "Encoding %d", encoding);
         return AVERROR_PATCHWELCOME;
     }
 
-    if (bits_per_color > 31)
+    if (avctx->bits_per_raw_sample > 31)
         return AVERROR_INVALIDDATA;
 
     buf += 820;
-    avctx->sample_aspect_ratio.num = read32(&buf, endian);
-    avctx->sample_aspect_ratio.den = read32(&buf, endian);
+    avctx->sample_aspect_ratio.num = read32(&buf, dpx->endian);
+    avctx->sample_aspect_ratio.den = read32(&buf, dpx->endian);
     if (avctx->sample_aspect_ratio.num > 0 && avctx->sample_aspect_ratio.den > 0)
         av_reduce(&avctx->sample_aspect_ratio.num, &avctx->sample_aspect_ratio.den,
                    avctx->sample_aspect_ratio.num,  avctx->sample_aspect_ratio.den,
@@ -255,7 +381,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     /* preferred frame rate from Motion-picture film header */
     if (offset >= 1724 + 4) {
         buf = avpkt->data + 1724;
-        i = read32(&buf, endian);
+        i = read32(&buf, dpx->endian);
         if(i && i != 0xFFFFFFFF) {
             AVRational q = av_d2q(av_int2float(i), 4096);
             if (q.num > 0 && q.den > 0)
@@ -267,7 +393,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     if (offset >= 1940 + 4 &&
         !(avctx->framerate.num && avctx->framerate.den)) {
         buf = avpkt->data + 1940;
-        i = read32(&buf, endian);
+        i = read32(&buf, dpx->endian);
         if(i && i != 0xFFFFFFFF) {
             AVRational q = av_d2q(av_int2float(i), 4096);
             if (q.num > 0 && q.den > 0)
@@ -284,7 +410,7 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
         buf = avpkt->data + 1920;
         // read32 to native endian, av_bswap32 to opposite of native for
         // compatibility with av_timecode_make_smpte_tc_string2 etc
-        tc = av_bswap32(read32(&buf, endian));
+        tc = av_bswap32(read32(&buf, dpx->endian));
 
         if (i != 0xFFFFFFFF) {
             AVFrameSideData *tcside;
@@ -308,21 +434,21 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     /* color range from television header */
     if (offset >= 1964 + 4) {
         buf = avpkt->data + 1952;
-        i = read32(&buf, endian);
+        i = read32(&buf, dpx->endian);
 
         buf = avpkt->data + 1964;
-        j = read32(&buf, endian);
+        j = read32(&buf, dpx->endian);
 
         if (i != 0xFFFFFFFF && j != 0xFFFFFFFF) {
             float minCV, maxCV;
             minCV = av_int2float(i);
             maxCV = av_int2float(j);
-            if (bits_per_color >= 1 &&
-                minCV == 0.0f && maxCV == ((1U<<bits_per_color) - 1)) {
+            if (avctx->bits_per_raw_sample >= 1 &&
+                minCV == 0.0f && maxCV == ((1U<<avctx->bits_per_raw_sample) - 1)) {
                 avctx->color_range = AVCOL_RANGE_JPEG;
-            } else if (bits_per_color >= 8 &&
-                       minCV == (1  <<(bits_per_color - 4)) &&
-                       maxCV == (235<<(bits_per_color - 8))) {
+            } else if (avctx->bits_per_raw_sample >= 8 &&
+                       minCV == (1  <<(avctx->bits_per_raw_sample - 4)) &&
+                       maxCV == (235<<(avctx->bits_per_raw_sample - 8))) {
                 avctx->color_range = AVCOL_RANGE_MPEG;
             }
         }
@@ -334,28 +460,28 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     case 3:  // B
     case 4:  // A
     case 6:  // Y
-        elements = 1;
+        dpx->components = 1;
         yuv = 1;
         break;
     case 50: // RGB
-        elements = 3;
+        dpx->components = 3;
         yuv = 0;
         break;
     case 52: // ABGR
     case 51: // RGBA
-        elements = 4;
+        dpx->components = 4;
         yuv = 0;
         break;
     case 100: // UYVY422
-        elements = 2;
+        dpx->components = 2;
         yuv = 1;
         break;
     case 102: // UYV444
-        elements = 3;
+        dpx->components = 3;
         yuv = 1;
         break;
     case 103: // UYVA4444
-        elements = 4;
+        dpx->components = 4;
         yuv = 1;
         break;
     default:
@@ -363,40 +489,40 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
         return AVERROR_PATCHWELCOME;
     }
 
-    switch (bits_per_color) {
+    switch (avctx->bits_per_raw_sample) {
     case 8:
-        stride = avctx->width * elements;
+        dpx->stride = avctx->width * dpx->components;
         break;
     case 10:
-        if (!packing) {
+        if (!dpx->packing) {
             av_log(avctx, AV_LOG_ERROR, "Packing to 32bit required\n");
             return -1;
         }
-        stride = (avctx->width * elements + 2) / 3 * 4;
+        dpx->stride = (avctx->width * dpx->components + 2) / 3 * 4;
         break;
     case 12:
-        stride = avctx->width * elements;
-        if (packing) {
-            stride *= 2;
+        dpx->stride = avctx->width * dpx->components;
+        if (dpx->packing) {
+            dpx->stride *= 2;
         } else {
-            stride *= 3;
-            if (stride % 8) {
-                stride /= 8;
-                stride++;
-                stride *= 8;
+            dpx->stride *= 3;
+            if (dpx->stride % 8) {
+                dpx->stride /= 8;
+                dpx->stride++;
+                dpx->stride *= 8;
             }
-            stride /= 2;
+            dpx->stride /= 2;
         }
         break;
     case 16:
-        stride = 2 * avctx->width * elements;
+        dpx->stride = 2 * avctx->width * dpx->components;
         break;
     case 32:
-        stride = 4 * avctx->width * elements;
+        dpx->stride = 4 * avctx->width * dpx->components;
         break;
     case 1:
     case 64:
-        avpriv_report_missing_feature(avctx, "Depth %d", bits_per_color);
+        avpriv_report_missing_feature(avctx, "Depth %d", avctx->bits_per_raw_sample);
         return AVERROR_PATCHWELCOME;
     default:
         return AVERROR_INVALIDDATA;
@@ -487,10 +613,11 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     av_dict_set(&p->metadata, "Input Device", input_device, 0);
 
     // Some devices do not pad 10bit samples to whole 32bit words per row
+    dpx->unpadded_10bit = 0;
     if (!memcmp(input_device, "Scanity", 7) ||
         !memcmp(creator, "Lasergraphics Inc.", 18)) {
-        if (bits_per_color == 10)
-            unpadded_10bit = 1;
+        if (avctx->bits_per_raw_sample == 10)
+            dpx->unpadded_10bit = 1;
     }
 
     // Table 3c: Runs will always break at scan line boundaries. Packing
@@ -498,24 +625,24 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     // Unfortunately, the encoder produced invalid files, so attempt
     // to detect it
     // Also handle special case with unpadded content
-    need_align = FFALIGN(stride, 4);
-    if (need_align*avctx->height + (int64_t)offset > avpkt->size &&
-        (!unpadded_10bit || (avctx->width * avctx->height * elements + 2) / 3 * 4 + (int64_t)offset > avpkt->size)) {
+    dpx->need_align = FFALIGN(dpx->stride, 4);
+    if (dpx->need_align*avctx->height + (int64_t)offset > avpkt->size &&
+        (!dpx->unpadded_10bit || (avctx->width * avctx->height * dpx->components + 2) / 3 * 4 + (int64_t)offset > avpkt->size)) {
         // Alignment seems unappliable, try without
-        if (stride*avctx->height + (int64_t)offset > avpkt->size || unpadded_10bit) {
+        if (dpx->stride*avctx->height + (int64_t)offset > avpkt->size || dpx->unpadded_10bit) {
             av_log(avctx, AV_LOG_ERROR, "Overread buffer. Invalid header?\n");
             return AVERROR_INVALIDDATA;
         } else {
             av_log(avctx, AV_LOG_INFO, "Decoding DPX without scanline "
                    "alignment.\n");
-            need_align = 0;
+            dpx->need_align = 0;
         }
     } else {
-        need_align -= stride;
-        stride = FFALIGN(stride, 4);
+        dpx->need_align -= dpx->stride;
+        dpx->stride = FFALIGN(dpx->stride, 4);
     }
 
-    switch (1000 * descriptor + 10 * bits_per_color + endian) {
+    switch (1000 * descriptor + 10 * avctx->bits_per_raw_sample + dpx->endian) {
     case 1081:
     case 1080:
     case 2081:
@@ -526,101 +653,111 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
     case 4080:
     case 6081:
     case 6080:
-        avctx->pix_fmt = AV_PIX_FMT_GRAY8;
+        pix_fmt = AV_PIX_FMT_GRAY8;
         break;
     case 6121:
     case 6120:
-        avctx->pix_fmt = AV_PIX_FMT_GRAY12;
+        pix_fmt = AV_PIX_FMT_GRAY12;
         break;
     case 1320:
     case 2320:
     case 3320:
     case 4320:
     case 6320:
-        avctx->pix_fmt = AV_PIX_FMT_GRAYF32LE;
+        pix_fmt = AV_PIX_FMT_GRAYF32LE;
         break;
     case 1321:
     case 2321:
     case 3321:
     case 4321:
     case 6321:
-        avctx->pix_fmt = AV_PIX_FMT_GRAYF32BE;
+        pix_fmt = AV_PIX_FMT_GRAYF32BE;
         break;
     case 50081:
     case 50080:
-        avctx->pix_fmt = AV_PIX_FMT_RGB24;
+        pix_fmt = AV_PIX_FMT_RGB24;
         break;
     case 52081:
     case 52080:
-        avctx->pix_fmt = AV_PIX_FMT_ABGR;
+        pix_fmt = AV_PIX_FMT_ABGR;
         break;
     case 51081:
     case 51080:
-        avctx->pix_fmt = AV_PIX_FMT_RGBA;
+        pix_fmt = AV_PIX_FMT_RGBA;
         break;
     case 50100:
     case 50101:
-        avctx->pix_fmt = AV_PIX_FMT_GBRP10;
+        pix_fmt = AV_PIX_FMT_GBRP10;
         break;
     case 51100:
     case 51101:
-        avctx->pix_fmt = AV_PIX_FMT_GBRAP10;
+        pix_fmt = AV_PIX_FMT_GBRAP10;
         break;
     case 50120:
     case 50121:
-        avctx->pix_fmt = AV_PIX_FMT_GBRP12;
+        pix_fmt = AV_PIX_FMT_GBRP12;
         break;
     case 51120:
     case 51121:
-        avctx->pix_fmt = AV_PIX_FMT_GBRAP12;
+        pix_fmt = AV_PIX_FMT_GBRAP12;
         break;
     case 6100:
     case 6101:
-        avctx->pix_fmt = AV_PIX_FMT_GRAY10;
+        pix_fmt = AV_PIX_FMT_GRAY10;
         break;
     case 6161:
-        avctx->pix_fmt = AV_PIX_FMT_GRAY16BE;
+        pix_fmt = AV_PIX_FMT_GRAY16BE;
         break;
     case 6160:
-        avctx->pix_fmt = AV_PIX_FMT_GRAY16LE;
+        pix_fmt = AV_PIX_FMT_GRAY16LE;
         break;
     case 50161:
-        avctx->pix_fmt = AV_PIX_FMT_RGB48BE;
+        pix_fmt = AV_PIX_FMT_RGB48BE;
         break;
     case 50160:
-        avctx->pix_fmt = AV_PIX_FMT_RGB48LE;
+        pix_fmt = AV_PIX_FMT_RGB48LE;
         break;
     case 51161:
-        avctx->pix_fmt = AV_PIX_FMT_RGBA64BE;
+        pix_fmt = AV_PIX_FMT_RGBA64BE;
         break;
     case 51160:
-        avctx->pix_fmt = AV_PIX_FMT_RGBA64LE;
+        pix_fmt = AV_PIX_FMT_RGBA64LE;
         break;
     case 50320:
-        avctx->pix_fmt = AV_PIX_FMT_GBRPF32LE;
+        pix_fmt = AV_PIX_FMT_GBRPF32LE;
         break;
     case 50321:
-        avctx->pix_fmt = AV_PIX_FMT_GBRPF32BE;
+        pix_fmt = AV_PIX_FMT_GBRPF32BE;
         break;
     case 51320:
-        avctx->pix_fmt = AV_PIX_FMT_GBRAPF32LE;
+        pix_fmt = AV_PIX_FMT_GBRAPF32LE;
         break;
     case 51321:
-        avctx->pix_fmt = AV_PIX_FMT_GBRAPF32BE;
+        pix_fmt = AV_PIX_FMT_GBRAPF32BE;
         break;
     case 100081:
-        avctx->pix_fmt = AV_PIX_FMT_UYVY422;
+        pix_fmt = AV_PIX_FMT_UYVY422;
         break;
     case 102081:
-        avctx->pix_fmt = AV_PIX_FMT_YUV444P;
+        pix_fmt = AV_PIX_FMT_YUV444P;
         break;
     case 103081:
-        avctx->pix_fmt = AV_PIX_FMT_YUVA444P;
+        pix_fmt = AV_PIX_FMT_YUVA444P;
         break;
     default:
         av_log(avctx, AV_LOG_ERROR, "Unsupported format %d\n",
-               1000 * descriptor + 10 * bits_per_color + endian);
+               1000 * descriptor + 10 * avctx->bits_per_raw_sample + dpx->endian);
         return AVERROR_PATCHWELCOME;
+    }
+
+    if (pix_fmt != dpx->pix_fmt) {
+        dpx->pix_fmt = pix_fmt;
+
+        ret = get_pixel_format(avctx, pix_fmt);
+        if (ret < 0)
+            return ret;
+
+        avctx->pix_fmt = ret;
     }
 
     ff_set_sar(avctx, avctx->sample_aspect_ratio);
@@ -630,145 +767,84 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *p,
 
     // Move pointer to offset from start of file
     buf =  avpkt->data + offset;
+    dpx->frame = p;
 
-    for (i=0; i<AV_NUM_DATA_POINTERS; i++)
-        ptr[i] = p->data[i];
+    /* Start */
+    if (avctx->hwaccel) {
+        const FFHWAccel *hwaccel = ffhwaccel(avctx->hwaccel);
 
-    switch (bits_per_color) {
-    case 10:
-        for (x = 0; x < avctx->height; x++) {
-            uint16_t *dst[4] = {(uint16_t*)ptr[0],
-                                (uint16_t*)ptr[1],
-                                (uint16_t*)ptr[2],
-                                (uint16_t*)ptr[3]};
-            int shift = elements > 1 ? packing == 1 ? 22 : 20 : packing == 1 ? 2 : 0;
-            for (y = 0; y < avctx->width; y++) {
-                if (elements >= 3)
-                    *dst[2]++ = read10in32(&buf, &rgbBuffer,
-                                           &n_datum, endian, shift);
-                if (elements == 1)
-                    *dst[0]++ = read10in32_gray(&buf, &rgbBuffer,
-                                                &n_datum, endian, shift);
-                else
-                    *dst[0]++ = read10in32(&buf, &rgbBuffer,
-                                           &n_datum, endian, shift);
-                if (elements >= 2)
-                    *dst[1]++ = read10in32(&buf, &rgbBuffer,
-                                           &n_datum, endian, shift);
-                if (elements == 4)
-                    *dst[3]++ =
-                    read10in32(&buf, &rgbBuffer,
-                               &n_datum, endian, shift);
-            }
-            if (!unpadded_10bit)
-                n_datum = 0;
-            for (i = 0; i < elements; i++)
-                ptr[i] += p->linesize[i];
-        }
-        break;
-    case 12:
-        for (x = 0; x < avctx->height; x++) {
-            uint16_t *dst[4] = {(uint16_t*)ptr[0],
-                                (uint16_t*)ptr[1],
-                                (uint16_t*)ptr[2],
-                                (uint16_t*)ptr[3]};
-            int shift = packing == 1 ? 4 : 0;
-            for (y = 0; y < avctx->width; y++) {
-                if (packing) {
-                    if (elements >= 3)
-                        *dst[2]++ = read16(&buf, endian) >> shift & 0xFFF;
-                    *dst[0]++ = read16(&buf, endian) >> shift & 0xFFF;
-                    if (elements >= 2)
-                        *dst[1]++ = read16(&buf, endian) >> shift & 0xFFF;
-                    if (elements == 4)
-                        *dst[3]++ = read16(&buf, endian) >> shift & 0xFFF;
-                } else {
-                    if (elements >= 3)
-                        *dst[2]++ = read12in32(&buf, &rgbBuffer,
-                                               &n_datum, endian);
-                    *dst[0]++ = read12in32(&buf, &rgbBuffer,
-                                           &n_datum, endian);
-                    if (elements >= 2)
-                        *dst[1]++ = read12in32(&buf, &rgbBuffer,
-                                               &n_datum, endian);
-                    if (elements == 4)
-                        *dst[3]++ = read12in32(&buf, &rgbBuffer,
-                                               &n_datum, endian);
-                }
-            }
-            n_datum = 0;
-            for (i = 0; i < elements; i++)
-                ptr[i] += p->linesize[i];
-            // Jump to next aligned position
-            buf += need_align;
-        }
-        break;
-    case 32:
-        if (elements == 1) {
-            av_image_copy_plane(ptr[0], p->linesize[0],
-                                buf, stride,
-                                elements * avctx->width * 4, avctx->height);
-        } else {
-            for (y = 0; y < avctx->height; y++) {
-                ptr[0] = p->data[0] + y * p->linesize[0];
-                ptr[1] = p->data[1] + y * p->linesize[1];
-                ptr[2] = p->data[2] + y * p->linesize[2];
-                ptr[3] = p->data[3] + y * p->linesize[3];
-                for (x = 0; x < avctx->width; x++) {
-                    AV_WN32(ptr[2], AV_RN32(buf));
-                    AV_WN32(ptr[0], AV_RN32(buf + 4));
-                    AV_WN32(ptr[1], AV_RN32(buf + 8));
-                    if (avctx->pix_fmt == AV_PIX_FMT_GBRAPF32BE ||
-                        avctx->pix_fmt == AV_PIX_FMT_GBRAPF32LE) {
-                        AV_WN32(ptr[3], AV_RN32(buf + 12));
-                        buf += 4;
-                        ptr[3] += 4;
-                    }
+        ret = ff_hwaccel_frame_priv_alloc(avctx, &dpx->hwaccel_picture_private);
+        if (ret < 0)
+            return ret;
 
-                    buf += 12;
-                    ptr[2] += 4;
-                    ptr[0] += 4;
-                    ptr[1] += 4;
-                }
-            }
-        }
-        break;
-    case 16:
-        elements *= 2;
-    case 8:
-        if (   avctx->pix_fmt == AV_PIX_FMT_YUVA444P
-            || avctx->pix_fmt == AV_PIX_FMT_YUV444P) {
-            for (x = 0; x < avctx->height; x++) {
-                ptr[0] = p->data[0] + x * p->linesize[0];
-                ptr[1] = p->data[1] + x * p->linesize[1];
-                ptr[2] = p->data[2] + x * p->linesize[2];
-                ptr[3] = p->data[3] + x * p->linesize[3];
-                for (y = 0; y < avctx->width; y++) {
-                    *ptr[1]++ = *buf++;
-                    *ptr[0]++ = *buf++;
-                    *ptr[2]++ = *buf++;
-                    if (avctx->pix_fmt == AV_PIX_FMT_YUVA444P)
-                        *ptr[3]++ = *buf++;
-                }
-            }
-        } else {
-        av_image_copy_plane(ptr[0], p->linesize[0],
-                            buf, stride,
-                            elements * avctx->width, avctx->height);
-        }
-        break;
+        ret = hwaccel->start_frame(avctx, avpkt->buf, buf, avpkt->size - offset);
+        if (ret < 0)
+            return ret;
+
+        ret = hwaccel->decode_slice(avctx, buf, avpkt->size - offset);
+        if (ret < 0)
+            return ret;
+
+        ret = hwaccel->end_frame(avctx);
+        if (ret < 0)
+            return ret;
+
+        av_refstruct_unref(&dpx->hwaccel_picture_private);
+    } else {
+        unpack_frame(avctx, p, buf, dpx->components, dpx->endian);
     }
+
+    p->pict_type = AV_PICTURE_TYPE_I;
+    p->flags    |= AV_FRAME_FLAG_KEY;
 
     *got_frame = 1;
 
     return buf_size;
 }
 
+#if HAVE_THREADS
+static int update_thread_context(AVCodecContext *dst, const AVCodecContext *src)
+{
+    DPXDecContext *ssrc = src->priv_data;
+    DPXDecContext *sdst = dst->priv_data;
+
+    sdst->pix_fmt = ssrc->pix_fmt;
+
+    return 0;
+}
+#endif
+
+static av_cold int decode_end(AVCodecContext *avctx)
+{
+    DPXDecContext *dpx = avctx->priv_data;
+    av_refstruct_unref(&dpx->hwaccel_picture_private);
+    return 0;
+}
+
+static av_cold int decode_init(AVCodecContext *avctx)
+{
+    DPXDecContext *dpx = avctx->priv_data;
+    dpx->pix_fmt = AV_PIX_FMT_NONE;
+    return 0;
+}
+
 const FFCodec ff_dpx_decoder = {
     .p.name         = "dpx",
     CODEC_LONG_NAME("DPX (Digital Picture Exchange) image"),
+    .priv_data_size = sizeof(DPXDecContext),
     .p.type         = AVMEDIA_TYPE_VIDEO,
     .p.id           = AV_CODEC_ID_DPX,
     FF_CODEC_DECODE_CB(decode_frame),
-    .p.capabilities = AV_CODEC_CAP_DR1,
+    .init           = decode_init,
+    .close          = decode_end,
+    UPDATE_THREAD_CONTEXT(update_thread_context),
+    .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_FRAME_THREADS,
+    .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP |
+                      FF_CODEC_CAP_SKIP_FRAME_FILL_PARAM,
+    .hw_configs     = (const AVCodecHWConfigInternal *const []) {
+#if CONFIG_DPX_VULKAN_HWACCEL
+        HWACCEL_VULKAN(dpx),
+#endif
+        NULL
+    },
 };

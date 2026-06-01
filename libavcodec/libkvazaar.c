@@ -29,7 +29,6 @@
 #include "libavutil/dict.h"
 #include "libavutil/error.h"
 #include "libavutil/imgutils.h"
-#include "libavutil/internal.h"
 #include "libavutil/log.h"
 #include "libavutil/mem.h"
 #include "libavutil/pixdesc.h"
@@ -38,7 +37,6 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
-#include "packet_internal.h"
 
 typedef struct LibkvazaarContext {
     const AVClass *class;
@@ -174,7 +172,6 @@ static int libkvazaar_encode(AVCodecContext *avctx,
     kvz_data_chunk *data_out = NULL;
     uint32_t len_out = 0;
     int retval = 0;
-    int pict_type;
 
     *got_packet_ptr = 0;
 
@@ -268,6 +265,7 @@ static int libkvazaar_encode(AVCodecContext *avctx,
             avpkt->flags |= AV_PKT_FLAG_KEY;
         }
 
+        enum AVPictureType pict_type;
         switch (frame_info.slice_type) {
         case KVZ_SLICE_I:
             pict_type = AV_PICTURE_TYPE_I;
@@ -283,7 +281,7 @@ static int libkvazaar_encode(AVCodecContext *avctx,
             return AVERROR_EXTERNAL;
         }
 
-        ff_side_data_set_encoder_stats(avpkt, frame_info.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
+        ff_encode_add_stats_side_data(avpkt, frame_info.qp * FF_QP2LAMBDA, NULL, 0, pict_type);
 
         *got_packet_ptr = 1;
     }

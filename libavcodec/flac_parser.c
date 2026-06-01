@@ -36,6 +36,7 @@
 #include "libavutil/crc.h"
 #include "libavutil/mem.h"
 #include "flac_parse.h"
+#include "parser_internal.h"
 
 /** maximum number of adjacent headers that compare CRCs against each other   */
 #define FLAC_MAX_SEQUENTIAL_HEADERS 4
@@ -887,7 +888,7 @@ static av_cold int flac_parse_init(AVCodecParserContext *c)
     return 0;
 }
 
-static void flac_parse_close(AVCodecParserContext *c)
+static av_cold void flac_parse_close(AVCodecParserContext *c)
 {
     FLACParseContext *fpc = c->priv_data;
     FLACHeaderMarker *curr = fpc->headers, *temp;
@@ -902,10 +903,10 @@ static void flac_parse_close(AVCodecParserContext *c)
     av_freep(&fpc->wrap_buf);
 }
 
-const AVCodecParser ff_flac_parser = {
-    .codec_ids      = { AV_CODEC_ID_FLAC },
+const FFCodecParser ff_flac_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_FLAC),
     .priv_data_size = sizeof(FLACParseContext),
-    .parser_init    = flac_parse_init,
-    .parser_parse   = flac_parse,
-    .parser_close   = flac_parse_close,
+    .init           = flac_parse_init,
+    .parse          = flac_parse,
+    .close          = flac_parse_close,
 };

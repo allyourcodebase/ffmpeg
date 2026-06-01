@@ -504,6 +504,7 @@ static inline int svq3_mc_dir(SVQ3Context *s, int size, int mode,
                               int dir, int avg)
 {
     int i, j, k, mx, my, dx, dy, x, y;
+    // 0->16x16,1->8x16,2->16x8,3->8x8,4->4x8,5->8x4,6->4x4
     const int part_width    = ((size & 5) == 4) ? 4 : 16 >> (size & 1);
     const int part_height   = 16 >> ((unsigned)(size + 1) / 3);
     const int extra_width   = (mode == PREDICT_MODE) ? -16 * 6 : 0;
@@ -695,10 +696,10 @@ static void hl_decode_mb(SVQ3Context *s)
 
     if (s->cbp & 0x30) {
         uint8_t *dest[2] = { dest_cb, dest_cr };
-        s->h264dsp.h264_chroma_dc_dequant_idct(s->mb + 16 * 16 * 1,
-                                               s->dequant4_coeff[4][0]);
-        s->h264dsp.h264_chroma_dc_dequant_idct(s->mb + 16 * 16 * 2,
-                                               s->dequant4_coeff[4][0]);
+        s->h264dsp.chroma_dc_dequant_idct(s->mb + 16 * 16 * 1,
+                                          s->dequant4_coeff[4][0]);
+        s->h264dsp.chroma_dc_dequant_idct(s->mb + 16 * 16 * 2,
+                                          s->dequant4_coeff[4][0]);
         for (j = 1; j < 3; j++) {
             for (i = j * 16; i < j * 16 + 4; i++)
                 if (s->non_zero_count_cache[scan8[i]] || s->mb[i * 16]) {

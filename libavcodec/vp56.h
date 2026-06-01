@@ -118,7 +118,10 @@ struct vp56_context {
     HpelDSPContext hdsp;
     VideoDSPContext vdsp;
     VP3DSPContext vp3dsp;
-    VP56DSPContext vp56dsp;
+    union {
+        VP5DSPContext vp5dsp;
+        VP6DSPContext vp6dsp;
+    };
     uint8_t idct_scantable[64];
     AVFrame *frames[4];
     uint8_t *edge_emu_buffer_alloc;
@@ -239,7 +242,7 @@ static int vp56_rac_gets(VPXRangeCoder *c, int bits)
 }
 
 // P(7)
-static av_unused int vp56_rac_gets_nn(VPXRangeCoder *c, int bits)
+av_unused static int vp56_rac_gets_nn(VPXRangeCoder *c, int bits)
 {
     int v = vp56_rac_gets(c, 7) << 1;
     return v + !v;

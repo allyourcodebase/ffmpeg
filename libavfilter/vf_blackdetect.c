@@ -117,9 +117,9 @@ static int query_format(const AVFilterContext *ctx,
     const BlackDetectContext *s = ctx->priv;
     AVFilterFormats *formats;
     if (s->alpha)
-        formats = ff_make_format_list(yuva_formats);
+        formats = ff_make_pixel_format_list(yuva_formats);
     else
-        formats = ff_make_format_list(yuv_formats);
+        formats = ff_make_pixel_format_list(yuv_formats);
 
     return ff_set_common_formats2(ctx, cfg_in, cfg_out, formats);
 }
@@ -140,7 +140,7 @@ static int config_input(AVFilterLink *inlink)
     if (!s->counter)
         return AVERROR(ENOMEM);
 
-    av_log(s, AV_LOG_VERBOSE,
+    av_log(ctx, AV_LOG_VERBOSE,
            "black_min_duration:%s pixel_black_th:%f picture_black_ratio_th:%f alpha:%d\n",
            av_ts2timestr(s->black_min_duration, &s->time_base),
            s->pixel_black_th, s->picture_black_ratio_th, s->alpha);
@@ -152,7 +152,7 @@ static void check_black_end(AVFilterContext *ctx)
     BlackDetectContext *s = ctx->priv;
 
     if ((s->black_end - s->black_start) >= s->black_min_duration) {
-        av_log(s, AV_LOG_INFO,
+        av_log(ctx, AV_LOG_INFO,
                "black_start:%s black_end:%s black_duration:%s\n",
                av_ts2timestr(s->black_start, &s->time_base),
                av_ts2timestr(s->black_end,   &s->time_base),
@@ -187,7 +187,7 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *picref)
     const int max = (1 << s->depth) - 1;
     const int factor = (1 << (s->depth - 8));
     const int full = picref->color_range == AVCOL_RANGE_JPEG ||
-                     ff_fmt_is_in(picref->format, yuvj_formats) ||
+                     ff_pixfmt_is_in(picref->format, yuvj_formats) ||
                      s->alpha;
 
     s->pixel_black_th_i = full ? s->pixel_black_th * max :

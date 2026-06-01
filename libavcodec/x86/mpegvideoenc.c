@@ -39,8 +39,6 @@ DECLARE_ALIGNED(16, static const uint16_t, inv_zigzag_direct16)[64] = {
     36, 37, 49, 50, 58, 59, 63, 64,
 };
 
-#if HAVE_6REGS
-
 #if HAVE_SSE2_INLINE
 #define COMPILE_TEMPLATE_SSSE3  0
 #define RENAME(a)      a ## _sse2
@@ -55,85 +53,17 @@ DECLARE_ALIGNED(16, static const uint16_t, inv_zigzag_direct16)[64] = {
 #include "mpegvideoenc_template.c"
 #endif /* HAVE_SSSE3_INLINE */
 
-#endif /* HAVE_6REGS */
-
-#if HAVE_INLINE_ASM
-#if HAVE_SSE2_INLINE
-static void denoise_dct_sse2(MPVEncContext *const s, int16_t block[])
-{
-    const int intra = s->c.mb_intra;
-    int *sum= s->dct_error_sum[intra];
-    uint16_t *offset= s->dct_offset[intra];
-
-    s->dct_count[intra]++;
-
-    __asm__ volatile(
-        "pxor %%xmm7, %%xmm7                    \n\t"
-        "1:                                     \n\t"
-        "pxor %%xmm0, %%xmm0                    \n\t"
-        "pxor %%xmm1, %%xmm1                    \n\t"
-        "movdqa (%0), %%xmm2                    \n\t"
-        "movdqa 16(%0), %%xmm3                  \n\t"
-        "pcmpgtw %%xmm2, %%xmm0                 \n\t"
-        "pcmpgtw %%xmm3, %%xmm1                 \n\t"
-        "pxor %%xmm0, %%xmm2                    \n\t"
-        "pxor %%xmm1, %%xmm3                    \n\t"
-        "psubw %%xmm0, %%xmm2                   \n\t"
-        "psubw %%xmm1, %%xmm3                   \n\t"
-        "movdqa %%xmm2, %%xmm4                  \n\t"
-        "movdqa %%xmm3, %%xmm5                  \n\t"
-        "psubusw (%2), %%xmm2                   \n\t"
-        "psubusw 16(%2), %%xmm3                 \n\t"
-        "pxor %%xmm0, %%xmm2                    \n\t"
-        "pxor %%xmm1, %%xmm3                    \n\t"
-        "psubw %%xmm0, %%xmm2                   \n\t"
-        "psubw %%xmm1, %%xmm3                   \n\t"
-        "movdqa %%xmm2, (%0)                    \n\t"
-        "movdqa %%xmm3, 16(%0)                  \n\t"
-        "movdqa %%xmm4, %%xmm6                  \n\t"
-        "movdqa %%xmm5, %%xmm0                  \n\t"
-        "punpcklwd %%xmm7, %%xmm4               \n\t"
-        "punpckhwd %%xmm7, %%xmm6               \n\t"
-        "punpcklwd %%xmm7, %%xmm5               \n\t"
-        "punpckhwd %%xmm7, %%xmm0               \n\t"
-        "paddd (%1), %%xmm4                     \n\t"
-        "paddd 16(%1), %%xmm6                   \n\t"
-        "paddd 32(%1), %%xmm5                   \n\t"
-        "paddd 48(%1), %%xmm0                   \n\t"
-        "movdqa %%xmm4, (%1)                    \n\t"
-        "movdqa %%xmm6, 16(%1)                  \n\t"
-        "movdqa %%xmm5, 32(%1)                  \n\t"
-        "movdqa %%xmm0, 48(%1)                  \n\t"
-        "add $32, %0                            \n\t"
-        "add $64, %1                            \n\t"
-        "add $32, %2                            \n\t"
-        "cmp %3, %0                             \n\t"
-            " jb 1b                             \n\t"
-        : "+r" (block), "+r" (sum), "+r" (offset)
-        : "r"(block+64)
-          XMM_CLOBBERS_ONLY("%xmm0", "%xmm1", "%xmm2", "%xmm3",
-                            "%xmm4", "%xmm5", "%xmm6", "%xmm7")
-    );
-}
-#endif /* HAVE_SSE2_INLINE */
-#endif /* HAVE_INLINE_ASM */
-
 av_cold void ff_dct_encode_init_x86(MPVEncContext *const s)
 {
     const int dct_algo = s->c.avctx->dct_algo;
 
     if (dct_algo == FF_DCT_AUTO || dct_algo == FF_DCT_MMX) {
-#if HAVE_MMX_INLINE
-        int cpu_flags = av_get_cpu_flags();
 #if HAVE_SSE2_INLINE
+        int cpu_flags = av_get_cpu_flags();
         if (INLINE_SSE2(cpu_flags)) {
-#if HAVE_6REGS
             s->dct_quantize = dct_quantize_sse2;
-#endif
-            s->denoise_dct  = denoise_dct_sse2;
         }
-#endif
-#if HAVE_6REGS && HAVE_SSSE3_INLINE
+#if HAVE_SSSE3_INLINE
         if (INLINE_SSSE3(cpu_flags))
             s->dct_quantize = dct_quantize_ssse3;
 #endif

@@ -39,17 +39,6 @@ static void op##_rv40_qpel##size##_mc33_##insn(uint8_t *dst, const uint8_t *src,
     ff_##op##_pixels##size##_xy2_##insn(dst, src, stride, size); \
 }
 
-#if HAVE_X86ASM
-void ff_put_rv40_chroma_mc8_mmx  (uint8_t *dst, const uint8_t *src,
-                                  ptrdiff_t stride, int h, int x, int y);
-void ff_avg_rv40_chroma_mc8_mmxext(uint8_t *dst, const uint8_t *src,
-                                   ptrdiff_t stride, int h, int x, int y);
-
-void ff_put_rv40_chroma_mc4_mmx  (uint8_t *dst, const uint8_t *src,
-                                  ptrdiff_t stride, int h, int x, int y);
-void ff_avg_rv40_chroma_mc4_mmxext(uint8_t *dst, const uint8_t *src,
-                                   ptrdiff_t stride, int h, int x, int y);
-
 #define DECLARE_WEIGHT(opt) \
 void ff_rv40_weight_func_rnd_16_##opt(uint8_t *dst, uint8_t *src1, uint8_t *src2, \
                                       int w1, int w2, ptrdiff_t stride); \
@@ -174,37 +163,20 @@ DEFINE_FN(put, 8, ssse3)
 DEFINE_FN(put, 16, sse2)
 DEFINE_FN(put, 16, ssse3)
 
-DEFINE_FN(avg, 8, mmxext)
 DEFINE_FN(avg, 8, ssse3)
 
 DEFINE_FN(avg, 16, sse2)
 DEFINE_FN(avg, 16, ssse3)
-#endif /* HAVE_X86ASM */
 
-#if HAVE_MMX_INLINE
-DEFINE_FN(put, 8, mmx)
-#endif
+#define CHROMA_MC_FUNC(OP, SIZE, XMM) \
+void ff_rv40_ ## OP ## _chroma_mc ## SIZE ## _ ## XMM(uint8_t *dst, const uint8_t *src,      \
+                                                      ptrdiff_t stride, int h, int x, int y);\
+    c->OP ## _chroma_pixels_tab[SIZE == 4] = ff_rv40_ ## OP ## _chroma_mc ## SIZE ## _ ## XMM
 
 av_cold void ff_rv40dsp_init_x86(RV34DSPContext *c)
 {
     av_unused int cpu_flags = av_get_cpu_flags();
 
-#if HAVE_MMX_INLINE
-    if (INLINE_MMX(cpu_flags)) {
-        c->put_pixels_tab[1][15] = put_rv40_qpel8_mc33_mmx;
-    }
-#endif /* HAVE_MMX_INLINE */
-
-#if HAVE_X86ASM
-    if (EXTERNAL_MMX(cpu_flags)) {
-        c->put_chroma_pixels_tab[0] = ff_put_rv40_chroma_mc8_mmx;
-        c->put_chroma_pixels_tab[1] = ff_put_rv40_chroma_mc4_mmx;
-    }
-    if (EXTERNAL_MMXEXT(cpu_flags)) {
-        c->avg_pixels_tab[1][15]        = avg_rv40_qpel8_mc33_mmxext;
-        c->avg_chroma_pixels_tab[0]     = ff_avg_rv40_chroma_mc8_mmxext;
-        c->avg_chroma_pixels_tab[1]     = ff_avg_rv40_chroma_mc4_mmxext;
-    }
     if (EXTERNAL_SSE2(cpu_flags)) {
         c->put_pixels_tab[0][15]        = put_rv40_qpel16_mc33_sse2;
         c->avg_pixels_tab[0][15]        = avg_rv40_qpel16_mc33_sse2;
@@ -216,6 +188,10 @@ av_cold void ff_rv40dsp_init_x86(RV34DSPContext *c)
         QPEL_MC_SET(avg_, _sse2)
     }
     if (EXTERNAL_SSSE3(cpu_flags)) {
+        CHROMA_MC_FUNC(put, 8, ssse3);
+        CHROMA_MC_FUNC(put, 4, ssse3);
+        CHROMA_MC_FUNC(avg, 8, ssse3);
+        CHROMA_MC_FUNC(avg, 4, ssse3);
         c->put_pixels_tab[0][15]        = put_rv40_qpel16_mc33_ssse3;
         c->put_pixels_tab[1][15]        = put_rv40_qpel8_mc33_ssse3;
         c->avg_pixels_tab[0][15]        = avg_rv40_qpel16_mc33_ssse3;
@@ -227,5 +203,4 @@ av_cold void ff_rv40dsp_init_x86(RV34DSPContext *c)
         QPEL_MC_SET(put_, _ssse3)
         QPEL_MC_SET(avg_, _ssse3)
     }
-#endif /* HAVE_X86ASM */
 }

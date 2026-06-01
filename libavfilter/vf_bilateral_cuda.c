@@ -31,6 +31,7 @@
 
 #include "avfilter.h"
 #include "filters.h"
+#include "video.h"
 
 #include "cuda/load_helper.h"
 
@@ -51,19 +52,13 @@ typedef struct CUDABilateralContext {
     const AVClass *class;
     AVCUDADeviceContext *hwctx;
 
-    enum AVPixelFormat in_fmt, out_fmt;
-    const AVPixFmtDescriptor *in_desc, *out_desc;
-    int in_planes, out_planes;
-    int in_plane_depths[4];
+    const AVPixFmtDescriptor *in_desc;
+    int in_planes;
     int in_plane_channels[4];
 
     int   window_size;
     float sigmaS;
     float sigmaR;
-
-    AVBufferRef *frames_ctx;
-    AVFrame     *frame;
-    AVFrame *tmp_frame;
 
     CUcontext   cu_ctx;
     CUmodule    cu_module;
@@ -71,21 +66,6 @@ typedef struct CUDABilateralContext {
     CUfunction  cu_func_uv;
     CUstream    cu_stream;
 } CUDABilateralContext;
-
-static av_cold int cudabilateral_init(AVFilterContext *ctx)
-{
-    CUDABilateralContext *s = ctx->priv;
-
-    s->frame = av_frame_alloc();
-    if (!s->frame)
-        return AVERROR(ENOMEM);
-
-    s->tmp_frame = av_frame_alloc();
-    if (!s->tmp_frame)
-        return AVERROR(ENOMEM);
-
-    return 0;
-}
 
 static av_cold void cudabilateral_uninit(AVFilterContext *ctx)
 {
@@ -100,44 +80,6 @@ static av_cold void cudabilateral_uninit(AVFilterContext *ctx)
         s->cu_module = NULL;
         CHECK_CU(cu->cuCtxPopCurrent(&bilateral));
     }
-
-    av_frame_free(&s->frame);
-    av_buffer_unref(&s->frames_ctx);
-    av_frame_free(&s->tmp_frame);
-}
-
-static av_cold int init_hwframe_ctx(CUDABilateralContext *s, AVBufferRef *device_ctx, int width, int height)
-{
-    AVBufferRef *out_ref = NULL;
-    AVHWFramesContext *out_ctx;
-    int ret;
-
-    out_ref = av_hwframe_ctx_alloc(device_ctx);
-    if (!out_ref)
-        return AVERROR(ENOMEM);
-    out_ctx = (AVHWFramesContext*)out_ref->data;
-
-    out_ctx->format    = AV_PIX_FMT_CUDA;
-    out_ctx->sw_format = s->out_fmt;
-    out_ctx->width     = width;
-    out_ctx->height    = height;
-
-    ret = av_hwframe_ctx_init(out_ref);
-    if (ret < 0)
-        goto fail;
-
-    av_frame_unref(s->frame);
-    ret = av_hwframe_get_buffer(out_ref, s->frame, 0);
-    if (ret < 0)
-        goto fail;
-
-    av_buffer_unref(&s->frames_ctx);
-    s->frames_ctx = out_ref;
-
-    return 0;
-fail:
-    av_buffer_unref(&out_ref);
-    return ret;
 }
 
 static int format_is_supported(enum AVPixelFormat fmt)
@@ -150,18 +92,13 @@ static int format_is_supported(enum AVPixelFormat fmt)
     return 0;
 }
 
-static av_cold void set_format_info(AVFilterContext *ctx, enum AVPixelFormat in_format, enum AVPixelFormat out_format)
+static av_cold void set_format_info(AVFilterContext *ctx, enum AVPixelFormat format)
 {
     CUDABilateralContext *s = ctx->priv;
     int i, p, d;
 
-    s->in_fmt = in_format;
-    s->out_fmt = out_format;
-
-    s->in_desc  = av_pix_fmt_desc_get(s->in_fmt);
-    s->out_desc = av_pix_fmt_desc_get(s->out_fmt);
-    s->in_planes  = av_pix_fmt_count_planes(s->in_fmt);
-    s->out_planes = av_pix_fmt_count_planes(s->out_fmt);
+    s->in_desc = av_pix_fmt_desc_get(format);
+    s->in_planes = av_pix_fmt_count_planes(format);
 
     // find maximum step of each component of each plane
     // For our subset of formats, this should accurately tell us how many channels CUDA needs
@@ -171,8 +108,6 @@ static av_cold void set_format_info(AVFilterContext *ctx, enum AVPixelFormat in_
         d = (s->in_desc->comp[i].depth + 7) / 8;
         p = s->in_desc->comp[i].plane;
         s->in_plane_channels[p] = FFMAX(s->in_plane_channels[p], s->in_desc->comp[i].step / d);
-
-        s->in_plane_depths[p] = s->in_desc->comp[i].depth;
     }
 }
 
@@ -180,9 +115,7 @@ static av_cold int init_processing_chain(AVFilterContext *ctx, int width, int he
 {
     FilterLink         *inl = ff_filter_link(ctx->inputs[0]);
     FilterLink        *outl = ff_filter_link(ctx->outputs[0]);
-    CUDABilateralContext *s = ctx->priv;
     AVHWFramesContext *in_frames_ctx;
-    int ret;
 
     /* check that we have a hw context */
     if (!inl->hw_frames_ctx) {
@@ -196,13 +129,9 @@ static av_cold int init_processing_chain(AVFilterContext *ctx, int width, int he
         return AVERROR(ENOSYS);
     }
 
-    set_format_info(ctx, in_frames_ctx->sw_format, in_frames_ctx->sw_format);
+    set_format_info(ctx, in_frames_ctx->sw_format);
 
-    ret = init_hwframe_ctx(s, in_frames_ctx->device_ref, width, height);
-    if (ret < 0)
-        return ret;
-
-    outl->hw_frames_ctx = av_buffer_ref(s->frames_ctx);
+    outl->hw_frames_ctx = av_buffer_ref(inl->hw_frames_ctx);
     if (!outl->hw_frames_ctx)
         return AVERROR(ENOMEM);
 
@@ -269,7 +198,7 @@ static av_cold int cuda_bilateral_config_props(AVFilterLink *outlink)
     outlink->sample_aspect_ratio = inlink->sample_aspect_ratio;
 
     // the window_size makes more sense when it is odd, so add 1 if even
-    s->window_size= (s->window_size%2) ? s->window_size : s->window_size+1;
+    s->window_size |= 1;
 
     ret = cuda_bilateral_load_functions(ctx);
     if (ret < 0)
@@ -353,12 +282,10 @@ static int cuda_bilateral_process_internal(AVFilterContext *ctx,
     ret = call_cuda_kernel(ctx, (s->in_plane_channels[1] > 1) ? s->cu_func_uv : s->cu_func,
                            tex, out,
                            out->width, out->height, out->linesize[0],
-                           AV_CEIL_RSHIFT(out->width, s->out_desc->log2_chroma_w),
-                           AV_CEIL_RSHIFT(out->height, s->out_desc->log2_chroma_h),
+                           AV_CEIL_RSHIFT(out->width, s->in_desc->log2_chroma_w),
+                           AV_CEIL_RSHIFT(out->height, s->in_desc->log2_chroma_h),
                            out->linesize[1] >> ((s->in_plane_channels[1] > 1) ? 1 : 0),
                            s->window_size, s->sigmaS, s->sigmaR);
-    if (ret < 0)
-        goto exit;
 
 exit:
     for (i = 0; i < s->in_planes; i++)
@@ -370,31 +297,6 @@ exit:
     return ret;
 }
 
-static int cuda_bilateral_process(AVFilterContext *ctx, AVFrame *out, AVFrame *in)
-{
-    CUDABilateralContext *s = ctx->priv;
-    AVFrame *src = in;
-    int ret;
-
-    ret = cuda_bilateral_process_internal(ctx, s->frame, src);
-    if (ret < 0)
-        return ret;
-
-    src = s->frame;
-    ret = av_hwframe_get_buffer(src->hw_frames_ctx, s->tmp_frame, 0);
-    if (ret < 0)
-        return ret;
-
-    av_frame_move_ref(out, s->frame);
-    av_frame_move_ref(s->frame, s->tmp_frame);
-
-    ret = av_frame_copy_props(out, in);
-    if (ret < 0)
-        return ret;
-
-    return 0;
-}
-
 static int cuda_bilateral_filter_frame(AVFilterLink *link, AVFrame *in)
 {
     AVFilterContext       *ctx = link->dst;
@@ -402,11 +304,11 @@ static int cuda_bilateral_filter_frame(AVFilterLink *link, AVFrame *in)
     AVFilterLink      *outlink = ctx->outputs[0];
     CudaFunctions          *cu = s->hwctx->internal->cuda_dl;
 
-    AVFrame *out = NULL;
+    AVFrame *out;
     CUcontext bilateral;
     int ret = 0;
 
-    out = av_frame_alloc();
+    out = ff_get_video_buffer(outlink, outlink->w, outlink->h);
     if (!out) {
         ret = AVERROR(ENOMEM);
         goto fail;
@@ -416,9 +318,15 @@ static int cuda_bilateral_filter_frame(AVFilterLink *link, AVFrame *in)
     if (ret < 0)
         goto fail;
 
-    ret = cuda_bilateral_process(ctx, out, in);
+    ret = cuda_bilateral_process_internal(ctx, out, in);
+    if (ret < 0)
+        goto fail;
 
-    CHECK_CU(cu->cuCtxPopCurrent(&bilateral));
+    ret = av_frame_copy_props(out, in);
+    if (ret < 0)
+        goto fail;
+
+    ret = CHECK_CU(cu->cuCtxPopCurrent(&bilateral));
     if (ret < 0)
         goto fail;
 
@@ -465,18 +373,11 @@ static const AVFilterPad cuda_bilateral_outputs[] = {
 const FFFilter ff_vf_bilateral_cuda = {
     .p.name        = "bilateral_cuda",
     .p.description = NULL_IF_CONFIG_SMALL("GPU accelerated bilateral filter"),
-
     .p.priv_class  = &cuda_bilateral_class,
-
-    .init          = cudabilateral_init,
     .uninit        = cudabilateral_uninit,
-
-    .priv_size = sizeof(CUDABilateralContext),
-
+    .priv_size     = sizeof(CUDABilateralContext),
     FILTER_INPUTS(cuda_bilateral_inputs),
     FILTER_OUTPUTS(cuda_bilateral_outputs),
-
     FILTER_SINGLE_PIXFMT(AV_PIX_FMT_CUDA),
-
     .flags_internal = FF_FILTER_FLAG_HWFRAME_AWARE,
 };

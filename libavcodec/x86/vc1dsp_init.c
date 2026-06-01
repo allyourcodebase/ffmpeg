@@ -52,7 +52,6 @@ static void vc1_h_loop_filter16_ ## EXT(uint8_t *src, ptrdiff_t stride, int pq) 
     ff_vc1_h_loop_filter8_ ## EXT(src+8*stride, stride, pq); \
 }
 
-#if HAVE_X86ASM
 LOOP_FILTER4(mmxext)
 LOOP_FILTER816(sse2)
 LOOP_FILTER4(ssse3)
@@ -73,17 +72,11 @@ static void vc1_h_loop_filter16_sse4(uint8_t *src, ptrdiff_t stride, int pq)
         ff_ ## OP ## pixels ## DEPTH ## INSN(dst, src, stride, DEPTH);     \
     }
 
-DECLARE_FUNCTION(put_,  8, _mmx)
+DECLARE_FUNCTION(put_,  8, _sse2)
 DECLARE_FUNCTION(avg_,  8, _mmxext)
 DECLARE_FUNCTION(put_, 16, _sse2)
 DECLARE_FUNCTION(avg_, 16, _sse2)
 
-#endif /* HAVE_X86ASM */
-
-void ff_put_vc1_chroma_mc8_nornd_mmx  (uint8_t *dst, const uint8_t *src,
-                                       ptrdiff_t stride, int h, int x, int y);
-void ff_avg_vc1_chroma_mc8_nornd_mmxext(uint8_t *dst, const uint8_t *src,
-                                        ptrdiff_t stride, int h, int x, int y);
 void ff_put_vc1_chroma_mc8_nornd_ssse3(uint8_t *dst, const uint8_t *src,
                                        ptrdiff_t stride, int h, int x, int y);
 void ff_avg_vc1_chroma_mc8_nornd_ssse3(uint8_t *dst, const uint8_t *src,
@@ -121,15 +114,8 @@ av_cold void ff_vc1dsp_init_x86(VC1DSPContext *dsp)
         dsp->vc1_v_loop_filter16 = vc1_v_loop_filter16_ ## EXT; \
         dsp->vc1_h_loop_filter16 = vc1_h_loop_filter16_ ## EXT
 
-#if HAVE_X86ASM
-    if (EXTERNAL_MMX(cpu_flags)) {
-        dsp->put_no_rnd_vc1_chroma_pixels_tab[0] = ff_put_vc1_chroma_mc8_nornd_mmx;
-
-        dsp->put_vc1_mspel_pixels_tab[1][0]      = put_vc1_mspel_mc00_8_mmx;
-    }
     if (EXTERNAL_MMXEXT(cpu_flags)) {
         ASSIGN_LF4(mmxext);
-        dsp->avg_no_rnd_vc1_chroma_pixels_tab[0] = ff_avg_vc1_chroma_mc8_nornd_mmxext;
 
         dsp->avg_vc1_mspel_pixels_tab[1][0]      = avg_vc1_mspel_mc00_8_mmxext;
 
@@ -142,6 +128,7 @@ av_cold void ff_vc1dsp_init_x86(VC1DSPContext *dsp)
         ASSIGN_LF816(sse2);
 
         dsp->put_vc1_mspel_pixels_tab[0][0]      = put_vc1_mspel_mc00_16_sse2;
+        dsp->put_vc1_mspel_pixels_tab[1][0]      = put_vc1_mspel_mc00_8_sse2;
         dsp->avg_vc1_mspel_pixels_tab[0][0]      = avg_vc1_mspel_mc00_16_sse2;
     }
     if (EXTERNAL_SSSE3(cpu_flags)) {
@@ -154,5 +141,4 @@ av_cold void ff_vc1dsp_init_x86(VC1DSPContext *dsp)
         dsp->vc1_h_loop_filter8  = ff_vc1_h_loop_filter8_sse4;
         dsp->vc1_h_loop_filter16 = vc1_h_loop_filter16_sse4;
     }
-#endif /* HAVE_X86ASM */
 }

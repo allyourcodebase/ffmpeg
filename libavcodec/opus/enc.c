@@ -548,7 +548,7 @@ static int opus_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
                              const AVFrame *frame, int *got_packet_ptr)
 {
     OpusEncContext *s = avctx->priv_data;
-    int ret, frame_size, alloc_size = 0;
+    int ret, frame_size, discard_padding, alloc_size = 0;
 
     if (frame) { /* Add new frame to queue */
         if ((ret = ff_af_queue_add(&s->afq, frame)) < 0)
@@ -600,11 +600,13 @@ static int opus_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
 
     /* Remove samples from queue and skip if needed */
     ff_af_queue_remove(&s->afq, s->packet.frames*frame_size, &avpkt->pts, &avpkt->duration);
-    if (s->packet.frames*frame_size > avpkt->duration) {
+
+    discard_padding = s->packet.frames*frame_size - ff_samples_from_time_base(avctx, avpkt->duration);
+    if (discard_padding > 0) {
         uint8_t *side = av_packet_new_side_data(avpkt, AV_PKT_DATA_SKIP_SAMPLES, 10);
         if (!side)
             return AVERROR(ENOMEM);
-        AV_WL32(&side[4], s->packet.frames*frame_size - avpkt->duration + 120);
+        AV_WL32(&side[4], discard_padding);
     }
 
     *got_packet_ptr = 1;
@@ -638,12 +640,8 @@ static av_cold int opus_encode_init(AVCodecContext *avctx)
     s->avctx = avctx;
     s->channels = avctx->ch_layout.nb_channels;
 
-    /* Opus allows us to change the framesize on each packet (and each packet may
-     * have multiple frames in it) but we can't change the codec's frame size on
-     * runtime, so fix it to the lowest possible number of samples and use a queue
-     * to accumulate AVFrames until we have enough to encode whatever the encoder
-     * decides is the best */
-    avctx->frame_size = 120;
+    int max_delay_samples = (s->options.max_delay_ms * s->avctx->sample_rate) / 1000;
+    avctx->frame_size = OPUS_BLOCK_SIZE(FFMIN(OPUS_SAMPLES_TO_BLOCK_SIZE(max_delay_samples), CELT_BLOCK_960));
     /* Initial padding will change if SILK is ever supported */
     avctx->initial_padding = 120;
 

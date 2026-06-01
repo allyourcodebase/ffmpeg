@@ -29,6 +29,7 @@
 #include "libavutil/imgutils.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/refstruct.h"
 #include "libavutil/thread.h"
 
 #include "avcodec.h"
@@ -36,15 +37,16 @@
 #include "decode.h"
 #include "hwconfig.h"
 #include "ohcodec.h"
+#include "pthread_internal.h"
 
 typedef struct OHCodecDecContext {
     AVClass *avclass;
     OH_AVCodec *dec;
-    /* A reference count to dec. Each hardware frame has a reference count to
+    /* A RefStruct reference backing dec. Each hardware frame has a reference count to
      * dec. dec will be destroyed only after oh_decode_close and all hardware
      * frames have been released.
      */
-    AVBufferRef *dec_ref;
+    OH_AVCodec **dec_ref;
 
     AVMutex input_mutex;
     AVCond input_cond;
@@ -69,18 +71,24 @@ typedef struct OHCodecDecContext {
 
     char *name;
     int allow_sw;
+    unsigned mutex_cond_cnt;
 } OHCodecDecContext;
+
+#define OFFSET(x) offsetof(OHCodecDecContext, x)
+DEFINE_OFFSET_ARRAY(OHCodecDecContext, mutex_cond, mutex_cond_cnt,
+                    (OFFSET(input_mutex), OFFSET(output_mutex)),
+                    (OFFSET(input_cond), OFFSET(output_cond)));
 
 typedef struct OHCodecBuffer {
     uint32_t index;
     OH_AVBuffer *buffer;
-    AVBufferRef *dec_ref;
+    OH_AVCodec **dec_ref;  ///< RefStruct reference
 } OHCodecBuffer;
 
-static void oh_decode_release(void *opaque, uint8_t *data)
+static void oh_decode_release(AVRefStructOpaque unused, void *obj)
 {
-    OH_AVCodec *dec = (OH_AVCodec *)data;
-    OH_AVErrCode err = OH_VideoDecoder_Destroy(dec);
+    OH_AVCodec **decp = obj;
+    OH_AVErrCode err = OH_VideoDecoder_Destroy(*decp);
     if (err == AV_ERR_OK)
         av_log(NULL, AV_LOG_DEBUG, "Destroy decoder success\n");
     else
@@ -122,10 +130,13 @@ static int oh_decode_create(OHCodecDecContext *s, AVCodecContext *avctx)
     }
     av_log(avctx, AV_LOG_DEBUG, "Create decoder %s success\n", name);
 
-    s->dec_ref = av_buffer_create((uint8_t *)s->dec, 0, oh_decode_release,
-                                  NULL, 0);
-    if (!s->dec_ref)
+    s->dec_ref = av_refstruct_alloc_ext(sizeof(*s->dec_ref), 0, NULL, oh_decode_release);
+    if (!s->dec_ref) {
+        oh_decode_release((AVRefStructOpaque){.nc = NULL }, &s->dec);
+        s->dec = NULL;
         return AVERROR(ENOMEM);
+    }
+    *s->dec_ref = s->dec;
 
     return 0;
 }
@@ -363,12 +374,11 @@ static av_cold int oh_decode_init(AVCodecContext *avctx)
     OHCodecDecContext *s = avctx->priv_data;
 
     // Initialize these fields first, so oh_decode_close can destroy them safely
-    ff_mutex_init(&s->input_mutex, NULL);
-    ff_cond_init(&s->input_cond, NULL);
-    ff_mutex_init(&s->output_mutex, NULL);
-    ff_cond_init(&s->output_cond, NULL);
+    int ret = ff_pthread_init(s, mutex_cond_offsets);
+    if (ret < 0)
+        return ret;
 
-    int ret = oh_decode_create(s, avctx);
+    ret = oh_decode_create(s, avctx);
     if (ret < 0)
         return ret;
     ret = oh_decode_set_format(s, avctx);
@@ -405,18 +415,16 @@ static av_cold int oh_decode_close(AVCodecContext *avctx)
             av_log(avctx, AV_LOG_ERROR, "Stop decoder failed, %d, %s\n",
                    err, av_err2str(ff_oh_err_to_ff_err(err)));
         s->dec = NULL;
-        av_buffer_unref(&s->dec_ref);
+        av_refstruct_unref(&s->dec_ref);
     }
 
     av_packet_unref(&s->pkt);
 
-    ff_mutex_destroy(&s->input_mutex);
-    ff_cond_destroy(&s->input_cond);
     av_fifo_freep2(&s->input_queue);
 
-    ff_mutex_destroy(&s->output_mutex);
-    ff_cond_destroy(&s->output_cond);
     av_fifo_freep2(&s->output_queue);
+
+    ff_pthread_free(s, mutex_cond_offsets);
 
     return 0;
 }
@@ -428,13 +436,8 @@ static void oh_buffer_release(void *opaque, uint8_t *data)
 
     OHCodecBuffer *buffer = opaque;
 
-    if (!buffer->dec_ref) {
-        av_free(buffer);
-        return;
-    }
-
     if (buffer->buffer) {
-        OH_AVCodec *dec = (OH_AVCodec *)buffer->dec_ref->data;
+        OH_AVCodec *dec = *buffer->dec_ref;
         OH_AVCodecBufferAttr attr;
         OH_AVErrCode err = OH_AVBuffer_GetBufferAttr(buffer->buffer, &attr);
         if (err == AV_ERR_OK && !(attr.flags & AVCODEC_BUFFER_FLAGS_DISCARD))
@@ -443,7 +446,7 @@ static void oh_buffer_release(void *opaque, uint8_t *data)
             OH_VideoDecoder_FreeOutputBuffer(dec, buffer->index);
     }
 
-    av_buffer_unref(&buffer->dec_ref);
+    av_refstruct_unref(&buffer->dec_ref);
     av_free(buffer);
 }
 
@@ -464,11 +467,7 @@ static int oh_decode_wrap_hw_buffer(AVCodecContext *avctx, AVFrame *frame,
     if (!buffer)
         return AVERROR(ENOMEM);
 
-    buffer->dec_ref = av_buffer_ref(s->dec_ref);
-    if (!buffer->dec_ref) {
-        oh_buffer_release(buffer, NULL);
-        return AVERROR(ENOMEM);
-    }
+    buffer->dec_ref = av_refstruct_ref(s->dec_ref);
 
     buffer->index = output->index;
     buffer->buffer = output->buffer;
@@ -723,7 +722,6 @@ static const AVCodecHWConfigInternal *const oh_hw_configs[] = {
     NULL
 };
 
-#define OFFSET(x) offsetof(OHCodecDecContext, x)
 #define VD (AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_DECODING_PARAM)
 static const AVOption ohcodec_vdec_options[] = {
     {"codec_name", "Select codec by name",

@@ -20,6 +20,7 @@
 
 #include "config_components.h"
 
+#include "libavutil/attributes.h"
 #include "libavutil/hdr_dynamic_metadata.h"
 #include "libavutil/film_grain_params.h"
 #include "libavutil/mastering_display_metadata.h"
@@ -774,11 +775,13 @@ static int set_context_with_sequence(AVCodecContext *avctx,
     avctx->profile = seq->seq_profile;
     avctx->level = seq->seq_level_idx[0];
 
-    avctx->color_range =
-        seq->color_config.color_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
-    avctx->color_primaries = seq->color_config.color_primaries;
-    avctx->colorspace = seq->color_config.matrix_coefficients;
-    avctx->color_trc = seq->color_config.transfer_characteristics;
+    if (seq->color_config.color_description_present_flag) {
+        avctx->color_range =
+            seq->color_config.color_range ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
+        avctx->color_primaries = seq->color_config.color_primaries;
+        avctx->colorspace = seq->color_config.matrix_coefficients;
+        avctx->color_trc = seq->color_config.transfer_characteristics;
+    }
 
     switch (seq->color_config.chroma_sample_position) {
     case AV1_CSP_VERTICAL:
@@ -891,7 +894,8 @@ static av_cold int av1_decode_init(AVCodecContext *avctx)
 
         seq = ((CodedBitstreamAV1Context *)(s->cbc->priv_data))->sequence_header;
         if (!seq) {
-            av_log(avctx, AV_LOG_WARNING, "No sequence header available.\n");
+            if (!(avctx->extradata[0] & 0x80))
+                av_log(avctx, AV_LOG_WARNING, "No sequence header available in extradata.\n");
             goto end;
         }
 
@@ -1019,7 +1023,7 @@ FF_ENABLE_DEPRECATION_WARNINGS
         if (provider_oriented_code != 0x800)
             return 0; // ignore
 
-        ret = ff_dovi_rpu_parse(&s->dovi, gb.buffer, gb.buffer_end - gb.buffer,
+        ret = ff_dovi_rpu_parse(&s->dovi, gb.buffer, bytestream2_get_bytes_left(&gb),
                                 avctx->err_recognition);
         if (ret < 0) {
             av_log(avctx, AV_LOG_WARNING, "Error parsing DOVI OBU.\n");
@@ -1454,7 +1458,7 @@ static int av1_receive_frame_internal(AVCodecContext *avctx, AVFrame *frame)
             break;
         default:
             av_log(avctx, AV_LOG_DEBUG,
-                   "Unknown obu type: %d (%"SIZE_SPECIFIER" bits).\n",
+                   "Unknown obu type: %d (%zu bits).\n",
                    unit->type, unit->data_size);
         }
 
@@ -1543,7 +1547,7 @@ static int av1_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     return ret;
 }
 
-static void av1_decode_flush(AVCodecContext *avctx)
+static av_cold void av1_decode_flush(AVCodecContext *avctx)
 {
     AV1DecContext *s = avctx->priv_data;
     AV1RawMetadataITUTT35 itut_t35;

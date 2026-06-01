@@ -41,6 +41,7 @@ typedef struct PreMultiplyContext {
     int planes;
     int inverse;
     int inplace;
+    int dynamic;
     int half, depth, offset, max;
     FFFrameSync fs;
 
@@ -68,6 +69,8 @@ static int query_formats(const AVFilterContext *ctx,
                          AVFilterFormatsConfig **cfg_out)
 {
     const PreMultiplyContext *s = ctx->priv;
+    AVFilterFormats *formats = NULL;
+    int ret;
 
     static const enum AVPixelFormat no_alpha_pix_fmts[] = {
         AV_PIX_FMT_YUV444P, AV_PIX_FMT_YUVJ444P,
@@ -88,8 +91,30 @@ static int query_formats(const AVFilterContext *ctx,
         AV_PIX_FMT_NONE
     };
 
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out,
-                                            s->inplace ? alpha_pix_fmts : no_alpha_pix_fmts);
+    ret = ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out,
+                                           s->inplace ? alpha_pix_fmts : no_alpha_pix_fmts);
+    if (ret < 0)
+        return ret;
+
+    if (s->dynamic) {
+        ret = ff_formats_ref(ff_all_alpha_modes(), &cfg_in[0]->alpha_modes);
+        if (ret < 0)
+            return ret;
+        return ff_formats_ref(ff_all_alpha_modes(), &cfg_out[0]->alpha_modes);
+    } else {
+        /* Configure alpha mode corresponding to the chosen direction */
+        if (s->inplace) {
+            formats = ff_make_formats_list_singleton(s->inverse ? AVALPHA_MODE_PREMULTIPLIED
+                                                                : AVALPHA_MODE_STRAIGHT);
+            ret = ff_formats_ref(formats, &cfg_in[0]->alpha_modes);
+            if (ret < 0)
+                return ret;
+        }
+
+        formats = ff_make_formats_list_singleton(s->inverse ? AVALPHA_MODE_STRAIGHT
+                                                            : AVALPHA_MODE_PREMULTIPLIED);
+        return ff_formats_ref(formats, &cfg_out[0]->alpha_modes);
+    }
 }
 
 static void premultiply8(const uint8_t *msrc, const uint8_t *asrc,
@@ -513,7 +538,7 @@ static int filter_frame(AVFilterContext *ctx,
     PreMultiplyContext *s = ctx->priv;
     AVFilterLink *outlink = ctx->outputs[0];
 
-    if (ctx->is_disabled) {
+    if (ctx->is_disabled || outlink->alpha_mode == base->alpha_mode) {
         *out = av_frame_clone(base);
         if (!*out)
             return AVERROR(ENOMEM);
@@ -525,6 +550,7 @@ static int filter_frame(AVFilterContext *ctx,
         if (!*out)
             return AVERROR(ENOMEM);
         av_frame_copy_props(*out, base);
+        (*out)->alpha_mode = outlink->alpha_mode;
 
         full = base->color_range == AVCOL_RANGE_JPEG;
         limited = base->color_range == AVCOL_RANGE_MPEG;
@@ -723,6 +749,9 @@ static int config_output(AVFilterLink *outlink)
     outlink->sample_aspect_ratio = base->sample_aspect_ratio;
     ol->frame_rate = il->frame_rate;
 
+    if (s->dynamic)
+        s->inverse = base->alpha_mode == AVALPHA_MODE_PREMULTIPLIED;
+
     if (s->inplace)
         return 0;
 
@@ -783,6 +812,11 @@ static av_cold int init(AVFilterContext *ctx)
     PreMultiplyContext *s = ctx->priv;
     AVFilterPad pad = { 0 };
     int ret;
+
+    if (!strcmp(ctx->filter->name, "premultiply_dynamic")) {
+        s->dynamic = s->inplace = 1;
+        return 0;
+    }
 
     if (!strcmp(ctx->filter->name, "unpremultiply"))
         s->inverse = 1;
@@ -859,3 +893,29 @@ const FFFilter ff_vf_unpremultiply = {
 };
 
 #endif /* CONFIG_UNPREMULTIPLY_FILTER */
+
+#if CONFIG_PREMULTIPLY_DYNAMIC_FILTER
+
+static const AVFilterPad premultiply_input[] = {
+    {
+        .name          = "default",
+        .type          = AVMEDIA_TYPE_VIDEO,
+        .config_props  = config_input,
+    },
+};
+
+const FFFilter ff_vf_premultiply_dynamic = {
+    .p.name        = "premultiply_dynamic",
+    .p.description = NULL_IF_CONFIG_SMALL("Premultiply or unpremultiply an image in-place, as needed."),
+    .p.priv_class  = &premultiply_class,
+    .p.flags       = AVFILTER_FLAG_SLICE_THREADS,
+    .priv_size     = sizeof(PreMultiplyContext),
+    .init          = init,
+    .uninit        = uninit,
+    .activate      = activate,
+    FILTER_INPUTS(premultiply_input),
+    FILTER_OUTPUTS(premultiply_outputs),
+    FILTER_QUERY_FUNC2(query_formats),
+};
+
+#endif /* CONFIG_UNPREMULTIPLY_DYNAMIC_FILTER */

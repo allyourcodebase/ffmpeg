@@ -247,7 +247,7 @@ static int ape_read_header(AVFormatContext * s)
     }
     if (ape->seektablelength / sizeof(uint32_t) < ape->totalframes) {
         av_log(s, AV_LOG_ERROR,
-               "Number of seek entries is less than number of frames: %"SIZE_SPECIFIER" vs. %"PRIu32"\n",
+               "Number of seek entries is less than number of frames: %zu vs. %"PRIu32"\n",
                ape->seektablelength / sizeof(uint32_t), ape->totalframes);
         return AVERROR_INVALIDDATA;
     }
@@ -395,7 +395,7 @@ static int ape_read_packet(AVFormatContext * s, AVPacket * pkt)
         av_log(s, AV_LOG_ERROR, "invalid packet size: %8"PRId64"\n",
                ape->frames[ape->currentframe].size);
         ape->currentframe++;
-        return AVERROR(EIO);
+        return AVERROR_INVALIDDATA;
     }
 
     ret = av_new_packet(pkt, ape->frames[ape->currentframe].size + extra_size);

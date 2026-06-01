@@ -165,7 +165,8 @@ typedef struct MIContext {
     const AVClass *class;
     AVMotionEstContext me_ctx;
     AVRational frame_rate;
-    enum MIMode mi_mode;
+    /* enum MIMode */
+    int mi_mode;
     int mc_mode;
     int me_mode;
     int me_method;
@@ -918,9 +919,9 @@ static void set_frame_data(MIContext *mi_ctx, int alpha, AVFrame *avf_out)
                 int x_mv, y_mv;
                 int weight_sum = 0;
                 int i, val = 0;
-                PixelMVS *pixel_mvs = &mi_ctx->pixel_mvs[x + y * avf_out->width];
-                PixelWeights *pixel_weights = &mi_ctx->pixel_weights[x + y * avf_out->width];
-                PixelRefs *pixel_refs = &mi_ctx->pixel_refs[x + y * avf_out->width];
+                PixelMVS *pixel_mvs = &mi_ctx->pixel_mvs[x + y * width];
+                PixelWeights *pixel_weights = &mi_ctx->pixel_weights[x + y * width];
+                PixelRefs *pixel_refs = &mi_ctx->pixel_refs[x + y * width];
 
                 for (i = 0; i < pixel_refs->nb; i++)
                     weight_sum += pixel_weights->weights[i];
@@ -939,17 +940,20 @@ static void set_frame_data(MIContext *mi_ctx, int alpha, AVFrame *avf_out)
                     weight_sum = ALPHA_MAX;
                 }
 
-                for (i = 0; i < pixel_refs->nb; i++) {
-                    Frame *frame = &mi_ctx->frames[pixel_refs->refs[i]];
-                    if (chroma) {
+                if (chroma) {
+                    for (i = 0; i < pixel_refs->nb; i++) {
+                        Frame *frame = &mi_ctx->frames[pixel_refs->refs[i]];
                         x_mv = (x >> mi_ctx->log2_chroma_w) + pixel_mvs->mvs[i][0] / (1 << mi_ctx->log2_chroma_w);
                         y_mv = (y >> mi_ctx->log2_chroma_h) + pixel_mvs->mvs[i][1] / (1 << mi_ctx->log2_chroma_h);
-                    } else {
+                        val += pixel_weights->weights[i] * frame->avf->data[plane][x_mv + y_mv * frame->avf->linesize[plane]];
+                    }
+                } else {
+                    for (i = 0; i < pixel_refs->nb; i++) {
+                        Frame *frame = &mi_ctx->frames[pixel_refs->refs[i]];
                         x_mv = x + pixel_mvs->mvs[i][0];
                         y_mv = y + pixel_mvs->mvs[i][1];
+                        val += pixel_weights->weights[i] * frame->avf->data[plane][x_mv + y_mv * frame->avf->linesize[plane]];
                     }
-
-                    val += pixel_weights->weights[i] * frame->avf->data[plane][x_mv + y_mv * frame->avf->linesize[plane]];
                 }
 
                 val = ROUNDED_DIV(val, weight_sum);

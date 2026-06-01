@@ -22,6 +22,7 @@
 #include "avcodec.h"
 #include "codec_internal.h"
 #include "encode.h"
+#include "exif_internal.h"
 #include "bytestream.h"
 #include "lossless_videoencdsp.h"
 #include "png.h"
@@ -29,15 +30,16 @@
 #include "zlib_wrapper.h"
 
 #include "libavutil/avassert.h"
+#include "libavutil/buffer.h"
 #include "libavutil/crc.h"
 #include "libavutil/csp.h"
 #include "libavutil/libm.h"
 #include "libavutil/mastering_display_metadata.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
+#include "libavutil/pixdesc.h"
 #include "libavutil/rational.h"
 #include "libavutil/stereo3d.h"
-
 #include <zlib.h>
 
 #define IOBUF_SIZE 4096
@@ -193,6 +195,8 @@ static void png_filter_row(PNGEncContext *c, uint8_t *dst, int filter_type,
             dst[i] = src[i] - top[i];
         sub_png_paeth_prediction(dst + i, src + i, top + i, size - i, bpp);
         break;
+    default:
+        av_unreachable("PNG_FILTER_VALUE_MIXED can't happen here and all others are covered");
     }
 }
 
@@ -319,7 +323,7 @@ static int png_get_chrm(enum AVColorPrimaries prim,  uint8_t *buf)
 
 static int png_get_gama(enum AVColorTransferCharacteristic trc, uint8_t *buf)
 {
-    double gamma = av_csp_approximate_trc_gamma(trc);
+    double gamma = av_csp_approximate_eotf_gamma(trc);
     if (gamma <= 1e-6)
         return 0;
 
@@ -373,6 +377,7 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
 {
     AVFrameSideData *side_data;
     PNGEncContext *s = avctx->priv_data;
+    AVBufferRef *exif_data = NULL;
     int ret;
 
     /* write png header */
@@ -412,6 +417,19 @@ static int encode_headers(AVCodecContext *avctx, const AVFrame *pict)
                 av_log(avctx, AV_LOG_WARNING, "Only side-by-side stereo3d flag can be defined within sTER chunk\n");
                 break;
         }
+    }
+
+    ret = ff_exif_get_buffer(avctx, pict, &exif_data, AV_EXIF_TIFF_HEADER);
+    if (exif_data) {
+        // png_write_chunk accepts an int, not a size_t, so we have to check overflow
+        if (exif_data->size > INT_MAX - AV_INPUT_BUFFER_PADDING_SIZE)
+            // that's a very big exif chunk, probably a bug
+            av_log(avctx, AV_LOG_ERROR, "extremely large EXIF buffer detected, not writing\n");
+        else
+            png_write_chunk(&s->bytestream, MKTAG('e','X','I','f'), exif_data->data, exif_data->size);
+        av_buffer_unref(&exif_data);
+    } else if (ret < 0) {
+        av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF metadata: %s\n", av_err2str(ret));
     }
 
     side_data = av_frame_get_side_data(pict, AV_FRAME_DATA_ICC_PROFILE);
@@ -628,6 +646,34 @@ static int add_icc_profile_size(AVCodecContext *avctx, const AVFrame *pict,
     return 0;
 }
 
+static int add_exif_profile_size(AVCodecContext *avctx, const AVFrame *pict,
+                                 uint64_t *max_packet_size)
+{
+    const AVFrameSideData *sd;
+    uint64_t new_pkt_size;
+    /* includes orientation tag */
+    const int base_exif_size = 92;
+    uint64_t estimated_exif_size;
+
+    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_EXIF);
+    estimated_exif_size = sd ? sd->size : 0;
+    sd = av_frame_get_side_data(pict, AV_FRAME_DATA_DISPLAYMATRIX);
+    if (sd)
+        estimated_exif_size += base_exif_size;
+
+    if (!estimated_exif_size)
+        return 0;
+
+    /* 12 is the png chunk header size */
+    new_pkt_size = *max_packet_size + estimated_exif_size + 12;
+    if (new_pkt_size < *max_packet_size)
+        return AVERROR_INVALIDDATA;
+
+    *max_packet_size = new_pkt_size;
+
+    return 0;
+}
+
 static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
                       const AVFrame *pict, int *got_packet)
 {
@@ -646,6 +692,10 @@ static int encode_png(AVCodecContext *avctx, AVPacket *pkt,
         );
     if ((ret = add_icc_profile_size(avctx, pict, &max_packet_size)))
         return ret;
+    ret = add_exif_profile_size(avctx, pict, &max_packet_size);
+    if (ret < 0)
+        return ret;
+
     ret = ff_alloc_packet(avctx, pkt, max_packet_size);
     if (ret < 0)
         return ret;
@@ -800,6 +850,9 @@ static int apng_do_inverse_blend(AVFrame *output, const AVFrame *input,
                         palette[*background] >> 24 == 0)
                         break;
                     return -1;
+
+                default:
+                    av_unreachable("Pixfmt has been checked before");
                 }
 
                 memmove(output_data, foreground, bpp);
@@ -832,6 +885,7 @@ static int apng_encode_frame(AVCodecContext *avctx, const AVFrame *pict,
     size_t best_bytestream_size = SIZE_MAX;
     APNGFctlChunk last_fctl_chunk = *best_last_fctl_chunk;
     APNGFctlChunk fctl_chunk = *best_fctl_chunk;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(pict->format);
 
     if (avctx->frame_num == 0) {
         best_fctl_chunk->width = pict->width;
@@ -866,7 +920,10 @@ static int apng_encode_frame(AVCodecContext *avctx, const AVFrame *pict,
         // 0: APNG_DISPOSE_OP_NONE
         // 1: APNG_DISPOSE_OP_BACKGROUND
         // 2: APNG_DISPOSE_OP_PREVIOUS
-
+        if (last_fctl_chunk.dispose_op == APNG_DISPOSE_OP_BACKGROUND) {
+            if (!(desc->flags & AV_PIX_FMT_FLAG_ALPHA))
+                continue;
+        }
         for (fctl_chunk.blend_op = 0; fctl_chunk.blend_op < 2; ++fctl_chunk.blend_op) {
             // 0: APNG_BLEND_OP_SOURCE
             // 1: APNG_BLEND_OP_OVER
@@ -975,16 +1032,23 @@ static int encode_apng(AVCodecContext *avctx, AVPacket *pkt,
             enc_row_size +
             (4 + 12) * (((int64_t)enc_row_size + IOBUF_SIZE - 1) / IOBUF_SIZE) // fdAT * ceil(enc_row_size / IOBUF_SIZE)
         );
-    if ((ret = add_icc_profile_size(avctx, pict, &max_packet_size)))
-        return ret;
     if (max_packet_size > INT_MAX)
         return AVERROR(ENOMEM);
 
     if (avctx->frame_num == 0) {
         if (!pict)
             return AVERROR(EINVAL);
-
-        s->bytestream = s->extra_data = av_malloc(FF_INPUT_BUFFER_MIN_SIZE);
+        uint64_t extradata_size = FF_INPUT_BUFFER_MIN_SIZE;
+        ret = add_icc_profile_size(avctx, pict, &extradata_size);
+        if (ret < 0)
+            return ret;
+        ret = add_exif_profile_size(avctx, pict, &extradata_size);
+        if (ret < 0)
+            return ret;
+        /* the compiler will optimize this out if UINT64_MAX == SIZE_MAX */
+        if (extradata_size > SIZE_MAX)
+            return AVERROR(ENOMEM);
+        s->bytestream = s->extra_data = av_malloc(extradata_size);
         if (!s->extra_data)
             return AVERROR(ENOMEM);
 
@@ -1177,7 +1241,7 @@ static av_cold int png_enc_init(AVCodecContext *avctx)
         s->color_type = PNG_COLOR_TYPE_PALETTE;
         break;
     default:
-        return -1;
+        av_unreachable("Already checked via CODEC_PIXFMTS");
     }
     s->bits_per_pixel = ff_png_get_nb_channels(s->color_type) * s->bit_depth;
 
@@ -1239,6 +1303,7 @@ const FFCodec ff_png_encoder = {
                   AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
                   AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE,
                   AV_PIX_FMT_MONOBLACK),
+    .alpha_modes    = AVALPHA_MODE_STRAIGHT,
     .p.priv_class   = &pngenc_class,
     .caps_internal  = FF_CODEC_CAP_ICC_PROFILES,
 };
@@ -1259,6 +1324,7 @@ const FFCodec ff_apng_encoder = {
                   AV_PIX_FMT_PAL8,
                   AV_PIX_FMT_GRAY8, AV_PIX_FMT_GRAY8A,
                   AV_PIX_FMT_GRAY16BE, AV_PIX_FMT_YA16BE),
+    .alpha_modes    = AVALPHA_MODE_STRAIGHT,
     .p.priv_class   = &pngenc_class,
     .caps_internal  = FF_CODEC_CAP_ICC_PROFILES,
 };

@@ -145,16 +145,6 @@ static int config_input(AVFilterLink *inlink)
     return 0;
 }
 
-<<<<<<< HEAD
-static int config_output_video(AVFilterLink *outlink)
-{
-    outlink->frame_rate = (AVRational){ 1, 0 };
-
-    return 0;
-}
-
-||||||| e7d938073e
-=======
 static int config_output_video(AVFilterLink *outlink)
 {
     FilterLink *l = ff_filter_link(outlink);
@@ -166,7 +156,6 @@ static int config_output_video(AVFilterLink *outlink)
     return 0;
 }
 
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 #define BUF_SIZE 64
 
 static inline char *double2int64str(char *buf, double v)
@@ -210,7 +199,8 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *frame)
 
     d = eval_pts(setpts, inlink, frame, frame->pts);
     frame->pts = D2TS(d);
-    frame->duration = 0;
+    if (setpts->strip_fps)
+        frame->duration = 0;
 
     av_log(inlink->dst, AV_LOG_TRACE,
             "N:%"PRId64" PTS:%s T:%f",
@@ -336,23 +326,6 @@ static const AVFilterPad avfilter_vf_setpts_inputs[] = {
     },
 };
 
-<<<<<<< HEAD
-static const AVFilterPad outputs_video[] = {
-    {
-        .name         = "default",
-        .type         = AVMEDIA_TYPE_VIDEO,
-        .config_props = config_output_video,
-    },
-};
-
-const AVFilter ff_vf_setpts = {
-    .name            = "setpts",
-    .description     = NULL_IF_CONFIG_SMALL("Set PTS for the output video frame."),
-||||||| e7d938073e
-const AVFilter ff_vf_setpts = {
-    .name            = "setpts",
-    .description     = NULL_IF_CONFIG_SMALL("Set PTS for the output video frame."),
-=======
 static const AVFilterPad outputs_video[] = {
     {
         .name         = "default",
@@ -368,7 +341,6 @@ const FFFilter ff_vf_setpts = {
 
     .p.priv_class    = &setpts_class,
 
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
     .init            = init,
     .activate        = activate,
     .uninit          = uninit,

@@ -21,9 +21,10 @@
  */
 
 #include <stdlib.h>
-#define CONFIG_HARDCODED_TABLES 0
+#define BUILD_TABLES 1
 #include "libavutil/tablegen.h"
 #include "cbrt_tablegen.h"
+#include "cbrt_tablegen_common.c"
 #include "tableprint.h"
 
 int main(void)

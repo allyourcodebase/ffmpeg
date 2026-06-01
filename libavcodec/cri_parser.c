@@ -28,6 +28,7 @@
 #include "libavutil/common.h"
 
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct CRIParser {
     ParseContext pc;
@@ -97,9 +98,9 @@ static int cri_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_cri_parser = {
-    .codec_ids      = { AV_CODEC_ID_CRI },
+const FFCodecParser ff_cri_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_CRI),
     .priv_data_size = sizeof(CRIParser),
-    .parser_parse   = cri_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = cri_parse,
+    .close          = ff_parse_close,
 };

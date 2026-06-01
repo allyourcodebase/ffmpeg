@@ -72,13 +72,12 @@ int swr_set_matrix(struct SwrContext *s, const double *matrix, int stride)
     )
         return AVERROR(EINVAL);
     memset(s->matrix, 0, sizeof(s->matrix));
-    memset(s->matrix_flt, 0, sizeof(s->matrix_flt));
 
     nb_in = s->user_in_chlayout.nb_channels;
     nb_out = s->user_out_chlayout.nb_channels;
     for (out = 0; out < nb_out; out++) {
         for (in = 0; in < nb_in; in++)
-            s->matrix_flt[out][in] = s->matrix[out][in] = matrix[in];
+            s->matrix[out][in] = matrix[in];
         matrix += stride;
     }
     s->rematrix_custom = 1;
@@ -439,7 +438,6 @@ fail:
 av_cold static int auto_matrix(SwrContext *s)
 {
     double maxval;
-    int ret;
 
     if (s->rematrix_maxval > 0) {
         maxval = s->rematrix_maxval;
@@ -450,19 +448,10 @@ av_cold static int auto_matrix(SwrContext *s)
         maxval = INT_MAX;
 
     memset(s->matrix, 0, sizeof(s->matrix));
-    ret = swr_build_matrix2(&s->in_ch_layout, &s->out_ch_layout,
-                           s->clev, s->slev, s->lfe_mix_level,
-                           maxval, s->rematrix_volume, (double*)s->matrix,
-                           s->matrix[1] - s->matrix[0], s->matrix_encoding, s);
-
-    if (ret >= 0 && s->int_sample_fmt == AV_SAMPLE_FMT_FLTP) {
-        int i, j;
-        for (i = 0; i < FF_ARRAY_ELEMS(s->matrix[0]); i++)
-            for (j = 0; j < FF_ARRAY_ELEMS(s->matrix[0]); j++)
-                s->matrix_flt[i][j] = s->matrix[i][j];
-    }
-
-    return ret;
+    return swr_build_matrix2(&s->in_ch_layout, &s->out_ch_layout,
+                             s->clev, s->slev, s->lfe_mix_level,
+                             maxval, s->rematrix_volume, (double*)s->matrix,
+                             s->matrix[1] - s->matrix[0], s->matrix_encoding, s);
 }
 
 av_cold int swri_rematrix_init(SwrContext *s){
@@ -480,8 +469,7 @@ av_cold int swri_rematrix_init(SwrContext *s){
     if (s->midbuf.fmt == AV_SAMPLE_FMT_S16P){
         int maxsum = 0;
         s->native_matrix = av_calloc(nb_in * nb_out, sizeof(int));
-        s->native_one    = av_mallocz(sizeof(int));
-        if (!s->native_matrix || !s->native_one)
+        if (!s->native_matrix)
             return AVERROR(ENOMEM);
         for (i = 0; i < nb_out; i++) {
             double rem = 0;
@@ -495,7 +483,7 @@ av_cold int swri_rematrix_init(SwrContext *s){
             }
             maxsum = FFMAX(maxsum, sum);
         }
-        *((int*)s->native_one) = 32768;
+        s->native_one.i = 32768;
         if (maxsum <= 32768) {
             s->mix_1_1_f = copy_s16;
             s->mix_2_1_f = sum2_s16;
@@ -507,37 +495,30 @@ av_cold int swri_rematrix_init(SwrContext *s){
         }
     }else if(s->midbuf.fmt == AV_SAMPLE_FMT_FLTP){
         s->native_matrix = av_calloc(nb_in * nb_out, sizeof(float));
-        s->native_one    = av_mallocz(sizeof(float));
-        if (!s->native_matrix || !s->native_one)
+        if (!s->native_matrix)
             return AVERROR(ENOMEM);
         for (i = 0; i < nb_out; i++)
             for (j = 0; j < nb_in; j++)
                 ((float*)s->native_matrix)[i * nb_in + j] = s->matrix[i][j];
-        *((float*)s->native_one) = 1.0;
+        s->native_one.f = 1.0;
         s->mix_1_1_f = copy_float;
         s->mix_2_1_f = sum2_float;
         s->mix_any_f = get_mix_any_func_float(s);
     }else if(s->midbuf.fmt == AV_SAMPLE_FMT_DBLP){
         s->native_matrix = av_calloc(nb_in * nb_out, sizeof(double));
-        s->native_one    = av_mallocz(sizeof(double));
-        if (!s->native_matrix || !s->native_one)
+        if (!s->native_matrix)
             return AVERROR(ENOMEM);
         for (i = 0; i < nb_out; i++)
             for (j = 0; j < nb_in; j++)
                 ((double*)s->native_matrix)[i * nb_in + j] = s->matrix[i][j];
-        *((double*)s->native_one) = 1.0;
+        s->native_one.d = 1.0;
         s->mix_1_1_f = copy_double;
         s->mix_2_1_f = sum2_double;
         s->mix_any_f = get_mix_any_func_double(s);
     }else if(s->midbuf.fmt == AV_SAMPLE_FMT_S32P){
-        s->native_one    = av_mallocz(sizeof(int));
-        if (!s->native_one)
-            return AVERROR(ENOMEM);
         s->native_matrix = av_calloc(nb_in * nb_out, sizeof(int));
-        if (!s->native_matrix) {
-            av_freep(&s->native_one);
+        if (!s->native_matrix)
             return AVERROR(ENOMEM);
-        }
         for (i = 0; i < nb_out; i++) {
             double rem = 0;
 
@@ -547,7 +528,7 @@ av_cold int swri_rematrix_init(SwrContext *s){
                 rem += target - ((int*)s->native_matrix)[i * nb_in + j];
             }
         }
-        *((int*)s->native_one) = 32768;
+        s->native_one.i = 32768;
         s->mix_1_1_f = copy_s32;
         s->mix_2_1_f = sum2_s32;
         s->mix_any_f = get_mix_any_func_s32(s);
@@ -557,14 +538,24 @@ av_cold int swri_rematrix_init(SwrContext *s){
     for (i = 0; i < SWR_CH_MAX; i++) {
         int ch_in=0;
         for (j = 0; j < SWR_CH_MAX; j++) {
-            s->matrix32[i][j]= lrintf(s->matrix[i][j] * 32768);
-            if(s->matrix[i][j])
+            const double coeff = s->matrix[i][j];
+            if (coeff)
                 s->matrix_ch[i][++ch_in]= j;
+            switch (s->int_sample_fmt) {
+            case AV_SAMPLE_FMT_FLTP:
+                s->matrix_flt[i][j] = coeff;
+                break;
+            case AV_SAMPLE_FMT_DBLP:
+                break;
+            default:
+                s->matrix32[i][j] = lrintf(coeff * 32768);
+                break;
+            }
         }
         s->matrix_ch[i][0]= ch_in;
     }
 
-#if ARCH_X86 && HAVE_X86ASM && HAVE_MMX
+#if ARCH_X86 && HAVE_X86ASM
     return swri_rematrix_init_x86(s);
 #endif
 
@@ -573,9 +564,7 @@ av_cold int swri_rematrix_init(SwrContext *s){
 
 av_cold void swri_rematrix_free(SwrContext *s){
     av_freep(&s->native_matrix);
-    av_freep(&s->native_one);
     av_freep(&s->native_simd_matrix);
-    av_freep(&s->native_simd_one);
 }
 
 int swri_rematrix(SwrContext *s, AudioData *out, AudioData *in, int len, int mustcopy){

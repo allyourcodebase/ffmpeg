@@ -29,6 +29,7 @@
 
 #include <stdint.h>
 
+#include "libavutil/attributes.h"
 #include "libavutil/avutil.h"
 #include "libavutil/error.h"
 #include "libavutil/log.h"
@@ -48,6 +49,7 @@
 #include "mpegutils.h"
 #include "parser.h"
 #include "libavutil/refstruct.h"
+#include "parser_internal.h"
 #include "startcode.h"
 
 typedef struct H264ParseContext {
@@ -667,7 +669,7 @@ static int h264_parse(AVCodecParserContext *s,
     return next;
 }
 
-static void h264_close(AVCodecParserContext *s)
+static av_cold void h264_close(AVCodecParserContext *s)
 {
     H264ParseContext *p = s->priv_data;
     ParseContext *pc = &p->pc;
@@ -688,10 +690,10 @@ static av_cold int init(AVCodecParserContext *s)
     return 0;
 }
 
-const AVCodecParser ff_h264_parser = {
-    .codec_ids      = { AV_CODEC_ID_H264 },
+const FFCodecParser ff_h264_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_H264),
     .priv_data_size = sizeof(H264ParseContext),
-    .parser_init    = init,
-    .parser_parse   = h264_parse,
-    .parser_close   = h264_close,
+    .init           = init,
+    .parse          = h264_parse,
+    .close          = h264_close,
 };

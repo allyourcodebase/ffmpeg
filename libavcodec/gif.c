@@ -30,6 +30,7 @@
  * @see http://www.w3.org/Graphics/GIF/spec-gif89a.txt
  */
 
+#include "libavutil/attributes.h"
 #include "libavutil/imgutils_internal.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
@@ -491,6 +492,8 @@ static int gif_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
             memcpy(s->palette, palette, AVPALETTE_SIZE);
             s->transparent_index = get_palette_transparency_index(palette);
             s->palette_loaded = 1;
+            if (s->use_global_palette)
+                palette = NULL;
         } else if (!memcmp(s->palette, palette, AVPALETTE_SIZE)) {
             palette = NULL;
         }
@@ -518,7 +521,7 @@ static int gif_encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     return 0;
 }
 
-static int gif_encode_close(AVCodecContext *avctx)
+static av_cold int gif_encode_close(AVCodecContext *avctx)
 {
     GIFContext *s = avctx->priv_data;
 

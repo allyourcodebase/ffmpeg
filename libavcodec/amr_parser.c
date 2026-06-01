@@ -28,6 +28,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "parser.h"
+#include "parser_internal.h"
 
 static const uint8_t amrnb_packed_size[16] = {
     13, 14, 16, 18, 20, 21, 27, 32, 6, 1, 1, 1, 1, 1, 1, 1
@@ -122,10 +123,10 @@ static int amr_parse(AVCodecParserContext *s1,
     return next;
 }
 
-const AVCodecParser ff_amr_parser = {
-    .codec_ids      = { AV_CODEC_ID_AMR_NB, AV_CODEC_ID_AMR_WB },
+const FFCodecParser ff_amr_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_AMR_NB, AV_CODEC_ID_AMR_WB),
     .priv_data_size = sizeof(AMRParseContext),
-    .parser_init    = amr_parse_init,
-    .parser_parse   = amr_parse,
-    .parser_close   = ff_parse_close,
+    .init           = amr_parse_init,
+    .parse          = amr_parse,
+    .close          = ff_parse_close,
 };

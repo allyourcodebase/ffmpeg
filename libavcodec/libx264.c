@@ -613,7 +613,7 @@ static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
     x264_nal_t *nal;
     int nnal, ret;
     x264_picture_t pic_out = {0}, *pic_in;
-    int pict_type;
+    enum AVPictureType pict_type;
     int64_t wallclock = 0;
     X264Opaque *out_opaque;
 
@@ -728,8 +728,8 @@ static int X264_frame(AVCodecContext *ctx, AVPacket *pkt, const AVFrame *frame,
             errors = sse;
         }
 
-        ff_side_data_set_encoder_stats(pkt, (pic_out.i_qpplus1 - 1) * FF_QP2LAMBDA,
-                                       errors, error_count, pict_type);
+        ff_encode_add_stats_side_data(pkt, (pic_out.i_qpplus1 - 1) * FF_QP2LAMBDA,
+                                      errors, error_count, pict_type);
 
         if (wallclock)
             ff_side_data_set_prft(pkt, wallclock);

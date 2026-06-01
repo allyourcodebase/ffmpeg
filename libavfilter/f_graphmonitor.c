@@ -156,7 +156,7 @@ static int query_formats(const AVFilterContext *ctx,
     };
     int ret;
 
-    AVFilterFormats *fmts_list = ff_make_format_list(pix_fmts);
+    AVFilterFormats *fmts_list = ff_make_pixel_format_list(pix_fmts);
     if ((ret = ff_formats_ref(fmts_list, &cfg_out[0]->formats)) < 0)
         return ret;
 
@@ -304,7 +304,7 @@ static int draw_items(AVFilterContext *ctx,
         len = snprintf(buffer, sizeof(buffer)-1, " | queue: ");
         drawtext(out, xpos, ypos, buffer, len, s->white);
         xpos += len * 8;
-        len = snprintf(buffer, sizeof(buffer)-1, "%"SIZE_SPECIFIER, frames);
+        len = snprintf(buffer, sizeof(buffer)-1, "%zu", frames);
         drawtext(out, xpos, ypos, buffer, len, frames > 0 ? frames >= 10 ? frames >= 50 ? s->red : s->yellow : s->green : s->white);
         xpos += len * 8;
     }

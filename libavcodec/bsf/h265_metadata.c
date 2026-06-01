@@ -19,25 +19,6 @@
 #include "libavutil/common.h"
 #include "libavutil/opt.h"
 
-<<<<<<< HEAD
-#include "libavcodec/bsf.h"
-#include "libavcodec/bsf_internal.h"
-#include "libavcodec/cbs.h"
-#include "libavcodec/cbs_bsf.h"
-#include "libavcodec/cbs_h265.h"
-#include "libavcodec/h2645data.h"
-#include "libavcodec/hevc.h"
-#include "libavcodec/h265_profile_level.h"
-||||||| e7d938073e
-#include "bsf.h"
-#include "bsf_internal.h"
-#include "cbs.h"
-#include "cbs_bsf.h"
-#include "cbs_h265.h"
-#include "h2645data.h"
-#include "hevc.h"
-#include "h265_profile_level.h"
-=======
 #include "bsf.h"
 #include "bsf_internal.h"
 #include "cbs.h"
@@ -45,7 +26,6 @@
 #include "cbs_h265.h"
 #include "h2645data.h"
 #include "h265_profile_level.h"
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
 
 #include "hevc/hevc.h"
 

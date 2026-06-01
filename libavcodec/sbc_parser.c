@@ -22,6 +22,7 @@
 
 #include "sbc.h"
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct SBCParseContext {
     ParseContext pc;
@@ -116,9 +117,9 @@ static int sbc_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_sbc_parser = {
-    .codec_ids      = { AV_CODEC_ID_SBC },
+const FFCodecParser ff_sbc_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_SBC),
     .priv_data_size = sizeof(SBCParseContext),
-    .parser_parse   = sbc_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = sbc_parse,
+    .close          = ff_parse_close,
 };

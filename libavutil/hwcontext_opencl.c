@@ -288,7 +288,7 @@ static int opencl_check_device_extension(cl_device_id device_id,
     return found;
 }
 
-static av_unused int opencl_check_extension(AVHWDeviceContext *hwdev,
+av_unused static int opencl_check_extension(AVHWDeviceContext *hwdev,
                                             const char *name)
 {
     OpenCLDeviceContext    *priv = hwdev->hwctx;
@@ -2747,7 +2747,7 @@ static int opencl_map_from_drm_arm(AVHWFramesContext *dst_fc, AVFrame *dst,
                               &fd, desc->objects[i].size, &cle);
         if (!mapping->object_buffers[i]) {
             av_log(dst_fc, AV_LOG_ERROR, "Failed to create CL buffer "
-                   "from object %d (fd %d, size %"SIZE_SPECIFIER") of DRM frame: %d.\n",
+                   "from object %d (fd %d, size %zu) of DRM frame: %d.\n",
                    i, fd, desc->objects[i].size, cle);
             err = AVERROR(EIO);
             goto fail;

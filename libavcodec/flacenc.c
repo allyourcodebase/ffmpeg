@@ -57,7 +57,7 @@ enum CodingMode {
 typedef struct CompressionOptions {
     int compression_level;
     int block_time_ms;
-    enum FFLPCType lpc_type;
+    int /* enum FFLPCType */ lpc_type;
     int lpc_passes;
     int lpc_coeff_precision;
     int min_prediction_order;
@@ -1172,7 +1172,7 @@ static int encode_residual_ch(FlacEncodeContext *s, int ch)
 
 static int count_frame_header(FlacEncodeContext *s)
 {
-    uint8_t av_unused tmp;
+    av_unused uint8_t tmp;
     int count;
 
     /*

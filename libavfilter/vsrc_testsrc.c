@@ -257,8 +257,7 @@ static int color_config_props(AVFilterLink *inlink)
     TestSourceContext *test = ctx->priv;
     int ret;
 
-    ret = ff_draw_init2(&test->draw, inlink->format, inlink->colorspace,
-                        inlink->color_range, 0);
+    ret = ff_draw_init_from_link(&test->draw, inlink, 0);
     if (ret < 0) {
         av_log(ctx, AV_LOG_ERROR, "Failed to initialize FFDrawContext\n");
         return ret;
@@ -697,7 +696,7 @@ const FFFilter ff_vsrc_testsrc = {
 
 #endif /* CONFIG_TESTSRC_FILTER */
 
-static void av_unused set_color(TestSourceContext *s, FFDrawColor *color, uint32_t argb)
+av_unused static void set_color(TestSourceContext *s, FFDrawColor *color, uint32_t argb)
 {
     uint8_t rgba[4] = { (argb >> 16) & 0xFF,
                         (argb >>  8) & 0xFF,
@@ -941,8 +940,7 @@ static int test2_config_props(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->src;
     TestSourceContext *s = ctx->priv;
 
-    av_assert0(ff_draw_init2(&s->draw, inlink->format, inlink->colorspace,
-                             inlink->color_range, 0) >= 0);
+    av_assert0(ff_draw_init_from_link(&s->draw, inlink, 0) >= 0);
     s->w = ff_draw_round_to_sub(&s->draw, 0, -1, s->w);
     s->h = ff_draw_round_to_sub(&s->draw, 1, -1, s->h);
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
@@ -1256,6 +1254,12 @@ static void yuvtest_put_pixel(uint8_t *dstp[4], int dst_linesizep[4],
         AV_WN16A(&dstp[1][i*2 + j*dst_linesizep[1]], u);
         AV_WN16A(&dstp[2][i*2 + j*dst_linesizep[2]], v);
         break;
+    case AV_PIX_FMT_YUV444P10MSB:
+    case AV_PIX_FMT_YUV444P12MSB:
+        AV_WN16A(&dstp[0][i*2 + j*dst_linesizep[0]], y << desc->comp[0].shift);
+        AV_WN16A(&dstp[1][i*2 + j*dst_linesizep[1]], u << desc->comp[1].shift);
+        AV_WN16A(&dstp[2][i*2 + j*dst_linesizep[2]], v << desc->comp[2].shift);
+        break;
     case AV_PIX_FMT_NV24:
         dstp[0][i   + j*dst_linesizep[0] + 0] = y;
         dstp[1][i*2 + j*dst_linesizep[1] + 0] = u;
@@ -1315,6 +1319,7 @@ static const enum AVPixelFormat yuvtest_pix_fmts[] = {
     AV_PIX_FMT_YUV444P16, AV_PIX_FMT_VYU444,
     AV_PIX_FMT_YUVA444P, AV_PIX_FMT_YUVA444P9,
     AV_PIX_FMT_YUVA444P10, AV_PIX_FMT_YUVA444P12, AV_PIX_FMT_YUVA444P16,
+    AV_PIX_FMT_YUV444P10MSB, AV_PIX_FMT_YUV444P12MSB,
     AV_PIX_FMT_AYUV, AV_PIX_FMT_UYVA, AV_PIX_FMT_AYUV64,
     AV_PIX_FMT_VUYA, AV_PIX_FMT_VUYX, AV_PIX_FMT_XV48,
     AV_PIX_FMT_XV30LE, AV_PIX_FMT_V30XLE, AV_PIX_FMT_XV36,
@@ -1488,7 +1493,7 @@ static int smptebars_query_formats(const AVFilterContext *ctx,
     if ((ret = ff_set_common_color_ranges2(ctx, cfg_in, cfg_out,
                                            ff_make_formats_list_singleton(AVCOL_RANGE_MPEG))))
         return ret;
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, smptebars_pix_fmts);
+    return ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, smptebars_pix_fmts);
 }
 
 AVFILTER_DEFINE_CLASS_EXT(palbars, "pal(75|100)bars", options);
@@ -2022,8 +2027,7 @@ static int colorchart_config_props(AVFilterLink *inlink)
     AVFilterContext *ctx = inlink->src;
     TestSourceContext *s = ctx->priv;
 
-    av_assert0(ff_draw_init2(&s->draw, inlink->format, inlink->colorspace,
-                             inlink->color_range, 0) >= 0);
+    av_assert0(ff_draw_init_from_link(&s->draw, inlink, 0) >= 0);
     if (av_image_check_size(s->w, s->h, 0, ctx) < 0)
         return AVERROR(EINVAL);
     return config_props(inlink);
@@ -2256,7 +2260,7 @@ static int zoneplate_query_formats(const AVFilterContext *ctx,
     if ((ret = ff_set_common_color_ranges2(ctx, cfg_in, cfg_out,
                                            ff_make_formats_list_singleton(AVCOL_RANGE_JPEG))))
         return ret;
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, zoneplate_pix_fmts);
+    return ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, zoneplate_pix_fmts);
 }
 
 static const AVFilterPad avfilter_vsrc_zoneplate_outputs[] = {

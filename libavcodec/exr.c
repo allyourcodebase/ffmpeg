@@ -199,9 +199,9 @@ typedef struct EXRContext {
     enum AVColorTransferCharacteristic apply_trc_type;
     float gamma;
     uint16_t gamma_table[65536];
-    Float2HalfTables f2h_tables;
 #endif
 
+    Float2HalfTables f2h_tables;
     Half2FloatTables h2f_tables;
 } EXRContext;
 
@@ -2192,6 +2192,9 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *picture,
         return AVERROR_INVALIDDATA;
     }
 
+    if (s->channel_offsets[3] >= 0)
+        avctx->alpha_mode = AVALPHA_MODE_PREMULTIPLIED;
+
 #if FF_API_EXR_GAMMA
     if (s->apply_trc_type != AVCOL_TRC_UNSPECIFIED)
         avctx->color_trc = s->apply_trc_type;
@@ -2329,9 +2332,9 @@ static av_cold int decode_init(AVCodecContext *avctx)
     union av_intfloat32 t;
     float one_gamma = 1.0f / s->gamma;
     av_csp_trc_function trc_func = NULL;
-    ff_init_float2half_tables(&s->f2h_tables);
 #endif
 
+    ff_init_float2half_tables(&s->f2h_tables);
     ff_init_half2float_tables(&s->h2f_tables);
 
     s->avctx              = avctx;

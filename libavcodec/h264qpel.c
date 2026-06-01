@@ -20,6 +20,7 @@
  */
 
 #include "libavutil/attributes.h"
+#include "libavutil/common.h"
 #include "h264qpel.h"
 
 #define pixeltmp int16_t
@@ -73,7 +74,6 @@ av_cold void ff_h264qpel_init(H264QpelContext *c, int bit_depth)
     dspfunc2(put_h264_qpel, 0, 16, depth);      \
     dspfunc2(put_h264_qpel, 1,  8, depth);      \
     dspfunc2(put_h264_qpel, 2,  4, depth);      \
-    dspfunc2(put_h264_qpel, 3,  2, depth);      \
     dspfunc2(avg_h264_qpel, 0, 16, depth);      \
     dspfunc2(avg_h264_qpel, 1,  8, depth);      \
     dspfunc2(avg_h264_qpel, 2,  4, depth)
@@ -104,7 +104,7 @@ av_cold void ff_h264qpel_init(H264QpelContext *c, int bit_depth)
     ff_h264qpel_init_ppc(c, bit_depth);
 #elif ARCH_RISCV
     ff_h264qpel_init_riscv(c, bit_depth);
-#elif ARCH_X86
+#elif ARCH_X86 && HAVE_X86ASM
     ff_h264qpel_init_x86(c, bit_depth);
 #elif ARCH_MIPS
     ff_h264qpel_init_mips(c, bit_depth);

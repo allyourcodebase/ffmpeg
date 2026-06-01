@@ -415,7 +415,7 @@ static int cbs_vp9_split_fragment(CodedBitstreamContext *ctx,
         }
         if (pos + index_size != frag->data_size) {
             av_log(ctx->log_ctx, AV_LOG_WARNING, "Extra padding at "
-                   "end of superframe: %"SIZE_SPECIFIER" bytes.\n",
+                   "end of superframe: %zu bytes.\n",
                    frag->data_size - (pos + index_size));
         }
 
@@ -587,14 +587,14 @@ static int cbs_vp9_assemble_fragment(CodedBitstreamContext *ctx,
     return 0;
 }
 
-static void cbs_vp9_flush(CodedBitstreamContext *ctx)
+static av_cold void cbs_vp9_flush(CodedBitstreamContext *ctx)
 {
     CodedBitstreamVP9Context *vp9 = ctx->priv_data;
 
     memset(vp9->ref, 0, sizeof(vp9->ref));
 }
 
-static const CodedBitstreamUnitTypeDescriptor cbs_vp9_unit_types[] = {
+static CodedBitstreamUnitTypeDescriptor cbs_vp9_unit_types[] = {
     CBS_UNIT_TYPE_INTERNAL_REF(0, VP9RawFrame, data),
     CBS_UNIT_TYPE_END_OF_LIST
 };

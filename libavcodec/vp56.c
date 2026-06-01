@@ -325,9 +325,9 @@ static void vp56_deblock_filter(VP56Context *s, uint8_t *yuv,
                                 ptrdiff_t stride, int dx, int dy)
 {
     if (s->avctx->codec->id == AV_CODEC_ID_VP5) {
-    int t = ff_vp56_filter_threshold[s->quantizer];
-    if (dx)  s->vp56dsp.edge_filter_hor(yuv +         10-dx , stride, t);
-    if (dy)  s->vp56dsp.edge_filter_ver(yuv + stride*(10-dy), stride, t);
+        int t = ff_vp56_filter_threshold[s->quantizer];
+        if (dx)  s->vp5dsp.edge_filter_hor(yuv +         10-dx , stride, t);
+        if (dy)  s->vp5dsp.edge_filter_ver(yuv + stride*(10-dy), stride, t);
     } else {
         int * bounding_values = s->bounding_values_array + 127;
         if (dx)
@@ -828,7 +828,7 @@ av_cold int ff_vp56_init_context(AVCodecContext *avctx, VP56Context *s,
     ff_h264chroma_init(&s->h264chroma, 8);
     ff_hpeldsp_init(&s->hdsp, avctx->flags);
     ff_videodsp_init(&s->vdsp, 8);
-    ff_vp3dsp_init(&s->vp3dsp, avctx->flags);
+    ff_vp3dsp_init(&s->vp3dsp);
     for (i = 0; i < 64; i++) {
 #define TRANSPOSE(x) (((x) >> 3) | (((x) & 7) << 3))
         s->idct_scantable[i] = TRANSPOSE(ff_zigzag_direct[i]);

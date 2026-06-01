@@ -342,7 +342,7 @@ static void dump_mastering_display_metadata(void *ctx, const AVPacketSideData *s
 {
     const AVMasteringDisplayMetadata *metadata =
         (const AVMasteringDisplayMetadata *)sd->data;
-    av_log(ctx, log_level, "Mastering Display Metadata, "
+    av_log(ctx, log_level,
            "has_primaries:%d has_luminance:%d "
            "r(%5.4f,%5.4f) g(%5.4f,%5.4f) b(%5.4f %5.4f) wp(%5.4f, %5.4f) "
            "min_luminance=%f, max_luminance=%f",
@@ -362,7 +362,7 @@ static void dump_content_light_metadata(void *ctx, const AVPacketSideData *sd,
 {
     const AVContentLightMetadata *metadata =
         (const AVContentLightMetadata *)sd->data;
-    av_log(ctx, log_level, "Content Light Level Metadata, "
+    av_log(ctx, log_level,
            "MaxCLL=%d, MaxFALL=%d",
            metadata->MaxCLL, metadata->MaxFALL);
 }
@@ -371,7 +371,7 @@ static void dump_ambient_viewing_environment_metadata(void *ctx, const AVPacketS
 {
     const AVAmbientViewingEnvironment *ambient =
         (const AVAmbientViewingEnvironment *)sd->data;
-    av_log(ctx, log_level, "Ambient Viewing Environment, "
+    av_log(ctx, log_level,
            "ambient_illuminance=%f, ambient_light_x=%f, ambient_light_y=%f",
            av_q2d(ambient->ambient_illuminance),
            av_q2d(ambient->ambient_light_x),
@@ -402,9 +402,7 @@ static void dump_spherical(void *ctx, int w, int h,
         size_t l, t, r, b;
         av_spherical_tile_bounds(spherical, w, h,
                                  &l, &t, &r, &b);
-        av_log(ctx, log_level,
-               "[%"SIZE_SPECIFIER", %"SIZE_SPECIFIER", %"SIZE_SPECIFIER", %"SIZE_SPECIFIER"] ",
-               l, t, r, b);
+        av_log(ctx, log_level, "[%zu, %zu, %zu, %zu] ", l, t, r, b);
     } else if (spherical->projection == AV_SPHERICAL_CUBEMAP) {
         av_log(ctx, log_level, "[pad %"PRIu32"] ", spherical->padding);
     }
@@ -459,7 +457,7 @@ static void dump_cropping(void *ctx, const AVPacketSideData *sd, int log_level)
     left   = AV_RL32(sd->data +  8);
     right  = AV_RL32(sd->data + 12);
 
-    av_log(ctx, log_level, "%d/%d/%d/%d", left, right, top, bottom);
+    av_log(ctx, log_level, "%"PRIu32"/%"PRIu32"/%"PRIu32"/%"PRIu32"", left, right, top, bottom);
 }
 
 static void dump_tdrdi(void *ctx, const AVPacketSideData *sd, int log_level)
@@ -481,81 +479,65 @@ static void dump_sidedata(void *ctx, const AVPacketSideData *side_data, int nb_s
 
     for (i = 0; i < nb_side_data; i++) {
         const AVPacketSideData *sd = &side_data[i];
-        av_log(ctx, log_level, "%s  ", indent);
+        const char *name = av_packet_side_data_name(sd->type);
 
+        av_log(ctx, log_level, "%s  ", indent);
+        if (name)
+            av_log(ctx, log_level, "%s: ", name);
         switch (sd->type) {
-        case AV_PKT_DATA_PALETTE:
-            av_log(ctx, log_level, "palette");
-            break;
-        case AV_PKT_DATA_NEW_EXTRADATA:
-            av_log(ctx, log_level, "new extradata");
-            break;
         case AV_PKT_DATA_PARAM_CHANGE:
-            av_log(ctx, log_level, "paramchange: ");
             dump_paramchange(ctx, sd, log_level);
             break;
-        case AV_PKT_DATA_H263_MB_INFO:
-            av_log(ctx, log_level, "H.263 macroblock info");
-            break;
         case AV_PKT_DATA_REPLAYGAIN:
-            av_log(ctx, log_level, "replaygain: ");
             dump_replaygain(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_DISPLAYMATRIX:
-            av_log(ctx, log_level, "displaymatrix: rotation of %.2f degrees",
+            av_log(ctx, log_level, "rotation of %.2f degrees",
                    av_display_rotation_get((const int32_t *)sd->data));
             break;
         case AV_PKT_DATA_STEREO3D:
-            av_log(ctx, log_level, "stereo3d: ");
             dump_stereo3d(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_AUDIO_SERVICE_TYPE:
-            av_log(ctx, log_level, "audio service type: ");
             dump_audioservicetype(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_QUALITY_STATS:
-            av_log(ctx, log_level, "quality factor: %"PRId32", pict_type: %c",
+            av_log(ctx, log_level, "%"PRId32", pict_type: %c",
                    AV_RL32(sd->data), av_get_picture_type_char(sd->data[4]));
             break;
         case AV_PKT_DATA_CPB_PROPERTIES:
-            av_log(ctx, log_level, "cpb: ");
             dump_cpb(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_MASTERING_DISPLAY_METADATA:
             dump_mastering_display_metadata(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_SPHERICAL:
-            av_log(ctx, log_level, "spherical: ");
             dump_spherical(ctx, w, h, sd, log_level);
             break;
         case AV_PKT_DATA_CONTENT_LIGHT_LEVEL:
             dump_content_light_metadata(ctx, sd, log_level);
             break;
-        case AV_PKT_DATA_ICC_PROFILE:
-            av_log(ctx, log_level, "ICC Profile");
-            break;
         case AV_PKT_DATA_DOVI_CONF:
-            av_log(ctx, log_level, "DOVI configuration record: ");
             dump_dovi_conf(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_S12M_TIMECODE:
-            av_log(ctx, log_level, "SMPTE ST 12-1:2014: ");
             dump_s12m_timecode(ctx, avg_frame_rate, sd, log_level);
             break;
         case AV_PKT_DATA_AMBIENT_VIEWING_ENVIRONMENT:
             dump_ambient_viewing_environment_metadata(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_FRAME_CROPPING:
-            av_log(ctx, AV_LOG_INFO, "Frame cropping: ");
             dump_cropping(ctx, sd, log_level);
             break;
         case AV_PKT_DATA_3D_REFERENCE_DISPLAYS:
-            av_log(ctx, log_level, "3D Reference Displays Information: ");
             dump_tdrdi(ctx, sd, log_level);
             break;
         default:
-            av_log(ctx, log_level, "unknown side data type %d "
-                   "(%"SIZE_SPECIFIER" bytes)", sd->type, sd->size);
+            if (name)
+                av_log(ctx, log_level, "(%zu bytes)", sd->size);
+            else
+                av_log(ctx, log_level, "unknown side data type %d "
+                       "(%zu bytes)", sd->type, sd->size);
             break;
         }
 

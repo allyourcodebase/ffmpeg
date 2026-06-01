@@ -44,14 +44,6 @@
 //will be in public headers soon
 #define AMF_VIDEO_DECODER_OUTPUT_FORMAT                L"OutputDecodeFormat"
 
-const enum AVPixelFormat amf_dec_pix_fmts[] = {
-    AV_PIX_FMT_NV12,
-    AV_PIX_FMT_P010,
-    AV_PIX_FMT_P012,
-    AV_PIX_FMT_AMF_SURFACE,
-    AV_PIX_FMT_NONE
-};
-
 static const AVCodecHWConfigInternal *const amf_hw_configs[] = {
     &(const AVCodecHWConfigInternal) {
         .public = {
@@ -282,15 +274,16 @@ static int amf_decode_init(AVCodecContext *avctx)
     if (!ctx->in_pkt)
         return AVERROR(ENOMEM);
 
-    if  (avctx->hw_device_ctx && !avctx->hw_frames_ctx) {
+    if  (avctx->hw_device_ctx) {
         AVHWDeviceContext   *hwdev_ctx;
         hwdev_ctx = (AVHWDeviceContext*)avctx->hw_device_ctx->data;
         if (hwdev_ctx->type == AV_HWDEVICE_TYPE_AMF)
         {
             ctx->device_ctx_ref = av_buffer_ref(avctx->hw_device_ctx);
-            avctx->hw_frames_ctx = av_hwframe_ctx_alloc(avctx->hw_device_ctx);
-
-            AMF_GOTO_FAIL_IF_FALSE(avctx, !!avctx->hw_frames_ctx, AVERROR(ENOMEM), "av_hwframe_ctx_alloc failed\n");
+            if (!avctx->hw_frames_ctx) {
+                avctx->hw_frames_ctx = av_hwframe_ctx_alloc(avctx->hw_device_ctx);
+                AMF_GOTO_FAIL_IF_FALSE(avctx, !!avctx->hw_frames_ctx, AVERROR(ENOMEM), "av_hwframe_ctx_alloc failed\n");
+            }
         } else {
             ret = av_hwdevice_ctx_create_derived(&ctx->device_ctx_ref, AV_HWDEVICE_TYPE_AMF, avctx->hw_device_ctx, 0);
             AMF_GOTO_FAIL_IF_FALSE(avctx, ret == 0, ret, "Failed to create derived AMF device context: %s\n", av_err2str(ret));
@@ -647,12 +640,12 @@ static int amf_decode_frame(AVCodecContext *avctx, struct AVFrame *frame)
                 return AVERROR(EINVAL);
             }
             res = ctx->decoder->pVtbl->GetProperty(ctx->decoder, AMF_VIDEO_DECODER_OUTPUT_FORMAT, &format_var);
-            if (res == AMF_OK) {
-                res = amf_init_frames_context(avctx, av_amf_to_av_format(format_var.int64Value), avctx->coded_width, avctx->coded_height);
-            }
-
-            if (res < 0)
+            if (res != AMF_OK) {
                 return AVERROR(EINVAL);
+            }
+            int ret = amf_init_frames_context(avctx, av_amf_to_av_format(format_var.int64Value), avctx->coded_width, avctx->coded_height);
+            if (ret < 0)
+                return ret;
         }else
             return AVERROR_EOF;
     } else {
@@ -716,7 +709,6 @@ const FFCodec ff_##x##_amf_decoder = { \
     .bsfs           = bsf_name, \
     .p.capabilities = AV_CODEC_CAP_HARDWARE | AV_CODEC_CAP_DELAY | AV_CODEC_CAP_AVOID_PROBING, \
     .p.priv_class   = &amf_decode_class, \
-    CODEC_PIXFMTS_ARRAY(amf_dec_pix_fmts), \
     .hw_configs     = amf_hw_configs, \
     .p.wrapper_name = "amf", \
     .caps_internal  = FF_CODEC_CAP_NOT_INIT_THREADSAFE, \

@@ -24,7 +24,6 @@
 #include "libavutil/avassert.h"
 #include "libavutil/avutil.h"
 #include "libavutil/container_fifo.h"
-#include "libavutil/intreadwrite.h"
 #include "libavutil/mathematics.h"
 #include "libavutil/mem.h"
 #include "libavutil/rational.h"
@@ -310,6 +309,7 @@ const char *av_packet_side_data_name(enum AVPacketSideDataType type)
     case AV_PKT_DATA_LCEVC:                      return "LCEVC NAL data";
     case AV_PKT_DATA_3D_REFERENCE_DISPLAYS:      return "3D Reference Displays Info";
     case AV_PKT_DATA_RTCP_SR:                    return "RTCP Sender Report";
+    case AV_PKT_DATA_EXIF:                       return "EXIF metadata";
     }
     return NULL;
 }
@@ -549,6 +549,7 @@ int avpriv_packet_list_put(PacketList *packet_buffer,
                            int flags)
 {
     PacketListEntry *pktl = av_malloc(sizeof(*pktl));
+    unsigned int update_end_point = 1;
     int ret;
 
     if (!pktl)
@@ -572,13 +573,22 @@ int avpriv_packet_list_put(PacketList *packet_buffer,
 
     pktl->next = NULL;
 
-    if (packet_buffer->head)
-        packet_buffer->tail->next = pktl;
-    else
+    if (packet_buffer->head) {
+        if (flags & FF_PACKETLIST_FLAG_PREPEND) {
+            pktl->next = packet_buffer->head;
+            packet_buffer->head = pktl;
+            update_end_point = 0;
+        } else {
+            packet_buffer->tail->next = pktl;
+        }
+    } else
         packet_buffer->head = pktl;
 
-    /* Add the packet in the buffered packet list. */
-    packet_buffer->tail = pktl;
+    if (update_end_point) {
+        /* Add the packet in the buffered packet list. */
+        packet_buffer->tail = pktl;
+    }
+
     return 0;
 }
 
@@ -607,31 +617,6 @@ void avpriv_packet_list_free(PacketList *pkt_buf)
         av_freep(&pktl);
     }
     pkt_buf->head = pkt_buf->tail = NULL;
-}
-
-int ff_side_data_set_encoder_stats(AVPacket *pkt, int quality, int64_t *error, int error_count, int pict_type)
-{
-    uint8_t *side_data;
-    size_t side_data_size;
-    int i;
-
-    side_data = av_packet_get_side_data(pkt, AV_PKT_DATA_QUALITY_STATS, &side_data_size);
-    if (!side_data) {
-        side_data_size = 4+4+8*error_count;
-        side_data = av_packet_new_side_data(pkt, AV_PKT_DATA_QUALITY_STATS,
-                                            side_data_size);
-    }
-
-    if (!side_data || side_data_size < 4+4+8*error_count)
-        return AVERROR(ENOMEM);
-
-    AV_WL32(side_data   , quality  );
-    side_data[4] = pict_type;
-    side_data[5] = error_count;
-    for (i = 0; i<error_count; i++)
-        AV_WL64(side_data+8 + 8*i , error[i]);
-
-    return 0;
 }
 
 int ff_side_data_set_prft(AVPacket *pkt, int64_t timestamp)

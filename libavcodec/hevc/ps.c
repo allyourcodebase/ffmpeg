@@ -238,7 +238,6 @@ int ff_hevc_decode_short_term_rps(GetBitContext *gb, AVCodecContext *avctx,
 static int decode_profile_tier_level(GetBitContext *gb, AVCodecContext *avctx,
                                       PTLCommon *ptl)
 {
-    const char *profile_name = NULL;
     int i;
 
     if (get_bits_left(gb) < 2+1+5 + 32 + 4 + 43 + 1)
@@ -249,14 +248,15 @@ static int decode_profile_tier_level(GetBitContext *gb, AVCodecContext *avctx,
     ptl->profile_idc   = get_bits(gb, 5);
 
 #if !CONFIG_SMALL
+    const char *profile_name = NULL;
     for (int i = 0; ff_hevc_profiles[i].profile != AV_PROFILE_UNKNOWN; i++)
         if (ff_hevc_profiles[i].profile == ptl->profile_idc) {
             profile_name = ff_hevc_profiles[i].name;
             break;
         }
-#endif
     av_log(avctx, profile_name ? AV_LOG_DEBUG : AV_LOG_WARNING,
            "%s profile bitstream\n", profile_name ? profile_name : "Unknown");
+#endif
 
     for (i = 0; i < 32; i++) {
         ptl->profile_compatibility_flag[i] = get_bits1(gb);
@@ -666,6 +666,7 @@ static int decode_vps_ext(GetBitContext *gb, AVCodecContext *avctx, HEVCVPS *vps
     if (vps->vps_num_layer_sets == 1 || default_output_layer_idc == 2)
         skip_bits1(gb);
 
+    if (nb_ptl > 1)
     for (int j = 0; j < av_popcount64(vps->ols[1]); j++) {
         int ptl_idx = get_bits(gb, av_ceil_log2(nb_ptl));
         if (ptl_idx >= nb_ptl) {
@@ -754,15 +755,6 @@ static int decode_vps_ext(GetBitContext *gb, AVCodecContext *avctx, HEVCVPS *vps
 
     if (get_bits1(gb)) // vps_vui_present_flag
         av_log(avctx, AV_LOG_WARNING, "VPS VUI not supported\n");
-
-    return 0;
-}
-
-static int compare_vps(const HEVCVPS *vps1, const HEVCVPS *vps2)
-{
-    if (!memcmp(vps1, vps2, offsetof(HEVCVPS, hdr)))
-        return !vps1->vps_num_hrd_parameters ||
-               !memcmp(vps1->hdr, vps2->hdr, vps1->vps_num_hrd_parameters * sizeof(*vps1->hdr));
 
     return 0;
 }
@@ -917,26 +909,8 @@ int ff_hevc_decode_nal_vps(GetBitContext *gb, AVCodecContext *avctx,
             goto err;
     }
 
-<<<<<<< HEAD:libavcodec/hevc_ps.c
-    if (ps->vps_list[vps_id] &&
-        compare_vps(ps->vps_list[vps_id], vps)) {
-        ff_refstruct_unref(&vps);
-    } else {
-        remove_vps(ps, vps_id);
-        ps->vps_list[vps_id] = vps;
-    }
-||||||| e7d938073e:libavcodec/hevc_ps.c
-    if (ps->vps_list[vps_id] &&
-        !memcmp(ps->vps_list[vps_id], vps, sizeof(*vps))) {
-        ff_refstruct_unref(&vps);
-    } else {
-        remove_vps(ps, vps_id);
-        ps->vps_list[vps_id] = vps;
-    }
-=======
     remove_vps(ps, vps_id);
     ps->vps_list[vps_id] = vps;
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5:libavcodec/hevc/ps.c
 
     return 0;
 
@@ -2477,9 +2451,9 @@ void ff_hevc_ps_uninit(HEVCParamSets *ps)
         av_refstruct_unref(&ps->pps_list[i]);
 }
 
-int ff_hevc_compute_poc(const HEVCSPS *sps, int pocTid0, int poc_lsb, int nal_unit_type)
+int ff_hevc_compute_poc2(unsigned log2_max_poc_lsb, int pocTid0, int poc_lsb, int nal_unit_type)
 {
-    int max_poc_lsb  = 1 << sps->log2_max_poc_lsb;
+    int max_poc_lsb  = 1 << log2_max_poc_lsb;
     int prev_poc_lsb = pocTid0 % max_poc_lsb;
     int prev_poc_msb = pocTid0 - prev_poc_lsb;
     int poc_msb;

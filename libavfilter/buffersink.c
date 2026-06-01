@@ -53,6 +53,8 @@ typedef struct BufferSinkContext {
     int color_spaces_size;
     enum AVColorRange *color_ranges;    ///< list of accepted color ranges
     int color_ranges_size;
+    enum AVAlphaMode *alpha_modes;     ///< list of accepted alpha modes
+    int alpha_modes_size;
 #endif
 
     enum AVPixelFormat *pixel_formats;
@@ -63,6 +65,9 @@ typedef struct BufferSinkContext {
 
     int                *colorranges;
     unsigned         nb_colorranges;
+
+    int                *alphamodes;
+    unsigned         nb_alphamodes;
 
     /* only used for audio */
 #if FF_API_BUFFERSINK_OPTS
@@ -162,7 +167,6 @@ int attribute_align_arg av_buffersink_get_samples(AVFilterContext *ctx,
 static av_cold int common_init(AVFilterContext *ctx)
 {
     BufferSinkContext *buf = ctx->priv;
-    int ret = 0;
 
 #if FF_API_BUFFERSINK_OPTS
 
@@ -175,8 +179,8 @@ static av_cold int common_init(AVFilterContext *ctx)
         }
 
     if (ctx->input_pads[0].type == AVMEDIA_TYPE_VIDEO) {
-        if ((buf->pixel_fmts_size || buf->color_spaces_size || buf->color_ranges_size) &&
-            (buf->nb_pixel_formats || buf->nb_colorspaces || buf->nb_colorranges)) {
+        if ((buf->pixel_fmts_size || buf->color_spaces_size || buf->color_ranges_size || buf->alpha_modes_size) &&
+            (buf->nb_pixel_formats || buf->nb_colorspaces || buf->nb_colorranges || buf->nb_alphamodes)) {
             av_log(ctx, AV_LOG_ERROR, "Cannot combine old and new format lists\n");
             return AVERROR(EINVAL);
         }
@@ -184,6 +188,7 @@ static av_cold int common_init(AVFilterContext *ctx)
         CHECK_LIST_SIZE(pixel_fmts)
         CHECK_LIST_SIZE(color_spaces)
         CHECK_LIST_SIZE(color_ranges)
+        CHECK_LIST_SIZE(alpha_modes)
     } else {
         if ((buf->sample_fmts_size || buf->channel_layouts_str || buf->sample_rates_size) &&
             (buf->nb_sample_formats || buf->nb_samplerates || buf->nb_channel_layouts)) {
@@ -218,13 +223,11 @@ static av_cold int common_init(AVFilterContext *ctx)
                        sizeof(*buf->channel_layouts) * 2);
                 buf->nb_channel_layouts++;
 
-                ret = av_channel_layout_from_string(&buf->channel_layouts[buf->nb_channel_layouts - 1], cur);
+                int ret = av_channel_layout_from_string(&buf->channel_layouts[buf->nb_channel_layouts - 1], cur);
                 if (ret < 0) {
                     av_log(ctx, AV_LOG_ERROR, "Error parsing channel layout: %s.\n", cur);
                     return ret;
                 }
-                if (ret < 0)
-                    return ret;
 
                 cur = next;
             }
@@ -258,6 +261,7 @@ static int init_video(AVFilterContext *ctx)
     TERMINATE_ARRAY(pixel_formats, AV_PIX_FMT_NONE);
     TERMINATE_ARRAY(colorranges, -1);
     TERMINATE_ARRAY(colorspaces, -1);
+    TERMINATE_ARRAY(alphamodes, -1);
 
     return common_init(ctx);
 }
@@ -336,6 +340,7 @@ MAKE_AVFILTERLINK_ACCESSOR(int              , h                  )
 MAKE_AVFILTERLINK_ACCESSOR(AVRational       , sample_aspect_ratio)
 MAKE_AVFILTERLINK_ACCESSOR(enum AVColorSpace, colorspace)
 MAKE_AVFILTERLINK_ACCESSOR(enum AVColorRange, color_range)
+MAKE_AVFILTERLINK_ACCESSOR(enum AVAlphaMode , alpha_mode)
 
 MAKE_AVFILTERLINK_ACCESSOR(int              , sample_rate        )
 
@@ -392,10 +397,10 @@ static int vsink_query_formats(const AVFilterContext *ctx,
     int ret;
 
 #if FF_API_BUFFERSINK_OPTS
-    if (buf->nb_pixel_formats || buf->nb_colorspaces || buf->nb_colorranges) {
+    if (buf->nb_pixel_formats || buf->nb_colorspaces || buf->nb_colorranges || buf->nb_alphamodes) {
 #endif
         if (buf->nb_pixel_formats) {
-            ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, buf->pixel_formats);
+            ret = ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, buf->pixel_formats);
             if (ret < 0)
                 return ret;
         }
@@ -406,6 +411,11 @@ static int vsink_query_formats(const AVFilterContext *ctx,
         }
         if (buf->nb_colorranges) {
             ret = ff_set_common_color_ranges_from_list2(ctx, cfg_in, cfg_out, buf->colorranges);
+            if (ret < 0)
+                return ret;
+        }
+        if (buf->nb_alphamodes) {
+            ret = ff_set_common_alpha_modes_from_list2(ctx, cfg_in, cfg_out, buf->alphamodes);
             if (ret < 0)
                 return ret;
         }
@@ -438,6 +448,15 @@ static int vsink_query_formats(const AVFilterContext *ctx,
         if ((ret = ff_set_common_color_ranges2(ctx, cfg_in, cfg_out, formats)) < 0)
             return ret;
     }
+
+    if (buf->alpha_modes_size) {
+        AVFilterFormats *formats = NULL;
+        for (i = 0; i < NB_ITEMS(buf->alpha_modes); i++)
+            if ((ret = ff_add_format(&formats, buf->alpha_modes[i])) < 0)
+                return ret;
+        if ((ret = ff_set_common_alpha_modes2(ctx, cfg_in, cfg_out, formats)) < 0)
+            return ret;
+    }
     }
 #endif
 
@@ -455,7 +474,7 @@ static int asink_query_formats(const AVFilterContext *ctx,
     if (buf->nb_sample_formats || buf->nb_samplerates || buf->nb_channel_layouts) {
 #endif
         if (buf->nb_sample_formats) {
-            ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, buf->sample_formats);
+            ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, buf->sample_formats);
             if (ret < 0)
                 return ret;
         }
@@ -516,6 +535,8 @@ static const AVOption buffersink_options[] = {
     { "colorspaces",    "array of supported color spaces",  OFFSET(colorspaces),
         AV_OPT_TYPE_INT | AV_OPT_TYPE_FLAG_ARRAY, .max = INT_MAX, .flags = FLAGS },
     { "colorranges",    "array of supported color ranges",  OFFSET(colorranges),
+        AV_OPT_TYPE_INT | AV_OPT_TYPE_FLAG_ARRAY, .max = INT_MAX, .flags = FLAGS },
+    { "alphamodes",     "array of supported color ranges",  OFFSET(alphamodes),
         AV_OPT_TYPE_INT | AV_OPT_TYPE_FLAG_ARRAY, .max = INT_MAX, .flags = FLAGS },
 
     { NULL },

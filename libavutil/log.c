@@ -34,6 +34,7 @@
 #endif
 #include <inttypes.h>
 #include <stdarg.h>
+#include <stdatomic.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -55,8 +56,8 @@ static AVMutex mutex = AV_MUTEX_INITIALIZER;
 #define BACKTRACE_LOGLEVEL AV_LOG_ERROR
 #endif
 
-static int av_log_level = AV_LOG_INFO;
-static int flags;
+static atomic_int av_log_level = AV_LOG_INFO;
+static atomic_int av_log_flags = 0;
 
 #define NB_LEVELS 8
 #if defined(_WIN32) && HAVE_SETCONSOLETEXTATTRIBUTE && HAVE_GETSTDHANDLE
@@ -114,6 +115,7 @@ static const uint32_t color[16 + AV_CLASS_CATEGORY_NB] = {
     [16+AV_CLASS_CATEGORY_BITSTREAM_FILTER] = 192 << 8 | 0x14,
     [16+AV_CLASS_CATEGORY_SWSCALER        ] = 153 << 8 | 0x14,
     [16+AV_CLASS_CATEGORY_SWRESAMPLER     ] = 147 << 8 | 0x14,
+    [16+AV_CLASS_CATEGORY_HWDEVICE        ] = 214 << 8 | 0x13,
     [16+AV_CLASS_CATEGORY_DEVICE_VIDEO_OUTPUT ] = 213 << 8 | 0x15,
     [16+AV_CLASS_CATEGORY_DEVICE_VIDEO_INPUT  ] = 207 << 8 | 0x05,
     [16+AV_CLASS_CATEGORY_DEVICE_AUDIO_OUTPUT ] = 213 << 8 | 0x15,
@@ -325,6 +327,7 @@ static void format_line(void *avcl, int level, const char *fmt, va_list vl,
     av_bprint_init(part+2, 0, AV_BPRINT_SIZE_AUTOMATIC);
     av_bprint_init(part+3, 0, 65536);
     av_bprint_init(part+4, 0, AV_BPRINT_SIZE_AUTOMATIC);
+    int flags = atomic_load_explicit(&av_log_flags, memory_order_relaxed);
 
     if(type) type[0] = type[1] = AV_CLASS_CATEGORY_NA + 16;
     if (*print_prefix && avc) {
@@ -390,7 +393,7 @@ void av_log_default_callback(void* ptr, int level, const char* fmt, va_list vl)
         level &= 0xff;
     }
 
-    if (level > av_log_level)
+    if (level > atomic_load_explicit(&av_log_level, memory_order_relaxed))
         return;
     ff_mutex_lock(&mutex);
 
@@ -402,7 +405,7 @@ void av_log_default_callback(void* ptr, int level, const char* fmt, va_list vl)
         is_atty = isatty(2) ? 1 : -1;
 #endif
 
-    if (print_prefix && (flags & AV_LOG_SKIP_REPEATED) && !strcmp(line, prev) &&
+    if (print_prefix && (atomic_load_explicit(&av_log_flags, memory_order_relaxed) & AV_LOG_SKIP_REPEATED) && !strcmp(line, prev) &&
         *line && line[strlen(line) - 1] != '\r'){
         count++;
         if (is_atty == 1)
@@ -435,8 +438,7 @@ end:
     ff_mutex_unlock(&mutex);
 }
 
-static void (*av_log_callback)(void*, int, const char*, va_list) =
-    av_log_default_callback;
+static atomic_uintptr_t av_log_callback = (uintptr_t)av_log_default_callback;
 
 void av_log(void* avcl, int level, const char *fmt, ...)
 {
@@ -458,7 +460,8 @@ void av_log_once(void* avcl, int initial_level, int subsequent_level, int *state
 void av_vlog(void* avcl, int level, const char *fmt, va_list vl)
 {
     AVClass* avc = avcl ? *(AVClass **) avcl : NULL;
-    void (*log_callback)(void*, int, const char*, va_list) = av_log_callback;
+    void (*log_callback)(void*, int, const char*, va_list) =
+        (void *)atomic_load_explicit(&av_log_callback, memory_order_relaxed);
     if (avc && avc->version >= (50 << 16 | 15 << 8 | 2) &&
         avc->log_level_offset_offset && level >= AV_LOG_FATAL)
         level += *(int *) (((uint8_t *) avcl) + avc->log_level_offset_offset);
@@ -468,27 +471,27 @@ void av_vlog(void* avcl, int level, const char *fmt, va_list vl)
 
 int av_log_get_level(void)
 {
-    return av_log_level;
+    return atomic_load_explicit(&av_log_level, memory_order_relaxed);
 }
 
 void av_log_set_level(int level)
 {
-    av_log_level = level;
+    atomic_store_explicit(&av_log_level, level, memory_order_relaxed);
 }
 
 void av_log_set_flags(int arg)
 {
-    flags = arg;
+    atomic_store_explicit(&av_log_flags, arg, memory_order_relaxed);
 }
 
 int av_log_get_flags(void)
 {
-    return flags;
+    return atomic_load_explicit(&av_log_flags, memory_order_relaxed);
 }
 
 void av_log_set_callback(void (*callback)(void*, int, const char*, va_list))
 {
-    av_log_callback = callback;
+    atomic_store_explicit(&av_log_callback, (uintptr_t)callback, memory_order_relaxed);
 }
 
 static void missing_feature_sample(int sample, void *avc, const char *msg,

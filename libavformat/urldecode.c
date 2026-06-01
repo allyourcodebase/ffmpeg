@@ -28,29 +28,21 @@
 
 #include <string.h>
 
+#include "libavutil/error.h"
+#include "libavutil/macros.h"
 #include "libavutil/mem.h"
 #include "libavutil/avstring.h"
 #include "urldecode.h"
 
-char *ff_urldecode(const char *url, int decode_plus_sign)
+static size_t urldecode(char *dest, const char *url, size_t url_len, int decode_plus_sign)
 {
-    int s = 0, d = 0, url_len = 0;
+    size_t s = 0, d = 0;
     char c;
-    char *dest = NULL;
-
-    if (!url)
-        return NULL;
-
-    url_len = strlen(url) + 1;
-    dest = av_malloc(url_len);
-
-    if (!dest)
-        return NULL;
 
     while (s < url_len) {
         c = url[s++];
 
-        if (c == '%' && s + 2 < url_len) {
+        if (c == '%' && s + 1 < url_len) {
             char c2 = url[s++];
             char c3 = url[s++];
             if (av_isxdigit(c2) && av_isxdigit(c3)) {
@@ -82,5 +74,40 @@ char *ff_urldecode(const char *url, int decode_plus_sign)
 
     }
 
+    return d;
+}
+
+char *ff_urldecode(const char *url, int decode_plus_sign)
+{
+    char *dest = NULL;
+    size_t url_len;
+
+    if (!url)
+        return NULL;
+
+    url_len = strlen(url) + 1;
+    dest = av_malloc(url_len);
+
+    if (!dest)
+        return NULL;
+
+    urldecode(dest, url, url_len, decode_plus_sign);
+
     return dest;
+}
+
+int ff_urldecode_len(char *dest, size_t dest_len, const char *url, size_t url_max_len, int decode_plus_sign)
+{
+    size_t written_bytes;
+    size_t url_len = strlen(url);
+
+    url_len = FFMIN(url_len, url_max_len);
+
+    if (dest_len <= url_len)
+        return AVERROR(EINVAL);
+
+    written_bytes = urldecode(dest, url, url_len, decode_plus_sign);
+    dest[written_bytes] = '\0';
+
+    return written_bytes;
 }

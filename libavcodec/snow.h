@@ -92,7 +92,7 @@ typedef struct SubBand{
     int stride_line; ///< Stride measured in lines, not pixels.
     x_and_coeff * x_coeff;
     struct SubBand *parent;
-    uint8_t state[/*7*2*/ 7 + 512][32];
+    uint8_t state[34][32];
 }SubBand;
 
 typedef struct Plane{
@@ -116,7 +116,11 @@ typedef struct SnowContext{
     RangeCoder c;
     HpelDSPContext hdsp;
     VideoDSPContext vdsp;
-    H264QpelContext h264qpel;
+    union {
+        /// everything except size 2 are from H.264
+        qpel_mc_func put_snow_qpel_pixels_tab[4][16];
+        H264QpelContext h264qpel;
+    };
     SnowDWTContext dwt;
     AVFrame *input_picture;              ///< new_picture with the internal linesizes
     AVFrame *current_picture;
@@ -164,7 +168,6 @@ typedef struct SnowContext{
     slice_buffer sb;
 
     uint8_t *scratchbuf;
-    uint8_t *emu_edge_buffer;
 
     AVMotionVector *avmv;
     unsigned avmv_size;

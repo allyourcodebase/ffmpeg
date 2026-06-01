@@ -144,7 +144,9 @@
 #define STREAM_TYPE_VIDEO_MVC       0x20
 #define STREAM_TYPE_VIDEO_JPEG2000  0x21
 #define STREAM_TYPE_VIDEO_HEVC      0x24
+#define STREAM_TYPE_VIDEO_JPEGXS    0x32
 #define STREAM_TYPE_VIDEO_VVC       0x33
+#define STREAM_TYPE_VIDEO_LCEVC     0x36
 #define STREAM_TYPE_VIDEO_CAVS      0x42
 #define STREAM_TYPE_VIDEO_AVS2      0xd2
 #define STREAM_TYPE_VIDEO_AVS3      0xd4
@@ -202,7 +204,13 @@ https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/
 #define FMC_DESCRIPTOR               0x1f
 #define METADATA_DESCRIPTOR          0x26
 #define METADATA_STD_DESCRIPTOR      0x27
+#define EXTENSION_DESCRIPTOR         0x3f
 /* descriptor_tag values [0x40, 0xff] are User Private */
+
+/* ISO/IEC 13818-1 Table 2-109 */
+#define JXS_VIDEO_DESCRIPTOR         0x14 /* JPEG-XS descriptor */
+#define LCEVC_VIDEO_DESCRIPTOR       0x17 /* LCEVC video descriptor */
+#define LCEVC_LINKAGE_DESCRIPTOR     0x18 /* LCEVC linkage descriptor */
 
 /* DVB descriptor tag values [0x40, 0x7F] from
    ETSI EN 300 468 Table 12: Possible locations of descriptors */
@@ -215,7 +223,7 @@ https://developer.apple.com/library/archive/documentation/AudioVideo/Conceptual/
 #define AC3_DESCRIPTOR               0x6a /* AC-3_descriptor */
 #define ENHANCED_AC3_DESCRIPTOR      0x7a /* enhanced_AC-3_descriptor */
 #define DTS_DESCRIPTOR               0x7b
-#define EXTENSION_DESCRIPTOR         0x7f
+#define DVB_EXTENSION_DESCRIPTOR     0x7f
 
 /* DVB descriptor_tag_extension values from
    ETSI EN 300 468 Table 109: Possible locations of extended descriptors */
@@ -283,7 +291,7 @@ typedef struct DVBAC3Descriptor {
  * @param desc_list_end             End of buffer
  * @return <0 to stop processing
  */
-int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type,
+int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type, int prg_id,
                               const uint8_t **pp, const uint8_t *desc_list_end,
                               Mp4Descr *mp4_descr, int mp4_descr_count, int pid,
                               MpegTSContext *ts);

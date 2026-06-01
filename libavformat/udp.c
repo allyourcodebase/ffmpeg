@@ -36,6 +36,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/log.h"
 #include "libavutil/time.h"
+#include "internal.h"
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
@@ -118,6 +119,7 @@ typedef struct UDPContext {
     int remaining_in_dg;
     char *localaddr;
     int timeout;
+    int dscp;
     struct sockaddr_storage local_addr_storage;
     char *sources;
     char *block;
@@ -142,8 +144,9 @@ static const AVOption options[] = {
     { "reuse_socket",   "explicitly allow reusing UDP sockets",            OFFSET(reuse_socket),   AV_OPT_TYPE_BOOL,   { .i64 = -1 },    -1, 1,       .flags = D|E },
     { "broadcast", "explicitly allow or disallow broadcast destination",   OFFSET(is_broadcast),   AV_OPT_TYPE_BOOL,   { .i64 = 0  },     0, 1,       E },
     { "ttl",            "Time to live (multicast only)",                   OFFSET(ttl),            AV_OPT_TYPE_INT,    { .i64 = 16 },     0, 255,     E },
+    { "dscp",           "DSCP class for outgoing packets",                 OFFSET(dscp),           AV_OPT_TYPE_INT,    { .i64 = -1 },    -1, 63,      E },
     { "connect",        "set if connect() should be called on socket",     OFFSET(is_connected),   AV_OPT_TYPE_BOOL,   { .i64 =  0 },     0, 1,       .flags = D|E },
-    { "fifo_size",      "set the UDP receiving circular buffer size, expressed as a number of packets with size of 188 bytes", OFFSET(circular_buffer_size), AV_OPT_TYPE_INT, {.i64 = 7*4096}, 0, INT_MAX, D },
+    { "fifo_size",      "set the UDP circular buffer size (in 188-byte packets)", OFFSET(circular_buffer_size), AV_OPT_TYPE_INT, {.i64 = HAVE_PTHREAD_CANCEL ? 7*4096 : 0}, 0, INT_MAX, D },
     { "overrun_nonfatal", "survive in case of UDP receiving circular buffer overrun", OFFSET(overrun_nonfatal), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1,    D },
     { "timeout",        "set raise error timeout, in microseconds (only in read mode)",OFFSET(timeout),         AV_OPT_TYPE_INT,  {.i64 = 0}, 0, INT_MAX, D },
     { "sources",        "Source list",                                     OFFSET(sources),        AV_OPT_TYPE_STRING, { .str = NULL },               .flags = D|E },
@@ -690,14 +693,14 @@ end:
 static int udp_open(URLContext *h, const char *uri, int flags)
 {
     char hostname[1024];
-    int port, udp_fd = -1, tmp, bind_ret = -1, dscp = -1;
+    int port, udp_fd = -1, tmp, bind_ret = -1;
     UDPContext *s = h->priv_data;
     int is_output;
     const char *p;
-    char buf[256];
     struct sockaddr_storage my_addr;
     socklen_t len;
     int ret;
+    const char *bind_addr = NULL;
 
     h->is_streamed = 1;
 
@@ -705,100 +708,31 @@ static int udp_open(URLContext *h, const char *uri, int flags)
     if (s->buffer_size < 0)
         s->buffer_size = is_output ? UDP_TX_BUF_SIZE : UDP_RX_BUF_SIZE;
 
+    p = strchr(uri, '?');
+    if (p) {
+        ret = ff_parse_opts_from_query_string(s, p, 1);
+        if (ret < 0)
+            goto fail;
+    }
+    if (!HAVE_PTHREAD_CANCEL) {
+        int64_t      optvals[] = {s->overrun_nonfatal, s->bitrate, s->circular_buffer_size};
+        const char* optnames[] = {  "overrun_nonfatal",  "bitrate",  "fifo_size"};
+        for (unsigned i = 0; i < FF_ARRAY_ELEMS(optvals); i++) {
+            if (optvals[i])
+                av_log(h, AV_LOG_WARNING,
+                       "'%s' option was set but it is not supported "
+                       "on this build (pthread support is required)\n", optnames[i]);
+        }
+    }
     if (s->sources) {
         if ((ret = ff_ip_parse_sources(h, s->sources, &s->filters)) < 0)
             goto fail;
     }
-
     if (s->block) {
         if ((ret = ff_ip_parse_blocks(h, s->block, &s->filters)) < 0)
             goto fail;
     }
 
-    p = strchr(uri, '?');
-    if (p) {
-        if (av_find_info_tag(buf, sizeof(buf), "reuse", p)) {
-            char *endptr = NULL;
-            s->reuse_socket = strtol(buf, &endptr, 10);
-            /* assume if no digits were found it is a request to enable it */
-            if (buf == endptr)
-                s->reuse_socket = 1;
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "overrun_nonfatal", p)) {
-            char *endptr = NULL;
-            s->overrun_nonfatal = strtol(buf, &endptr, 10);
-            /* assume if no digits were found it is a request to enable it */
-            if (buf == endptr)
-                s->overrun_nonfatal = 1;
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'overrun_nonfatal' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "ttl", p)) {
-            s->ttl = strtol(buf, NULL, 10);
-            if (s->ttl < 0 || s->ttl > 255) {
-                av_log(h, AV_LOG_ERROR, "ttl(%d) should be in range [0,255]\n", s->ttl);
-                ret = AVERROR(EINVAL);
-                goto fail;
-            }
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "udplite_coverage", p)) {
-            s->udplite_coverage = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "localport", p)) {
-            s->local_port = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "pkt_size", p)) {
-            s->pkt_size = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "buffer_size", p)) {
-            s->buffer_size = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "connect", p)) {
-            s->is_connected = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "dscp", p)) {
-            dscp = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "fifo_size", p)) {
-            s->circular_buffer_size = strtol(buf, NULL, 10);
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'circular_buffer_size' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "bitrate", p)) {
-            s->bitrate = strtoll(buf, NULL, 10);
-            if (!HAVE_PTHREAD_CANCEL)
-                av_log(h, AV_LOG_WARNING,
-                       "'bitrate' option was set but it is not supported "
-                       "on this build (pthread support is required)\n");
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "burst_bits", p)) {
-            s->burst_bits = strtoll(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "localaddr", p)) {
-            av_freep(&s->localaddr);
-            s->localaddr = av_strdup(buf);
-            if (!s->localaddr) {
-                ret = AVERROR(ENOMEM);
-                goto fail;
-            }
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "sources", p)) {
-            if ((ret = ff_ip_parse_sources(h, buf, &s->filters)) < 0)
-                goto fail;
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "block", p)) {
-            if ((ret = ff_ip_parse_blocks(h, buf, &s->filters)) < 0)
-                goto fail;
-        }
-        if (!is_output && av_find_info_tag(buf, sizeof(buf), "timeout", p))
-            s->timeout = strtol(buf, NULL, 10);
-        if (is_output && av_find_info_tag(buf, sizeof(buf), "broadcast", p))
-            s->is_broadcast = strtol(buf, NULL, 10);
-    }
     /* handling needed to support options picking from both AVOption and URL */
     s->circular_buffer_size *= 188;
     if (flags & AVIO_FLAG_WRITE) {
@@ -826,7 +760,12 @@ static int udp_open(URLContext *h, const char *uri, int flags)
     if ((s->is_multicast || s->local_port < 0) && (h->flags & AVIO_FLAG_READ))
         s->local_port = port;
 
-    udp_fd = udp_socket_create(h, &my_addr, &len, s->localaddr);
+    if (!s->is_multicast && (s->localaddr == NULL || s->localaddr[0] == '\0') && h->flags == AVIO_FLAG_READ)
+        bind_addr = hostname;
+    else
+        bind_addr = s->localaddr;
+
+    udp_fd = udp_socket_create(h, &my_addr, &len, bind_addr);
     if (udp_fd < 0) {
         ret = AVERROR(EIO);
         goto fail;
@@ -869,8 +808,8 @@ static int udp_open(URLContext *h, const char *uri, int flags)
             av_log(h, AV_LOG_WARNING, "socket option UDPLITE_RECV_CSCOV not available");
     }
 
-    if (dscp >= 0) {
-        dscp <<= 2;
+    if (s->dscp >= 0) {
+        int dscp = s->dscp << 2;
         if (setsockopt (udp_fd, IPPROTO_IP, IP_TOS, &dscp, sizeof(dscp)) != 0) {
             ret = ff_neterrno();
             goto fail;

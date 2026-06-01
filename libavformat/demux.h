@@ -39,6 +39,30 @@ struct AVDeviceInfoList;
  */
 #define FF_INFMT_FLAG_PREFER_CODEC_FRAMERATE                   (1 << 1)
 
+/**
+ * Automatically parse ID3v2 metadata
+ */
+#define FF_INFMT_FLAG_ID3V2_AUTO                               (1 << 2)
+
+/**
+ * Input format stream state
+ * The stream states to be used for FFInputFormat::read_set_state
+ */
+enum FFInputFormatStreamState {
+     FF_INFMT_STATE_PLAY,
+     FF_INFMT_STATE_PAUSE,
+ };
+
+/**
+ * Command handling options
+ * Different options influencing the behaviour of
+ * the FFInputFormat::handle_command callback.
+ */
+enum FFInputFormatCommandOption {
+    FF_INFMT_COMMAND_SUBMIT,
+    FF_INFMT_COMMAND_GET_REPLY,
+};
+
 typedef struct FFInputFormat {
     /**
      * The public AVInputFormat. See avformat.h for it.
@@ -109,16 +133,40 @@ typedef struct FFInputFormat {
                               int64_t *pos, int64_t pos_limit);
 
     /**
-     * Start/resume playing - only meaningful if using a network-based format
+     * Change the stream state - only meaningful if using a network-based format
      * (RTSP).
      */
-    int (*read_play)(struct AVFormatContext *);
+    int (*read_set_state)(struct AVFormatContext *,
+                          enum FFInputFormatStreamState state);
 
     /**
-     * Pause playing - only meaningful if using a network-based format
-     * (RTSP).
+     * Handle demuxer commands
+     * This callback is used to either send a command to a demuxer
+     * (FF_INFMT_COMMAND_SUBMIT), or to retrieve the reply for
+     * a previously sent command (FF_INFMT_COMMAND_GET_REPLY).
+     *
+     * Demuxers implementing this must return AVERROR(ENOTSUP)
+     * if the provided \p id is not handled by the demuxer.
+     * Demuxers should return AVERROR(EAGAIN) if they can handle
+     * a specific command but are not able to at the moment.
+     * When a reply is requested that is not available yet, the
+     * demuxer should also return AVERROR(EAGAIN).
+     *
+     * Depending on \p opt, the \p data will be either a pointer
+     * to the command payload structure for the specified ID, or
+     * a pointer to the buffer for the command reply for the
+     * specified ID.
+     *
+     * When a command is submitted, before a previous reply
+     * was requested from the demuxer, the demuxer should discard
+     * the old reply.
+     *
+     * @see avformat_send_command()
+     * @see avformat_receive_command_reply()
      */
-    int (*read_pause)(struct AVFormatContext *);
+    int (*handle_command)(struct AVFormatContext *,
+                          enum FFInputFormatCommandOption opt,
+                          enum AVFormatCommandID id, void *data);
 
     /**
      * Seek to timestamp ts.

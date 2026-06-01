@@ -61,7 +61,7 @@ static av_cold int init(AVFilterContext *ctx)
     HilbertContext *s = ctx->priv;
 
     if (!(s->nb_taps & 1)) {
-        av_log(s, AV_LOG_ERROR, "Number of taps %d must be odd length.\n", s->nb_taps);
+        av_log(ctx, AV_LOG_ERROR, "Number of taps %d must be odd length.\n", s->nb_taps);
         return AVERROR(EINVAL);
     }
 
@@ -86,7 +86,7 @@ static av_cold int query_formats(const AVFilterContext *ctx,
         AV_SAMPLE_FMT_FLT,
         AV_SAMPLE_FMT_NONE
     };
-    int ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    int ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 

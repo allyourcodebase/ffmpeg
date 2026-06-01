@@ -55,42 +55,70 @@ INIT_YMM avx2
 DIFF_INT16
 %endif
 
-INIT_MMX mmxext
-cglobal sub_hfyu_median_pred_int16, 7,7,0, dst, src1, src2, mask, w, left, left_top
-    add      wd, wd
-    movd    mm7, maskd
-    SPLATW  mm7, mm7
-    movq    mm0, [src1q]
-    movq    mm2, [src2q]
-    psllq   mm0, 16
-    psllq   mm2, 16
-    movd    mm6, [left_topq]
-    por     mm0, mm6
-    movd    mm6, [leftq]
-    por     mm2, mm6
-    xor     maskq, maskq
+%macro SUB_HFYU_MEDIAN_PRED_INT16 1 ; u,s for pmaxuw vs pmaxsw
+cglobal sub_hfyu_median_pred_int16, 7,7,6, dst, src1, src2, mask, w, left, left_top
+    movd        xm5, maskd
+    lea          wd, [wd+wd-(mmsize-1)]
+    movu        xm0, [src1q]
+    movu        xm2, [src2q]
+    SPLATW       m5, xm5
+    add        dstq, wq
+    movd        xm1, [left_topq]
+    neg          wq
+    movd        xm3, [leftq]
+%if mmsize >= 32
+    movu        xm4, [src1q+14]
+%endif
+    sub       src1q, wq
+    pslldq      xm0, 2
+    pslldq      xm2, 2
+    por         xm0, xm1
+%if mmsize >= 32
+    vinserti128  m0, xm4, 1
+%endif
+    por         xm2, xm3
+%if mmsize >= 32
+    vinserti128  m2, [src2q+14], 1
+%endif
+    sub       src2q, wq
+    jmp       .init
+
 .loop:
-    movq    mm1, [src1q + maskq]
-    movq    mm3, [src2q + maskq]
-    movq    mm4, mm2
-    psubw   mm2, mm0
-    paddw   mm2, mm1
-    pand    mm2, mm7
-    movq    mm5, mm4
-    pmaxsw  mm4, mm1
-    pminsw  mm1, mm5
-    pminsw  mm4, mm2
-    pmaxsw  mm4, mm1
-    psubw   mm3, mm4
-    pand    mm3, mm7
-    movq    [dstq + maskq], mm3
-    add     maskq, 8
-    movq    mm0, [src1q + maskq - 2]
-    movq    mm2, [src2q + maskq - 2]
-    cmp     maskq, wq
-        jb .loop
-    movzx maskd, word [src1q + wq - 2]
-    mov [left_topq], maskd
-    movzx maskd, word [src2q + wq - 2]
-    mov [leftq], maskd
+    movu         m0, [src1q + wq - 2]   ; lt
+    movu         m2, [src2q + wq - 2]   ; l
+.init:
+    movu         m1, [src1q + wq]       ; t
+    movu         m3, [src2q + wq]
+    psubw        m4, m2, m0             ; l - lt
+    pmax%1w      m0, m1, m2
+    paddw        m4, m1                 ; l - lt + t
+    pmin%1w      m2, m1
+    pand         m4, m5                 ; (l - lt + t)&mask
+    pmin%1w      m4, m0
+    pmax%1w      m4, m2                 ; pred
+    psubw        m3, m4                 ; l - pred
+    pand         m3, m5
+    movu [dstq + wq], m3
+    add          wq, mmsize
+    js        .loop
+
+    cmp          wd, mmsize-1
+    jne       .tail
+
+    movzx     src1d, word [src1q + (mmsize-1) - 2]
+    movzx     src2d, word [src2q + (mmsize-1) - 2]
+    mov [left_topq], src1d
+    mov     [leftq], src2d
     RET
+.tail:
+    mov          wq, -1
+    jmp       .loop
+%endmacro
+
+INIT_XMM sse2
+SUB_HFYU_MEDIAN_PRED_INT16 s
+
+%if HAVE_AVX2_EXTERNAL
+INIT_YMM avx2
+SUB_HFYU_MEDIAN_PRED_INT16 u
+%endif

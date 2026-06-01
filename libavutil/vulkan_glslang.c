@@ -16,16 +16,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include <pthread.h>
-
 #include <glslang/build_info.h>
 #include <glslang/Include/glslang_c_interface.h>
 
 #include "vulkan_spirv.h"
 #include "libavutil/mem.h"
 #include "libavutil/avassert.h"
+#include "libavutil/thread.h"
 
-static pthread_mutex_t glslc_mutex = PTHREAD_MUTEX_INITIALIZER;
+static AVMutex glslc_mutex = AV_MUTEX_INITIALIZER;
 static int glslc_refcount = 0;
 
 static const glslang_resource_t glslc_resource_limits = {
@@ -250,7 +249,7 @@ static int glslc_shader_compile(FFVulkanContext *s, FFVkSPIRVCompiler *ctx,
         ff_vk_shader_print(s, shd, AV_LOG_WARNING);
         av_log(s, AV_LOG_WARNING, "%s\n", messages);
     } else {
-        ff_vk_shader_print(s, shd, AV_LOG_TRACE);
+        ff_vk_shader_print(s, shd, AV_LOG_DEBUG);
     }
 
     glslang_shader_delete(glslc_shader);
@@ -277,10 +276,10 @@ static void glslc_uninit(FFVkSPIRVCompiler **ctx)
     if (!ctx || !*ctx)
         return;
 
-    pthread_mutex_lock(&glslc_mutex);
+    ff_mutex_lock(&glslc_mutex);
     if (glslc_refcount && (--glslc_refcount == 0))
         glslang_finalize_process();
-    pthread_mutex_unlock(&glslc_mutex);
+    ff_mutex_unlock(&glslc_mutex);
 
     av_freep(ctx);
 }
@@ -295,14 +294,14 @@ FFVkSPIRVCompiler *ff_vk_glslang_init(void)
     ret->free_shader    = glslc_shader_free;
     ret->uninit         = glslc_uninit;
 
-    pthread_mutex_lock(&glslc_mutex);
+    ff_mutex_lock(&glslc_mutex);
     if (!glslc_refcount++) {
         if (!glslang_initialize_process()) {
             av_freep(&ret);
             glslc_refcount--;
         }
     }
-    pthread_mutex_unlock(&glslc_mutex);
+    ff_mutex_unlock(&glslc_mutex);
 
     return ret;
 }

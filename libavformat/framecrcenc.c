@@ -51,7 +51,7 @@ static int framecrc_write_header(struct AVFormatContext *s)
     return ff_framehash_write_header(s);
 }
 
-static av_unused void inline bswap(char *buf, int offset, int size)
+av_unused static void inline bswap(char *buf, int offset, int size)
 {
     if (size == 8) {
         uint64_t val = AV_RN64(buf + offset);
@@ -170,7 +170,7 @@ static int framecrc_write_packet(struct AVFormatContext *s, AVPacket *pkt)
                 side_data_crc = 0;
             }
 
-            av_strlcatf(buf, sizeof(buf), ", %s, %8"SIZE_SPECIFIER", 0x%08"PRIx32,
+            av_strlcatf(buf, sizeof(buf), ", %s, %8zu, 0x%08"PRIx32,
                         av_packet_side_data_name(sd->type), sd->size, side_data_crc);
         }
     }

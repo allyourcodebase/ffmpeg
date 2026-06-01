@@ -25,6 +25,7 @@
 #include "libavutil/opt.h"
 #include "libavutil/time.h"
 
+#include "internal.h"
 #include "network.h"
 #include "os_support.h"
 #include "url.h"
@@ -44,6 +45,7 @@ typedef struct TCPContext {
     int recv_buffer_size;
     int send_buffer_size;
     int tcp_nodelay;
+    int tcp_keepalive;
 #if !HAVE_WINSOCK2_H
     int tcp_mss;
 #endif /* !HAVE_WINSOCK2_H */
@@ -61,6 +63,7 @@ static const AVOption options[] = {
     { "send_buffer_size", "Socket send buffer size (in bytes)",                OFFSET(send_buffer_size), AV_OPT_TYPE_INT, { .i64 = -1 },         -1, INT_MAX, .flags = D|E },
     { "recv_buffer_size", "Socket receive buffer size (in bytes)",             OFFSET(recv_buffer_size), AV_OPT_TYPE_INT, { .i64 = -1 },         -1, INT_MAX, .flags = D|E },
     { "tcp_nodelay", "Use TCP_NODELAY to disable nagle's algorithm",           OFFSET(tcp_nodelay), AV_OPT_TYPE_BOOL, { .i64 = 0 },             0, 1, .flags = D|E },
+    { "tcp_keepalive", "Use TCP keepalive to detect dead connections and keep long-lived connections active.",           OFFSET(tcp_keepalive), AV_OPT_TYPE_BOOL, { .i64 = 0 },             0, 1, .flags = D|E },
 #if !HAVE_WINSOCK2_H
     { "tcp_mss",     "Maximum segment size for outgoing TCP packets",          OFFSET(tcp_mss),     AV_OPT_TYPE_INT, { .i64 = -1 },         -1, INT_MAX, .flags = D|E },
 #endif /* !HAVE_WINSOCK2_H */
@@ -125,6 +128,12 @@ static int customize_fd(void *ctx, int fd, int family)
             ff_log_net_error(ctx, AV_LOG_WARNING, "setsockopt(TCP_NODELAY)");
         }
     }
+    if (s->tcp_keepalive > 0) {
+        if (setsockopt(fd, SOL_SOCKET, SO_KEEPALIVE, &s->tcp_keepalive, sizeof(s->tcp_keepalive))) {
+            ff_log_net_error(ctx, AV_LOG_WARNING, "setsockopt(SO_KEEPALIVE)");
+        }
+    }
+
 #if !HAVE_WINSOCK2_H
     if (s->tcp_mss > 0) {
         if (setsockopt (fd, IPPROTO_TCP, TCP_MAXSEG, &s->tcp_mss, sizeof (s->tcp_mss))) {
@@ -143,7 +152,6 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
     int port, fd = -1;
     TCPContext *s = h->priv_data;
     const char *p;
-    char buf[256];
     int ret;
     char hostname[1024],proto[1024],path[1024];
     char portstr[10];
@@ -159,34 +167,9 @@ static int tcp_open(URLContext *h, const char *uri, int flags)
     }
     p = strchr(uri, '?');
     if (p) {
-        if (av_find_info_tag(buf, sizeof(buf), "listen", p)) {
-            char *endptr = NULL;
-            s->listen = strtol(buf, &endptr, 10);
-            /* assume if no digits were found it is a request to enable it */
-            if (buf == endptr)
-                s->listen = 1;
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "local_port", p)) {
-            av_freep(&s->local_port);
-            s->local_port = av_strdup(buf);
-            if (!s->local_port)
-                return AVERROR(ENOMEM);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "local_addr", p)) {
-            av_freep(&s->local_addr);
-            s->local_addr = av_strdup(buf);
-            if (!s->local_addr)
-                return AVERROR(ENOMEM);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "timeout", p)) {
-            s->rw_timeout = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "listen_timeout", p)) {
-            s->listen_timeout = strtol(buf, NULL, 10);
-        }
-        if (av_find_info_tag(buf, sizeof(buf), "tcp_nodelay", p)) {
-            s->tcp_nodelay = strtol(buf, NULL, 10);
-        }
+        int ret = ff_parse_opts_from_query_string(s, p, 1);
+        if (ret < 0)
+            return ret;
     }
     if (s->rw_timeout >= 0) {
         s->open_timeout =

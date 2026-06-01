@@ -61,7 +61,6 @@ static int mjpegb_decode_frame(AVCodecContext *avctx, AVFrame *rframe,
 read_header:
     /* reset on every SOI */
     s->restart_interval = 0;
-    s->restart_count = 0;
     s->mjpb_skiptosod = 0;
 
     if ((ret = init_get_bits8(&hgb, buf_ptr, /*buf_size*/(buf_end - buf_ptr))) < 0)
@@ -84,8 +83,7 @@ read_header:
     dqt_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "dqt is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "dqt offs: 0x%"PRIx32"\n", dqt_offs);
     if (dqt_offs) {
-        init_get_bits(&s->gb, buf_ptr+dqt_offs, (buf_end - (buf_ptr+dqt_offs))*8);
-        s->start_code = DQT;
+        bytestream2_init(&s->gB, buf_ptr+dqt_offs, buf_end - (buf_ptr+dqt_offs));
         ret = ff_mjpeg_decode_dqt(s);
         if (ret < 0 && (avctx->err_recognition & AV_EF_EXPLODE))
             return ret;
@@ -94,16 +92,14 @@ read_header:
     dht_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "dht is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "dht offs: 0x%"PRIx32"\n", dht_offs);
     if (dht_offs) {
-        init_get_bits(&s->gb, buf_ptr+dht_offs, (buf_end - (buf_ptr+dht_offs))*8);
-        s->start_code = DHT;
+        bytestream2_init(&s->gB, buf_ptr+dht_offs, buf_end - (buf_ptr+dht_offs));
         ff_mjpeg_decode_dht(s);
     }
 
     sof_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "sof is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "sof offs: 0x%"PRIx32"\n", sof_offs);
     if (sof_offs) {
-        init_get_bits(&s->gb, buf_ptr+sof_offs, (buf_end - (buf_ptr+sof_offs))*8);
-        s->start_code = SOF0;
+        bytestream2_init(&s->gB, buf_ptr+sof_offs, buf_end - (buf_ptr+sof_offs));
         if ((ret = ff_mjpeg_decode_sof(s)) < 0)
             return ret;
     }
@@ -113,14 +109,13 @@ read_header:
     sod_offs = read_offs(avctx, &hgb, buf_end - buf_ptr, "sof is %d and size is %d\n");
     av_log(avctx, AV_LOG_DEBUG, "sod offs: 0x%"PRIx32"\n", sod_offs);
     if (sos_offs) {
-        init_get_bits(&s->gb, buf_ptr + sos_offs,
-                      8 * FFMIN(field_size, buf_end - buf_ptr - sos_offs));
-        s->mjpb_skiptosod = (sod_offs - sos_offs - show_bits(&s->gb, 16));
-        s->start_code = SOS;
+        bytestream2_init(&s->gB, buf_ptr+sos_offs,
+                         FFMIN(field_size, buf_end - buf_ptr - sos_offs));
+        s->mjpb_skiptosod = (sod_offs - sos_offs - bytestream2_peek_be16(&s->gB));
         if (avctx->skip_frame == AVDISCARD_ALL) {
-            skip_bits(&s->gb, get_bits_left(&s->gb));
+            bytestream2_skipu(&s->gB, bytestream2_get_bytes_left(&s->gB));
         } else {
-            ret = ff_mjpeg_decode_sos(s, NULL, 0, NULL);
+            ret = ff_mjpeg_decode_sos(s);
             if (ret < 0 && (avctx->err_recognition & AV_EF_EXPLODE))
                 return ret;
         }

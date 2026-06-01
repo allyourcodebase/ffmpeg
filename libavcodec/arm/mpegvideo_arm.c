@@ -38,12 +38,14 @@ CHECK_OFFSET(MpegEncContext, ac_pred,          AC_PRED);
 CHECK_OFFSET(MpegEncContext, block_last_index, BLOCK_LAST_INDEX);
 CHECK_OFFSET(MpegEncContext, inter_scantable.raster_end,
              INTER_SCANTAB_RASTER_END);
+CHECK_OFFSET(MpegEncContext, intra_scantable.raster_end,
+             INTRA_SCANTAB_RASTER_END);
 CHECK_OFFSET(MpegEncContext, h263_aic,         H263_AIC);
 #endif
 
-void ff_dct_unquantize_h263_inter_neon(MpegEncContext *s, int16_t *block,
+void ff_dct_unquantize_h263_inter_neon(const MPVContext *s, int16_t *block,
                                        int n, int qscale);
-void ff_dct_unquantize_h263_intra_neon(MpegEncContext *s, int16_t *block,
+void ff_dct_unquantize_h263_intra_neon(const MPVContext *s, int16_t *block,
                                        int n, int qscale);
 
 av_cold void ff_mpv_unquantize_init_arm(MPVUnquantDSPContext *s, int bitexact)

@@ -136,6 +136,8 @@ static const AVOption options[] = {
                                                             OFFSET(no_scenecut),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "forced-idr",   "If forcing keyframes, force them as IDR frames.",
                                                             OFFSET(forced_idr),   AV_OPT_TYPE_BOOL,  { .i64 = 0 }, -1, 1, VE },
+    { "b_adapt",      "When lookahead is enabled, set this to 0 to disable adaptive B-frame decision",
+                                                            OFFSET(b_adapt),      AV_OPT_TYPE_BOOL,  { .i64 = 1 }, 0, 1, VE },
     { "spatial_aq",   "set to 1 to enable Spatial AQ",      OFFSET(aq),           AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "spatial-aq",   "set to 1 to enable Spatial AQ",      OFFSET(aq),           AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
     { "temporal_aq",  "set to 1 to enable Temporal AQ",     OFFSET(temporal_aq),  AV_OPT_TYPE_BOOL,  { .i64 = 0 }, 0, 1, VE },
@@ -238,6 +240,9 @@ static const AVOption options[] = {
     { "forced",            "Enabled with number of horizontal strips selected by the driver",                0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_AUTO_FORCED_MODE },  0, 0, VE, .unit = "split_encode_mode" },
     { "2",                 "Enabled with number of horizontal strips forced to 2 when number of NVENCs > 1", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_TWO_FORCED_MODE },   0, 0, VE, .unit = "split_encode_mode" },
     { "3",                 "Enabled with number of horizontal strips forced to 3 when number of NVENCs > 2", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_THREE_FORCED_MODE }, 0, 0, VE, .unit = "split_encode_mode" },
+#ifdef NVENC_HAVE_SFE_FOUR_WAYS_SUPPORT
+    { "4",                 "Enabled with number of horizontal strips forced to 4 when number of NVENCs > 3", 0, AV_OPT_TYPE_CONST, { .i64 = NV_ENC_SPLIT_FOUR_FORCED_MODE }, 0, 0, VE, .unit = "split_encode_mode" },
+#endif
 #endif
     { NULL }
 };

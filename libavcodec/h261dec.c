@@ -59,8 +59,6 @@ typedef struct H261DecContext {
 
     GetBitContext gb;
 
-    H261Context common;
-
     int current_mba;
     int mba_diff;
     int current_mv_x;
@@ -104,7 +102,6 @@ static av_cold int h261_decode_init(AVCodecContext *avctx)
      * for all frames and override it after having decoded the frame. */
     s->pict_type = AV_PICTURE_TYPE_P;
 
-    s->private_ctx = &h->common;
     // set defaults
     ret = ff_mpv_decode_init(s, avctx);
     if (ret < 0)
@@ -185,9 +182,8 @@ static int h261_decode_gob_header(H261DecContext *h)
 
 /**
  * Decode skipped macroblocks.
- * @return 0
  */
-static int h261_decode_mb_skipped(H261DecContext *h, int mba1, int mba2)
+static void h261_decode_mb_skipped(H261DecContext *h, int mba1, int mba2)
 {
     MpegEncContext *const s = &h->s;
     int i;
@@ -211,7 +207,7 @@ static int h261_decode_mb_skipped(H261DecContext *h, int mba1, int mba2)
         s->mv[0][0][0]                 = 0;
         s->mv[0][0][1]                 = 0;
         s->mb_skipped                  = 1;
-        h->common.mtype               &= ~MB_TYPE_H261_FIL;
+        s->mtype                      &= ~MB_TYPE_H261_FIL;
 
         if (s->cur_pic.motion_val[0]) {
             int b_stride = 2*s->mb_width + 1;
@@ -222,8 +218,6 @@ static int h261_decode_mb_skipped(H261DecContext *h, int mba1, int mba2)
 
         ff_mpv_reconstruct_mb(s, h->block);
     }
-
-    return 0;
 }
 
 static int decode_mv_component(GetBitContext *gb, int v)
@@ -352,7 +346,6 @@ static int h261_decode_block(H261DecContext *h, int16_t *block, int n, int coded
 static int h261_decode_mb(H261DecContext *h)
 {
     MpegEncContext *const s = &h->s;
-    H261Context *const com = &h->common;
     int i, cbp, xy;
 
     cbp = 63;
@@ -389,23 +382,23 @@ static int h261_decode_mb(H261DecContext *h)
     h261_init_dest(s);
 
     // Read mtype
-    com->mtype = get_vlc2(&h->gb, h261_mtype_vlc, H261_MTYPE_VLC_BITS, 2);
-    if (com->mtype < 0) {
+    s->mtype = get_vlc2(&h->gb, h261_mtype_vlc, H261_MTYPE_VLC_BITS, 2);
+    if (s->mtype < 0) {
         av_log(s->avctx, AV_LOG_ERROR, "Invalid mtype index\n");
         return SLICE_ERROR;
     }
 
     // Read mquant
-    if (IS_QUANT(com->mtype)) {
+    if (IS_QUANT(s->mtype)) {
         s->qscale = get_bits(&h->gb, 5);
         if (!s->qscale)
             s->qscale = 1;
     }
 
-    s->mb_intra = IS_INTRA4x4(com->mtype);
+    s->mb_intra = IS_INTRA4x4(s->mtype);
 
     // Read mv
-    if (IS_16X16(com->mtype)) {
+    if (IS_16X16(s->mtype)) {
         /* Motion vector data is included for all MC macroblocks. MVD is
          * obtained from the macroblock vector by subtracting the vector
          * of the preceding macroblock. For this calculation the vector
@@ -428,7 +421,7 @@ static int h261_decode_mb(H261DecContext *h)
     }
 
     // Read cbp
-    if (HAS_CBP(com->mtype))
+    if (HAS_CBP(s->mtype))
         cbp = get_vlc2(&h->gb, h261_cbp_vlc, H261_CBP_VLC_BITS, 1) + 1;
 
     if (s->mb_intra) {
@@ -452,7 +445,7 @@ static int h261_decode_mb(H261DecContext *h)
 
 intra:
     /* decode each block */
-    if (s->mb_intra || HAS_CBP(com->mtype)) {
+    if (s->mb_intra || HAS_CBP(s->mtype)) {
         s->bdsp.clear_blocks(h->block[0]);
         for (i = 0; i < 6; i++) {
             if (h261_decode_block(h, h->block[i], i, cbp & 32) < 0)

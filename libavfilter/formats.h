@@ -145,6 +145,12 @@ av_warn_unused_result
 AVFilterFormats *ff_all_color_ranges(void);
 
 /**
+ * Construct an AVFilterFormats representing all possible alpha modes.
+ */
+av_warn_unused_result
+AVFilterFormats *ff_all_alpha_modes(void);
+
+/**
  * Helpers for query_formats() which set all free audio links to the same list
  * of channel layouts/sample rates. If there are no links hooked to this list,
  * the list is freed.
@@ -211,6 +217,23 @@ int ff_set_common_color_ranges_from_list(AVFilterContext *ctx,
 av_warn_unused_result
 int ff_set_common_all_color_ranges(AVFilterContext *ctx);
 
+av_warn_unused_result
+int ff_set_common_alpha_modes(AVFilterContext *ctx,
+                              AVFilterFormats *alpha_modes);
+/**
+ * Equivalent to ff_set_common_alpha_modes(ctx, ff_make_format_list(alpha_modes))
+ */
+av_warn_unused_result
+int ff_set_common_alpha_modes_from_list(AVFilterContext *ctx,
+                                        const int *alpha_modes);
+
+/**
+ * Equivalent to ff_set_common_alpha_modes(ctx, ff_all_alpha_modes())
+ */
+av_warn_unused_result
+int ff_set_common_all_alpha_modes(AVFilterContext *ctx);
+
+
 /**
  * A helper for query_formats() which sets all links to the same list of
  * formats. If there are no links hooked to this filter, the list of formats is
@@ -224,6 +247,18 @@ int ff_set_common_formats(AVFilterContext *ctx, AVFilterFormats *formats);
  */
 av_warn_unused_result
 int ff_set_common_formats_from_list(AVFilterContext *ctx, const int *fmts);
+
+/**
+ * Equivalent to ff_set_common_formats(ctx, ff_make_sample_format_list(fmts))
+ */
+av_warn_unused_result
+int ff_set_sample_formats_from_list(AVFilterContext *ctx, const enum AVSampleFormat *fmts);
+
+/**
+ * Equivalent to ff_set_common_formats(ctx, ff_make_pixel_format_list(fmts))
+ */
+av_warn_unused_result
+int ff_set_pixel_formats_from_list(AVFilterContext *ctx, const enum AVPixelFormat *fmts);
 
 /**
  * Helpers for query_formats2() which set all free audio links to the same list
@@ -273,7 +308,7 @@ av_warn_unused_result
 int ff_set_common_color_spaces_from_list2(const AVFilterContext *ctx,
                                           AVFilterFormatsConfig **cfg_in,
                                           AVFilterFormatsConfig **cfg_out,
-                                          const int *color_ranges);
+                                          const int *color_spaces);
 
 av_warn_unused_result
 int ff_set_common_all_color_spaces2(const AVFilterContext *ctx,
@@ -298,6 +333,23 @@ int ff_set_common_all_color_ranges2(const AVFilterContext *ctx,
                                     AVFilterFormatsConfig **cfg_out);
 
 av_warn_unused_result
+int ff_set_common_alpha_modes2(const AVFilterContext *ctx,
+                               AVFilterFormatsConfig **cfg_in,
+                               AVFilterFormatsConfig **cfg_out,
+                               AVFilterFormats *alpha_modes);
+
+av_warn_unused_result
+int ff_set_common_alpha_modes_from_list2(const AVFilterContext *ctx,
+                                         AVFilterFormatsConfig **cfg_in,
+                                         AVFilterFormatsConfig **cfg_out,
+                                         const int *alpha_modes);
+
+av_warn_unused_result
+int ff_set_common_all_alpha_modes2(const AVFilterContext *ctx,
+                                   AVFilterFormatsConfig **cfg_in,
+                                   AVFilterFormatsConfig **cfg_out);
+
+av_warn_unused_result
 int ff_set_common_formats2(const AVFilterContext *ctx,
                            AVFilterFormatsConfig **cfg_in,
                            AVFilterFormatsConfig **cfg_out,
@@ -308,6 +360,18 @@ int ff_set_common_formats_from_list2(const AVFilterContext *ctx,
                                      AVFilterFormatsConfig **cfg_in,
                                      AVFilterFormatsConfig **cfg_out,
                                      const int *fmts);
+
+av_warn_unused_result
+int ff_set_sample_formats_from_list2(const AVFilterContext *ctx,
+                                     AVFilterFormatsConfig **cfg_in,
+                                     AVFilterFormatsConfig **cfg_out,
+                                     const enum AVSampleFormat *fmts);
+
+av_warn_unused_result
+int ff_set_pixel_formats_from_list2(const AVFilterContext *ctx,
+                                    AVFilterFormatsConfig **cfg_in,
+                                    AVFilterFormatsConfig **cfg_out,
+                                    const enum AVPixelFormat *fmts);
 
 av_warn_unused_result
 int ff_add_channel_layout(AVFilterChannelLayouts **l,
@@ -344,6 +408,26 @@ int ff_default_query_formats(AVFilterContext *ctx);
  */
 av_warn_unused_result
 AVFilterFormats *ff_make_format_list(const int *fmts);
+
+/**
+ * Create a list of supported sample formats. This is intended for use in
+ * AVFilter->query_formats().
+ *
+ * @param fmts list of enum AVSampleFormat, terminated by AV_SAMPLE_FMT_NONE
+ * @return the format list, with no existing references
+ */
+av_warn_unused_result
+AVFilterFormats *ff_make_sample_format_list(const enum AVSampleFormat *fmts);
+
+/**
+ * Create a list of supported pixel formats. This is intended for use in
+ * AVFilter->query_formats().
+ *
+ * @param fmts list of enum AVPixelFormat, terminated by AV_PIX_FMT_NONE
+ * @return the format list, with no existing references
+ */
+av_warn_unused_result
+AVFilterFormats *ff_make_pixel_format_list(const enum AVPixelFormat *fmts);
 
 /**
  * Equivalent to ff_make_format_list({const int[]}{ fmt, -1 })
@@ -466,10 +550,23 @@ int ff_formats_check_channel_layouts(void *log, const AVFilterChannelLayouts *fm
 int ff_formats_check_color_spaces(void *log, const AVFilterFormats *fmts);
 int ff_formats_check_color_ranges(void *log, const AVFilterFormats *fmts);
 
+/**
+ * Check that fmts is a valid formats list for alpha modes.
+ *
+ * In particular, check for duplicates.
+ */
+int ff_formats_check_alpha_modes(void *log, const AVFilterFormats *fmts);
+
+struct AVBPrint;
+
 typedef struct AVFilterFormatMerger {
+    const char *name;
     unsigned offset;
     int (*merge)(void *a, void *b);
     int (*can_merge)(const void *a, const void *b);
+    void (*print_list)(struct AVBPrint *bp, const void *fmts);
+    const char *conversion_filter;
+    unsigned conversion_opts_offset;
 } AVFilterFormatsMerger;
 
 /**
@@ -560,10 +657,8 @@ typedef struct AVFilterFormatMerger {
 typedef struct AVFilterNegotiation {
     unsigned nb_mergers;
     const AVFilterFormatsMerger *mergers;
-    const char *conversion_filter;
-    unsigned conversion_opts_offset;
 } AVFilterNegotiation;
 
-const AVFilterNegotiation *ff_filter_get_negotiation(AVFilterLink *link);
+const AVFilterNegotiation *ff_filter_get_negotiation(const AVFilterLink *link);
 
 #endif /* AVFILTER_FORMATS_H */

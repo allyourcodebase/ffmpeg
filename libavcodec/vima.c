@@ -28,6 +28,7 @@
 #include "libavutil/channel_layout.h"
 #include "libavutil/thread.h"
 
+#include "adpcm.h"
 #include "adpcm_data.h"
 #include "avcodec.h"
 #include "codec_internal.h"
@@ -159,46 +160,60 @@ static int decode_frame(AVCodecContext *avctx, AVFrame *frame,
     if ((ret = ff_get_buffer(avctx, frame, 0)) < 0)
         return ret;
 
-    for (chan = 0; chan < channels; chan++) {
-        uint16_t *dest = (uint16_t *)frame->data[0] + chan;
-        int step_index = channel_hint[chan];
-        int output = pcm_data[chan];
-        int sample;
+    if (show_bits_long(&gb, 32) == MKBETAG('I','M','A','4')) {
+        int16_t *dest = (int16_t *)frame->data[0];
+        ADPCMChannelStatus cs;
 
-        for (sample = 0; sample < samples; sample++) {
-            int lookup_size, lookup, highbit, lowbits;
+        skip_bits_long(&gb, 32);        /* skip the 'IMA4' tag */
+        cs.predictor = (int16_t)get_xbits_le(&gb, 16);
+        cs.step_index = av_clip(get_bits(&gb, 8), 0, 88);
+        for (int i = 0; i < samples; i++) {
+            ff_adpcm_ima_qt_expand_nibble(&cs, get_bits(&gb, 4));
+            for (int j = 0; j < channels; j++)
+                *dest++ = cs.predictor;
+        }
+    } else {
+        for (chan = 0; chan < channels; chan++) {
+            uint16_t *dest = (uint16_t *)frame->data[0] + chan;
+            int step_index = channel_hint[chan];
+            int output = pcm_data[chan];
+            int sample;
 
-            step_index  = av_clip(step_index, 0, 88);
-            lookup_size = size_table[step_index];
-            lookup      = get_bits(&gb, lookup_size);
-            highbit     = 1 << (lookup_size - 1);
-            lowbits     = highbit - 1;
+            for (sample = 0; sample < samples; sample++) {
+                int lookup_size, lookup, highbit, lowbits;
 
-            if (lookup & highbit)
-                lookup ^= highbit;
-            else
-                highbit = 0;
+                step_index  = av_clip(step_index, 0, 88);
+                lookup_size = size_table[step_index];
+                lookup      = get_bits(&gb, lookup_size);
+                highbit     = 1 << (lookup_size - 1);
+                lowbits     = highbit - 1;
 
-            if (lookup == lowbits) {
-                output = get_sbits(&gb, 16);
-            } else {
-                int predict_index, diff;
+                if (lookup & highbit)
+                    lookup ^= highbit;
+                else
+                    highbit = 0;
 
-                predict_index = (lookup << (7 - lookup_size)) | (step_index << 6);
-                predict_index = av_clip(predict_index, 0, 5785);
-                diff          = predict_table[predict_index];
-                if (lookup)
-                    diff += ff_adpcm_step_table[step_index] >> (lookup_size - 1);
-                if (highbit)
-                    diff = -diff;
+                if (lookup == lowbits) {
+                    output = get_sbits(&gb, 16);
+                } else {
+                    int predict_index, diff;
 
-                output = av_clip_int16(output + diff);
+                    predict_index = (lookup << (7 - lookup_size)) | (step_index << 6);
+                    predict_index = av_clip(predict_index, 0, 5785);
+                    diff          = predict_table[predict_index];
+                    if (lookup)
+                        diff += ff_adpcm_step_table[step_index] >> (lookup_size - 1);
+                    if (highbit)
+                        diff = -diff;
+
+                    output = av_clip_int16(output + diff);
+                }
+
+                *dest = output;
+                dest += channels;
+
+                step_index += step_index_tables[lookup_size - 2][lookup];
             }
-
-            *dest = output;
-            dest += channels;
-
-            step_index += step_index_tables[lookup_size - 2][lookup];
         }
     }
 

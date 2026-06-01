@@ -39,7 +39,6 @@
 #include "huffyuvencdsp.h"
 #include "lossless_videoencdsp.h"
 #include "put_bits.h"
-#include "libavutil/emms.h"
 #include "libavutil/mem.h"
 #include "libavutil/opt.h"
 #include "libavutil/pixdesc.h"
@@ -48,13 +47,14 @@ typedef struct HYuvEncContext {
     AVClass *class;
     AVCodecContext *avctx;
     PutBitContext pb;
-    Predictor predictor;
+    /* Predictor, use int for AVOption */
+    int predictor;
     int interlaced;
     int decorrelate;
     int bitstream_bpp;
     int version;
     int bps;
-    int n;                                  // 1<<bps
+    unsigned mask;                          // (1<<bps)-1
     int vlc_n;                              // number of vlc codes (FFMIN(1<<bps, MAX_VLC_N))
     int alpha;
     int chroma;
@@ -84,7 +84,7 @@ static inline void diff_bytes(HYuvEncContext *s, uint8_t *dst,
     if (s->bps <= 8) {
         s->llvidencdsp.diff_bytes(dst, src0, src1, w);
     } else {
-        s->hencdsp.diff_int16((uint16_t *)dst, (const uint16_t *)src0, (const uint16_t *)src1, s->n - 1, w);
+        s->hencdsp.diff_int16((uint16_t *)dst, (const uint16_t *)src0, (const uint16_t *)src1, s->mask, w);
     }
 }
 
@@ -114,7 +114,7 @@ static inline int sub_left_prediction(HYuvEncContext *s, uint8_t *dst,
         }
         if (w < 32)
             return left;
-        s->hencdsp.diff_int16(dst16 + 32, src16 + 32, src16 + 31, s->n - 1, w - 32);
+        s->hencdsp.diff_int16(dst16 + 32, src16 + 32, src16 + 31, s->mask, w - 32);
         return src16[w-1];
     }
 }
@@ -190,7 +190,8 @@ static void sub_median_prediction(HYuvEncContext *s, uint8_t *dst,
     if (s->bps <= 8) {
         s->llvidencdsp.sub_median_pred(dst, src1, src2, w , left, left_top);
     } else {
-        s->hencdsp.sub_hfyu_median_pred_int16((uint16_t *)dst, (const uint16_t *)src1, (const uint16_t *)src2, s->n - 1, w , left, left_top);
+        s->hencdsp.sub_hfyu_median_pred_int16((uint16_t *)dst, (const uint16_t *)src1,
+                                              (const uint16_t *)src2, s->mask, w, left, left_top);
     }
 }
 
@@ -252,7 +253,6 @@ static av_cold int encode_init(AVCodecContext *avctx)
     s->flags = avctx->flags;
 
     ff_bswapdsp_init(&s->bdsp);
-    ff_huffyuvencdsp_init(&s->hencdsp, avctx->pix_fmt);
     ff_llvidencdsp_init(&s->llvidencdsp);
 
     avctx->extradata = av_mallocz(3*MAX_N + 4);
@@ -273,6 +273,11 @@ static av_cold int encode_init(AVCodecContext *avctx)
     s->alpha = !!(desc->flags & AV_PIX_FMT_FLAG_ALPHA);
     s->chroma_h_shift = desc->log2_chroma_w;
     s->chroma_v_shift = desc->log2_chroma_h;
+
+    s->mask  = (1 << s->bps) - 1;
+    s->vlc_n = FFMIN(1 << s->bps, MAX_VLC_N);
+
+    ff_huffyuvencdsp_init(&s->hencdsp, s->bps, avctx->width >> s->chroma_h_shift);
 
     switch (avctx->pix_fmt) {
     case AV_PIX_FMT_YUV420P:
@@ -332,11 +337,8 @@ static av_cold int encode_init(AVCodecContext *avctx)
         s->bitstream_bpp = 24;
         break;
     default:
-        av_log(avctx, AV_LOG_ERROR, "format not supported\n");
-        return AVERROR(EINVAL);
+        av_unreachable("Already checked via CODEC_PIXFMTS");
     }
-    s->n = 1<<s->bps;
-    s->vlc_n = FFMIN(s->n, MAX_VLC_N);
 
     avctx->bits_per_coded_sample = s->bitstream_bpp;
     s->decorrelate = s->bitstream_bpp >= 24 && !s->yuv && !(desc->flags & AV_PIX_FMT_FLAG_PLANAR);
@@ -587,7 +589,7 @@ do {                                                                  \
     if (s->bps <= 8) {
         ENCODE_PLANE(LOAD2, LOADEND, WRITE2, WRITEEND, STAT2, STATEND);
     } else if (s->bps <= 14) {
-        int mask = s->n - 1;
+        unsigned mask = s->mask;
 
         ENCODE_PLANE(LOAD2_14, LOADEND_14, WRITE2, WRITEEND, STAT2, STATEND);
     } else {
@@ -937,7 +939,6 @@ static int encode_frame(AVCodecContext *avctx, AVPacket *pkt,
     } else {
         av_log(avctx, AV_LOG_ERROR, "Format not supported!\n");
     }
-    emms_c();
 
     size += (put_bits_count(&s->pb) + 31) / 8;
     put_bits(&s->pb, 16, 0);

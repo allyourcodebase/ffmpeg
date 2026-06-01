@@ -19,6 +19,7 @@
  */
 
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct MISC4Context {
     ParseContext pc;
@@ -73,9 +74,9 @@ static int misc4_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_misc4_parser = {
-    .codec_ids      = { AV_CODEC_ID_MISC4 },
+const FFCodecParser ff_misc4_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_MISC4),
     .priv_data_size = sizeof(MISC4Context),
-    .parser_parse   = misc4_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = misc4_parse,
+    .close          = ff_parse_close,
 };

@@ -290,20 +290,22 @@ StdVideoAV1Profile ff_vk_av1_profile_to_vk(int profile)
 
 int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
                       VkImageView *view, VkImageAspectFlags *aspect,
-                      AVVkFrame *src, VkFormat vkf, int is_dpb)
+                      AVVkFrame *src, VkFormat vkf, VkImageUsageFlags usage)
 {
     VkResult ret;
     FFVulkanFunctions *vk = &s->vkfn;
     VkImageAspectFlags aspect_mask = ff_vk_aspect_bits_from_vkfmt(vkf);
+    int is_video_dpb = usage & (VK_IMAGE_USAGE_VIDEO_DECODE_DPB_BIT_KHR |
+                                VK_IMAGE_USAGE_VIDEO_ENCODE_DPB_BIT_KHR);
 
-    VkSamplerYcbcrConversionInfo yuv_sampler_info = {
-        .sType = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_INFO,
-        .conversion = common->yuv_sampler,
+    VkImageViewUsageCreateInfo usage_create_info = {
+        .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO,
+        .usage = usage,
     };
     VkImageViewCreateInfo img_view_create_info = {
         .sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .pNext = &yuv_sampler_info,
-        .viewType = common->layered_dpb && is_dpb ?
+        .pNext = &usage_create_info,
+        .viewType = common->layered_dpb && is_video_dpb ?
                     VK_IMAGE_VIEW_TYPE_2D_ARRAY : VK_IMAGE_VIEW_TYPE_2D,
         .format = vkf,
         .image = src->img[0],
@@ -316,7 +318,7 @@ int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
         .subresourceRange = (VkImageSubresourceRange) {
             .aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT,
             .baseArrayLayer = 0,
-            .layerCount     = common->layered_dpb && is_dpb ?
+            .layerCount     = common->layered_dpb && is_video_dpb ?
                               VK_REMAINING_ARRAY_LAYERS : 1,
             .levelCount     = 1,
         },
@@ -349,17 +351,15 @@ av_cold void ff_vk_video_common_uninit(FFVulkanContext *s,
 
     av_freep(&common->mem);
 
-    if (common->layered_view)
+    if (common->layered_view) {
         vk->DestroyImageView(s->hwctx->act_dev, common->layered_view,
                              s->hwctx->alloc);
+        common->layered_view = VK_NULL_HANDLE;
+    }
 
     av_frame_free(&common->layered_frame);
 
     av_buffer_unref(&common->dpb_hwfc_ref);
-
-    if (common->yuv_sampler)
-        vk->DestroySamplerYcbcrConversion(s->hwctx->act_dev, common->yuv_sampler,
-                                          s->hwctx->alloc);
 }
 
 av_cold int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
@@ -372,30 +372,13 @@ av_cold int ff_vk_video_common_init(AVCodecContext *avctx, FFVulkanContext *s,
     VkVideoSessionMemoryRequirementsKHR *mem = NULL;
     VkBindVideoSessionMemoryInfoKHR *bind_mem = NULL;
 
-    int cxpos = 0, cypos = 0;
-    VkSamplerYcbcrConversionCreateInfo yuv_sampler_info = {
-        .sType      = VK_STRUCTURE_TYPE_SAMPLER_YCBCR_CONVERSION_CREATE_INFO,
-        .components = ff_comp_identity_map,
-        .ycbcrModel = VK_SAMPLER_YCBCR_MODEL_CONVERSION_RGB_IDENTITY,
-        .ycbcrRange = avctx->color_range == AVCOL_RANGE_MPEG, /* Ignored */
-        .format     = session_create->pictureFormat,
-    };
-
-    /* Create identity YUV sampler
-     * (VkImageViews of YUV image formats require it, even if it does nothing) */
-    av_chroma_location_enum_to_pos(&cxpos, &cypos, avctx->chroma_sample_location);
-    yuv_sampler_info.xChromaOffset = cxpos >> 7;
-    yuv_sampler_info.yChromaOffset = cypos >> 7;
-    ret = vk->CreateSamplerYcbcrConversion(s->hwctx->act_dev, &yuv_sampler_info,
-                                           s->hwctx->alloc, &common->yuv_sampler);
-    if (ret != VK_SUCCESS)
-        return AVERROR_EXTERNAL;
-
     /* Create session */
     ret = vk->CreateVideoSessionKHR(s->hwctx->act_dev, session_create,
                                     s->hwctx->alloc, &common->session);
-    if (ret != VK_SUCCESS)
-        return AVERROR_EXTERNAL;
+    if (ret != VK_SUCCESS) {
+        err = AVERROR_EXTERNAL;
+        goto fail;
+    }
 
     /* Get memory requirements */
     ret = vk->GetVideoSessionMemoryRequirementsKHR(s->hwctx->act_dev,

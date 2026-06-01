@@ -79,6 +79,9 @@ typedef struct H263DecContext {
     /* MSMPEG4 specific */
     int slice_height;           ///< in macroblocks
 
+    /* MPEG-4 (Studio Profile), MSMPEG4 and RV10 specific */
+    int last_dc[3];             ///< last DC values, used by MPEG4, MSMPEG4V1, RV10
+
     /* RV10 specific */
     int rv10_version; ///< RV10 version: 0 or 3
     int rv10_first_dc_coded[3];
@@ -93,6 +96,9 @@ typedef struct H263DecContext {
 #define SLICE_NOEND     -3 ///<no end marker or error found but mb count exceeded
 
     GetBitContext last_resync_gb;    ///< used to search for the next resync marker
+
+    uint8_t permutated_intra_h_scantable[64];
+    uint8_t permutated_intra_v_scantable[64];
 
     DECLARE_ALIGNED_32(int16_t, block)[6][64];
 } H263DecContext;

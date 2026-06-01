@@ -41,7 +41,8 @@ typedef struct PerlinContext {
     int octaves;
     double persistence;
     unsigned int random_seed;
-    enum FFPerlinRandomMode random_mode;
+    /* enum FFPerlinRandomMode */
+    int random_mode;
 
     double xscale, yscale, tscale;
     uint64_t pts;
@@ -148,7 +149,7 @@ static int query_formats(const AVFilterContext *ctx,
 {
     enum AVPixelFormat pix_fmts[] = { AV_PIX_FMT_GRAY8, AV_PIX_FMT_NONE };
 
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
+    return ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
 }
 
 static const AVFilterPad perlin_outputs[] = {

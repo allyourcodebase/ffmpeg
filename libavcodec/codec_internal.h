@@ -133,7 +133,7 @@ typedef struct FFCodec {
     /**
      * Internal codec capabilities FF_CODEC_CAP_*.
      */
-    unsigned caps_internal:26;
+    unsigned caps_internal:24;
 
     /**
      * Is this a decoder?
@@ -145,6 +145,12 @@ typedef struct FFCodec {
      * Should be set to a bitmask of AVCOL_RANGE_MPEG and AVCOL_RANGE_JPEG.
      */
     unsigned color_ranges:2;
+
+    /**
+     * This field determines the alpha modes supported by an encoder.
+     * Should be set to a bitmask of AVALPHA_MODE_PREMULTIPLIED and AVALPHA_MODE_STRAIGHT.
+     */
+    unsigned alpha_modes:2;
 
     /**
      * This field determines the type of the codec (decoder/encoder)

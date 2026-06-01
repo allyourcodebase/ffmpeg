@@ -376,6 +376,8 @@ FF_ENABLE_DEPRECATION_WARNINGS
         dst->bits_per_raw_sample = src->bits_per_raw_sample;
         dst->color_primaries     = src->color_primaries;
 
+        dst->alpha_mode  = src->alpha_mode;
+
         dst->color_trc   = src->color_trc;
         dst->colorspace  = src->colorspace;
         dst->color_range = src->color_range;
@@ -558,7 +560,7 @@ static int submit_packet(PerThreadContext *p, AVCodecContext *user_avctx,
     return 0;
 }
 
-int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
+int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame, unsigned flags)
 {
     FrameThreadContext *fctx = avctx->internal->thread_ctx;
     int ret = 0;
@@ -570,6 +572,10 @@ int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
     /* submit packets to threads while there are no buffered results to return */
     while (!fctx->df.nb_f && !fctx->result) {
         PerThreadContext *p;
+
+        if (fctx->next_decoding != fctx->next_finished &&
+            (flags & AV_CODEC_RECEIVE_FRAME_FLAG_SYNCHRONOUS))
+            goto wait_for_result;
 
         /* get a packet to be submitted to the next thread */
         av_packet_unref(fctx->next_pkt);
@@ -587,6 +593,7 @@ int ff_thread_receive_frame(AVCodecContext *avctx, AVFrame *frame)
             !avctx->internal->draining)
             continue;
 
+    wait_for_result:
         p                   = &fctx->threads[fctx->next_finished];
         fctx->next_finished = (fctx->next_finished + 1) % avctx->thread_count;
 

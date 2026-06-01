@@ -31,6 +31,7 @@
 #include "opus.h"
 #include "parse.h"
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct OpusParserContext {
     ParseContext pc;
@@ -188,7 +189,7 @@ static int opus_parse(AVCodecParserContext *ctx, AVCodecContext *avctx,
     if (ctx->flags & PARSER_FLAG_COMPLETE_FRAMES) {
         next = buf_size;
 
-        if (set_frame_duration(ctx, avctx, buf, buf_size) < 0)
+        if (buf_size && set_frame_duration(ctx, avctx, buf, buf_size) < 0)
             goto fail;
     } else {
         next = opus_find_frame_end(ctx, avctx, buf, buf_size, &header_len);
@@ -213,9 +214,9 @@ fail:
     return buf_size;
 }
 
-const AVCodecParser ff_opus_parser = {
-    .codec_ids      = { AV_CODEC_ID_OPUS },
+const FFCodecParser ff_opus_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_OPUS),
     .priv_data_size = sizeof(OpusParserContext),
-    .parser_parse   = opus_parse,
-    .parser_close   = ff_parse_close
+    .parse          = opus_parse,
+    .close          = ff_parse_close
 };

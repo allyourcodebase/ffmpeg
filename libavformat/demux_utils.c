@@ -172,8 +172,8 @@ int ff_add_param_change(AVPacket *pkt, int32_t channels,
 
 int av_read_play(AVFormatContext *s)
 {
-    if (ffifmt(s->iformat)->read_play)
-        return ffifmt(s->iformat)->read_play(s);
+    if (ffifmt(s->iformat)->read_set_state)
+        return ffifmt(s->iformat)->read_set_state(s, FF_INFMT_STATE_PLAY);
     if (s->pb)
         return avio_pause(s->pb, 0);
     return AVERROR(ENOSYS);
@@ -181,10 +181,24 @@ int av_read_play(AVFormatContext *s)
 
 int av_read_pause(AVFormatContext *s)
 {
-    if (ffifmt(s->iformat)->read_pause)
-        return ffifmt(s->iformat)->read_pause(s);
+    if (ffifmt(s->iformat)->read_set_state)
+        return ffifmt(s->iformat)->read_set_state(s, FF_INFMT_STATE_PAUSE);
     if (s->pb)
         return avio_pause(s->pb, 1);
+    return AVERROR(ENOSYS);
+}
+
+int avformat_send_command(AVFormatContext *s, enum AVFormatCommandID id, void *data)
+{
+    if (ffifmt(s->iformat)->handle_command)
+        return ffifmt(s->iformat)->handle_command(s, FF_INFMT_COMMAND_SUBMIT, id, data);
+    return AVERROR(ENOSYS);
+}
+
+int avformat_receive_command_reply(AVFormatContext *s, enum AVFormatCommandID id, void **data_out)
+{
+    if (ffifmt(s->iformat)->handle_command)
+        return ffifmt(s->iformat)->handle_command(s, FF_INFMT_COMMAND_GET_REPLY, id, data_out);
     return AVERROR(ENOSYS);
 }
 

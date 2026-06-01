@@ -88,6 +88,7 @@
 
 #include <inttypes.h>
 
+#include "libavutil/attributes.h"
 #include "libavutil/audio_fifo.h"
 #include "libavutil/mem.h"
 #include "libavutil/tx.h"
@@ -2040,7 +2041,7 @@ static av_cold int xma_decode_end(AVCodecContext *avctx)
     return 0;
 }
 
-static void flush(WMAProDecodeCtx *s)
+static av_cold void flush(WMAProDecodeCtx *s)
 {
     int i;
     /** reset output buffer as a part of it is used during the windowing of a
@@ -2058,14 +2059,14 @@ static void flush(WMAProDecodeCtx *s)
  *@brief Clear decoder buffers (for seeking).
  *@param avctx codec context
  */
-static void wmapro_flush(AVCodecContext *avctx)
+static av_cold void wmapro_flush(AVCodecContext *avctx)
 {
     WMAProDecodeCtx *s = avctx->priv_data;
 
     flush(s);
 }
 
-static void xma_flush(AVCodecContext *avctx)
+static av_cold void xma_flush(AVCodecContext *avctx)
 {
     XMADecodeCtx *s = avctx->priv_data;
     int i;
@@ -2096,7 +2097,6 @@ const FFCodec ff_wmapro_decoder = {
     FF_CODEC_DECODE_CB(wmapro_decode_packet),
     .p.capabilities = AV_CODEC_CAP_DR1,
     .flush          = wmapro_flush,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
@@ -2111,7 +2111,6 @@ const FFCodec ff_xma1_decoder = {
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };
 
@@ -2126,6 +2125,5 @@ const FFCodec ff_xma2_decoder = {
     FF_CODEC_DECODE_CB(xma_decode_packet),
     .flush          = xma_flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_FLTP),
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
 };

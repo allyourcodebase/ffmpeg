@@ -27,37 +27,48 @@ SECTION .text
 
 ; void ff_put/avg_pixels(uint8_t *block, const uint8_t *pixels,
 ;                        ptrdiff_t line_size, int h)
-%macro OP_PIXELS 2
+%macro OP_PIXELS 2-3 0
 %if %2 == mmsize/2
 %define LOAD movh
 %define SAVE movh
-%define LEN  mmsize
 %else
 %define LOAD movu
 %define SAVE mova
-%define LEN  %2
 %endif
-cglobal %1_pixels%2, 4,5,4
+cglobal %1_pixels%2x%2, 3,5+4*%3,%3 ? 4 : 0
+    mov         r3d, %2
+    jmp         %1_pixels%2_after_prologue
+
+cglobal %1_pixels%2, 4,5+4*%3,%3 ? 4 : 0
+%1_pixels%2_after_prologue:
     lea          r4, [r2*3]
 .loop:
-%assign %%i 0
-%rep LEN/mmsize
-    LOAD         m0, [r1 + %%i]
-    LOAD         m1, [r1+r2 + %%i]
-    LOAD         m2, [r1+r2*2 + %%i]
-    LOAD         m3, [r1+r4 + %%i]
+%if %3
+; Use GPRs on UNIX64 for put8, but not on Win64 due to a lack of volatile GPRs
+    mov         r5q, [r1]
+    mov         r6q, [r1+r2]
+    mov         r7q, [r1+r2*2]
+    mov         r8q, [r1+r4]
+    mov        [r0], r5q
+    mov     [r0+r2], r6q
+    mov   [r0+r2*2], r7q
+    mov     [r0+r4], r8q
+%else
+    LOAD         m0, [r1]
+    LOAD         m1, [r1+r2]
+    LOAD         m2, [r1+r2*2]
+    LOAD         m3, [r1+r4]
 %ifidn %1, avg
-    pavgb        m0, [r0 + %%i]
-    pavgb        m1, [r0+r2 + %%i]
-    pavgb        m2, [r0+r2*2 + %%i]
-    pavgb        m3, [r0+r4 + %%i]
+    pavgb        m0, [r0]
+    pavgb        m1, [r0+r2]
+    pavgb        m2, [r0+r2*2]
+    pavgb        m3, [r0+r4]
 %endif
-    SAVE       [r0 + %%i], m0
-    SAVE    [r0+r2 + %%i], m1
-    SAVE  [r0+r2*2 + %%i], m2
-    SAVE    [r0+r4 + %%i], m3
-%assign %%i %%i+mmsize
-%endrep
+    SAVE       [r0], m0
+    SAVE    [r0+r2], m1
+    SAVE  [r0+r2*2], m2
+    SAVE    [r0+r4], m3
+%endif
     sub         r3d, 4
     lea          r1, [r1+r2*4]
     lea          r0, [r0+r2*4]
@@ -65,15 +76,10 @@ cglobal %1_pixels%2, 4,5,4
     RET
 %endmacro
 
-INIT_MMX mmx
-OP_PIXELS put, 8
-OP_PIXELS put, 16
-
 INIT_MMX mmxext
-OP_PIXELS avg, 4
 OP_PIXELS avg, 8
-OP_PIXELS avg, 16
 
 INIT_XMM sse2
+OP_PIXELS put, 8, UNIX64
 OP_PIXELS put, 16
 OP_PIXELS avg, 16

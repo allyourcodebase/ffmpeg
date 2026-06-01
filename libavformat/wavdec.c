@@ -1016,6 +1016,7 @@ const FFInputFormat ff_w64_demuxer = {
     .p.codec_tag    = ff_wav_codec_tags_list,
     .p.priv_class   = &w64_demuxer_class,
     .priv_data_size = sizeof(WAVDemuxContext),
+    .flags_internal = FF_INFMT_FLAG_ID3V2_AUTO,
     .read_probe     = w64_probe,
     .read_header    = w64_read_header,
     .read_packet    = wav_read_packet,

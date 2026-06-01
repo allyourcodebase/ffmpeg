@@ -39,7 +39,7 @@ static inline int get_random_number(const int bits, unsigned *const state) {
     unsigned bit = ((r >> 0) ^ (r >> 1) ^ (r >> 3) ^ (r >> 12)) & 1;
     *state = (r >> 1) | (bit << 15);
 
-    return (*state >> (16 - bits)) & ((1 << bits) - 1);
+    return av_zero_extend(*state >> (16 - bits), bits);
 }
 
 static inline int round2(const int x, const uint64_t shift) {
@@ -200,13 +200,13 @@ int ff_aom_parse_film_grain_sets(AVFilmGrainAFGS1Params *s,
                 fgp->color_trc = get_bits(gb, 8);
                 fgp->color_space = get_bits(gb, 8);
                 fgp->color_range = get_bits1(gb) ? AVCOL_RANGE_JPEG : AVCOL_RANGE_MPEG;
-                if (fgp->color_primaries > AVCOL_PRI_NB ||
+                if (fgp->color_primaries >= AVCOL_PRI_NB ||
                     fgp->color_primaries == AVCOL_PRI_RESERVED ||
                     fgp->color_primaries == AVCOL_PRI_RESERVED0 ||
-                    fgp->color_trc > AVCOL_TRC_NB ||
+                    fgp->color_trc >= AVCOL_TRC_NB ||
                     fgp->color_trc == AVCOL_TRC_RESERVED ||
                     fgp->color_trc == AVCOL_TRC_RESERVED0 ||
-                    fgp->color_space > AVCOL_SPC_NB ||
+                    fgp->color_space >= AVCOL_SPC_NB ||
                     fgp->color_space == AVCOL_SPC_RESERVED)
                     goto error;
             }

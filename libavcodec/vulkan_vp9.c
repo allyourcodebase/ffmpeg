@@ -338,7 +338,7 @@ static int vk_vp9_end_frame(AVCodecContext *avctx)
         rav[i] = ap->ref_src[i]->tf.f;
     }
 
-    av_log(avctx, AV_LOG_VERBOSE, "Decoding frame, %"SIZE_SPECIFIER" bytes\n",
+    av_log(avctx, AV_LOG_VERBOSE, "Decoding frame, %zu bytes\n",
            vp->slices_size);
 
     return ff_vk_decode_frame(avctx, pic->tf.f, vp, rav, rvp);
@@ -365,7 +365,6 @@ const FFHWAccel ff_vp9_vulkan_hwaccel = {
     .frame_priv_data_size  = sizeof(VP9VulkanDecodePicture),
     .init                  = &ff_vk_decode_init,
     .update_thread_context = &ff_vk_update_thread_context,
-    .flush                 = &ff_vk_decode_flush,
     .uninit                = &ff_vk_decode_uninit,
     .frame_params          = &ff_vk_frame_params,
     .priv_data_size        = sizeof(FFVulkanDecodeContext),

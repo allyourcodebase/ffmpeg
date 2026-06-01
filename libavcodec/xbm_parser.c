@@ -24,9 +24,13 @@
  * XBM parser
  */
 
-#include "libavutil/common.h"
+#include <stdint.h>
+
+#include "libavutil/attributes.h"
+#include "libavutil/avutil.h"
 
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct XBMParseContext {
     ParseContext pc;
@@ -41,7 +45,7 @@ typedef struct XBMParseContext {
 
 #define END ((';' << 8) | ('\n' << 0))
 
-static int xbm_init(AVCodecParserContext *s)
+static av_cold int xbm_init(AVCodecParserContext *s)
 {
     XBMParseContext *bpc = s->priv_data;
 
@@ -97,10 +101,10 @@ static int xbm_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_xbm_parser = {
-    .codec_ids      = { AV_CODEC_ID_XBM },
+const FFCodecParser ff_xbm_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_XBM),
     .priv_data_size = sizeof(XBMParseContext),
-    .parser_init    = xbm_init,
-    .parser_parse   = xbm_parse,
-    .parser_close   = ff_parse_close,
+    .init           = xbm_init,
+    .parse          = xbm_parse,
+    .close          = ff_parse_close,
 };

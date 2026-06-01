@@ -1057,7 +1057,7 @@ static int decode_frame(WmallDecodeCtx *s)
     /* no idea what these are for, might be the number of samples
        that need to be skipped at the beginning or end of a stream */
     if (get_bits1(gb)) {
-        int av_unused skip;
+        av_unused int skip;
 
         /* usually true for the first frame */
         if (get_bits1(gb)) {
@@ -1302,7 +1302,7 @@ static int decode_packet(AVCodecContext *avctx, AVFrame *rframe,
     return (s->packet_loss) ? AVERROR_INVALIDDATA : get_bits_count(gb) >> 3;
 }
 
-static void flush(AVCodecContext *avctx)
+static av_cold void flush(AVCodecContext *avctx)
 {
     WmallDecodeCtx *s    = avctx->priv_data;
     s->packet_loss       = 1;
@@ -1337,5 +1337,4 @@ const FFCodec ff_wmalossless_decoder = {
     .flush          = flush,
     .p.capabilities = AV_CODEC_CAP_DR1 | AV_CODEC_CAP_DELAY,
     .caps_internal  = FF_CODEC_CAP_INIT_CLEANUP,
-    CODEC_SAMPLEFMTS(AV_SAMPLE_FMT_S16P, AV_SAMPLE_FMT_S32P),
 };

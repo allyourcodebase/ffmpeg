@@ -88,8 +88,6 @@ int swr_alloc_set_opts2(struct SwrContext **ps,
     if ((ret = av_opt_set_int(s, "isr", in_sample_rate, 0)) < 0)
         goto fail;
 
-    av_opt_set_int(s, "uch", 0, 0);
-
     return 0;
 fail:
     av_log(s, AV_LOG_ERROR, "Failed to set option\n");
@@ -696,13 +694,13 @@ static int swr_convert_internal(struct SwrContext *s, AudioData *out, int out_co
 
                     if(len1)
                         for(ch=0; ch<preout->ch_count; ch++)
-                            s->mix_2_1_simd(conv_src->ch[ch], preout->ch[ch], s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos, s->native_simd_one, 0, 0, len1);
+                            s->mix_2_1_simd(conv_src->ch[ch], preout->ch[ch], s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos, &s->native_simd_one, 0, 0, len1);
                     if(out_count != len1)
                         for(ch=0; ch<preout->ch_count; ch++)
-                            s->mix_2_1_f(conv_src->ch[ch] + off, preout->ch[ch] + off, s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos + off, s->native_one, 0, 0, out_count - len1);
+                            s->mix_2_1_f(conv_src->ch[ch] + off, preout->ch[ch] + off, s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos + off, &s->native_one, 0, 0, out_count - len1);
                 } else {
                     for(ch=0; ch<preout->ch_count; ch++)
-                        s->mix_2_1_f(conv_src->ch[ch], preout->ch[ch], s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos, s->native_one, 0, 0, out_count);
+                        s->mix_2_1_f(conv_src->ch[ch], preout->ch[ch], s->dither.noise.ch[ch] + s->dither.noise.bps * s->dither.noise_pos, &s->native_one, 0, 0, out_count);
                 }
             } else {
                 switch(s->int_sample_fmt) {
@@ -730,14 +728,13 @@ int attribute_align_arg swr_convert(struct SwrContext *s,
 {
     AudioData * in= &s->in;
     AudioData *out= &s->out;
-    int av_unused max_output;
 
     if (!swr_is_initialized(s)) {
         av_log(s, AV_LOG_ERROR, "Context has not been initialized\n");
         return AVERROR(EINVAL);
     }
 #if defined(ASSERT_LEVEL) && ASSERT_LEVEL >1
-    max_output = swr_get_out_samples(s, in_count);
+    int max_output = swr_get_out_samples(s, in_count);
 #endif
 
     while(s->drop_output > 0){

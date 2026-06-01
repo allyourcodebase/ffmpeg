@@ -39,7 +39,6 @@ typedef uint64_t FFVulkanExtensions;
 #define FF_VK_EXT_EXTERNAL_WIN32_MEMORY  (1ULL <<  6) /* VK_KHR_external_memory_win32 */
 #define FF_VK_EXT_EXTERNAL_WIN32_SEM     (1ULL <<  7) /* VK_KHR_external_semaphore_win32 */
 
-#define FF_VK_EXT_DESCRIPTOR_BUFFER      (1ULL <<  8) /* VK_EXT_descriptor_buffer */
 #define FF_VK_EXT_DEVICE_DRM             (1ULL <<  9) /* VK_EXT_physical_device_drm */
 #define FF_VK_EXT_ATOMIC_FLOAT           (1ULL << 10) /* VK_EXT_shader_atomic_float */
 #define FF_VK_EXT_COOP_MATRIX            (1ULL << 11) /* VK_KHR_cooperative_matrix */
@@ -50,6 +49,10 @@ typedef uint64_t FFVulkanExtensions;
 #define FF_VK_EXT_EXPECT_ASSUME          (1ULL << 16) /* VK_KHR_shader_expect_assume */
 #define FF_VK_EXT_SUBGROUP_ROTATE        (1ULL << 17) /* VK_KHR_shader_subgroup_rotate */
 #define FF_VK_EXT_HOST_IMAGE_COPY        (1ULL << 18) /* VK_EXT_host_image_copy */
+#define FF_VK_EXT_ZERO_INITIALIZE        (1ULL << 19) /* VK_EXT_zero_initialize_device_memory */
+#define FF_VK_EXT_EXPLICIT_MEM_LAYOUT    (1ULL << 20) /* VK_KHR_workgroup_memory_explicit_layout */
+#define FF_VK_EXT_REPLICATED_COMPOSITES  (1ULL << 21) /* VK_EXT_shader_replicated_composites */
+#define FF_VK_EXT_LONG_VECTOR            (1ULL << 22) /* VK_EXT_shader_long_vector */
 
 /* Video extensions */
 #define FF_VK_EXT_VIDEO_QUEUE            (1ULL << 36) /* VK_KHR_video_queue */
@@ -114,6 +117,7 @@ typedef uint64_t FFVulkanExtensions;
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              EndCommandBuffer)                        \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              FreeCommandBuffers)                      \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdDispatch)                             \
+    MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdDispatchBase)                                       \
                                                                                          \
     /* Queue */                                                                          \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              GetDeviceQueue)                          \
@@ -154,6 +158,7 @@ typedef uint64_t FFVulkanExtensions;
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdCopyImageToBuffer)                    \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdClearColorImage)                                    \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdCopyBuffer)                                         \
+    MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CmdUpdateBuffer)                                       \
                                                                                          \
     /* Buffer */                                                                         \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              GetBufferMemoryRequirements2)            \
@@ -182,13 +187,6 @@ typedef uint64_t FFVulkanExtensions;
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroyDescriptorPool)                   \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              DestroyDescriptorSetLayout)              \
                                                                                          \
-    /* Descriptor buffers */                                                               \
-    MACRO(1, 1, FF_VK_EXT_DESCRIPTOR_BUFFER,    GetDescriptorSetLayoutSizeEXT)             \
-    MACRO(1, 1, FF_VK_EXT_DESCRIPTOR_BUFFER,    GetDescriptorSetLayoutBindingOffsetEXT)    \
-    MACRO(1, 1, FF_VK_EXT_DESCRIPTOR_BUFFER,    GetDescriptorEXT)                          \
-    MACRO(1, 1, FF_VK_EXT_DESCRIPTOR_BUFFER,    CmdBindDescriptorBuffersEXT)               \
-    MACRO(1, 1, FF_VK_EXT_DESCRIPTOR_BUFFER,    CmdSetDescriptorBufferOffsetsEXT)          \
-                                                                                           \
     /* DescriptorUpdateTemplate */                                                       \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              UpdateDescriptorSetWithTemplate)         \
     MACRO(1, 1, FF_VK_EXT_NO_FLAG,              CreateDescriptorUpdateTemplate)          \

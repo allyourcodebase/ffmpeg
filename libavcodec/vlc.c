@@ -499,19 +499,10 @@ static int vlc_multi_gen(VLC_MULTI_ELEM *table, const VLC *single,
     for (int j = 0; j < 1<<numbits; j++) {
         table[j].len = single->table[j].len;
         table[j].num = single->table[j].len > 0 ? 1 : 0;
-<<<<<<< HEAD
-        if (is16bit)
-            AV_WN16(table[j].val, single->table[j].sym);
-        else
-            table[j].val[0] = single->table[j].sym;
-||||||| e7d938073e
-        AV_WN16(table[j].val, single->table[j].sym);
-=======
         if (is16bit)
             table[j].val16[0] = single->table[j].sym;
         else
             table[j].val8[0]  = single->table[j].sym;
->>>>>>> 1c28c14f778a167936fe5e026e07b17223db39e5
     }
 
     add_level(table, is16bit, nb_codes, numbits, buf,

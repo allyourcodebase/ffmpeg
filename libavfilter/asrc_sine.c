@@ -221,7 +221,7 @@ static av_cold int query_formats(const AVFilterContext *ctx,
     int sample_rates[] = { sine->sample_rate, -1 };
     static const enum AVSampleFormat sample_fmts[] = { AV_SAMPLE_FMT_S16,
                                                        AV_SAMPLE_FMT_NONE };
-    int ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
+    int ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts);
     if (ret < 0)
         return ret;
 
@@ -257,7 +257,7 @@ static int activate(AVFilterContext *ctx)
     if (!ff_outlink_frame_wanted(outlink))
         return FFERROR_NOT_READY;
     if (nb_samples <= 0) {
-        av_log(sine, AV_LOG_WARNING, "nb samples expression evaluated to %d, "
+        av_log(ctx, AV_LOG_WARNING, "nb samples expression evaluated to %d, "
                "defaulting to 1024\n", nb_samples);
         nb_samples = 1024;
     }

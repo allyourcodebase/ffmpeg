@@ -252,7 +252,7 @@ static int query_formats(const AVFilterContext *ctx,
         AV_PIX_FMT_NONE
     };
 
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out,
+    return ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out,
                                             s->alpha ? alpha_pix_fmts : pix_fmts);
 }
 
@@ -394,7 +394,7 @@ void ff_v360_init(V360Context *s, int depth)
         break;
     }
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_v360_init_x86(s, depth);
 #endif
 }

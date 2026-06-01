@@ -48,7 +48,7 @@
 
 static const VLCElem *mv_tables[2];
 
-static inline int msmpeg4v1_pred_dc(MpegEncContext * s, int n,
+static inline int msmpeg4v1_pred_dc(H263DecContext *const h, int n,
                                     int32_t **dc_val_ptr)
 {
     int i;
@@ -59,8 +59,8 @@ static inline int msmpeg4v1_pred_dc(MpegEncContext * s, int n,
         i= n-3;
     }
 
-    *dc_val_ptr= &s->last_dc[i];
-    return s->last_dc[i];
+    *dc_val_ptr= &h->last_dc[i];
+    return h->last_dc[i];
 }
 
 /****************************************/
@@ -588,7 +588,7 @@ static int msmpeg4_decode_dc(MSMP4DecContext *const ms, int n, int *dir_ptr)
 
     if (h->c.msmpeg4_version == MSMP4_V1) {
         int32_t *dc_val;
-        pred = msmpeg4v1_pred_dc(&h->c, n, &dc_val);
+        pred = msmpeg4v1_pred_dc(h, n, &dc_val);
         level += pred;
 
         /* update predictor */
@@ -655,9 +655,9 @@ int ff_msmpeg4_decode_block(MSMP4DecContext *const ms, int16_t * block,
         }
         if (h->c.ac_pred) {
             if (dc_pred_dir == 0)
-                scan_table = h->c.permutated_intra_v_scantable; /* left */
+                scan_table = h->permutated_intra_v_scantable; /* left */
             else
-                scan_table = h->c.permutated_intra_h_scantable; /* top */
+                scan_table = h->permutated_intra_h_scantable; /* top */
         } else {
             scan_table = h->c.intra_scantable.permutated;
         }
@@ -849,7 +849,8 @@ av_cold int ff_msmpeg4_decode_init(AVCodecContext *avctx)
 
     h->decode_header = msmpeg4_decode_picture_header;
 
-    ff_msmpeg4_common_init(&h->c);
+    ff_msmpeg4_common_init(&h->c, h->permutated_intra_h_scantable,
+                           h->permutated_intra_v_scantable);
 
     switch (h->c.msmpeg4_version) {
     case MSMP4_V1:

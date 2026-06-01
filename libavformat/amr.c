@@ -25,6 +25,7 @@ Write and read amr data according to RFC3267, http://www.ietf.org/rfc/rfc3267.tx
 
 #include "config_components.h"
 
+#include "libavutil/attributes_internal.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 #include "avformat.h"
@@ -39,10 +40,10 @@ typedef struct AMRContext {
     FFRawDemuxerContext rawctx;
 } AMRContext;
 
-static const uint8_t AMR_header[6]      = "#!AMR\x0a";
-static const uint8_t AMRMC_header[12]   = "#!AMR_MC1.0\x0a";
-static const uint8_t AMRWB_header[9]    = "#!AMR-WB\x0a";
-static const uint8_t AMRWBMC_header[15] = "#!AMR-WB_MC1.0\x0a";
+static attribute_nonstring const uint8_t AMR_header[6]      = "#!AMR\x0a";
+static attribute_nonstring const uint8_t AMRMC_header[12]   = "#!AMR_MC1.0\x0a";
+static attribute_nonstring const uint8_t AMRWB_header[9]    = "#!AMR-WB\x0a";
+static attribute_nonstring const uint8_t AMRWBMC_header[15] = "#!AMR-WB_MC1.0\x0a";
 
 static const uint8_t amrnb_packed_size[16] = {
     13, 14, 16, 18, 20, 21, 27, 32, 6, 1, 1, 1, 1, 1, 1, 1
@@ -144,7 +145,7 @@ static int amrnb_probe(const AVProbeData *p)
 
     while (i < p->buf_size) {
         mode = b[i] >> 3 & 0x0F;
-        if (mode < 9 && (b[i] & 0x4) == 0x4) {
+        if (mode < 9 && (b[i] & 0x4) == 0x4 && (b[i] & 0x03) == 0) {
             int last = b[i];
             int size = amrnb_packed_size[mode];
             while (size--) {
@@ -201,7 +202,7 @@ static int amrwb_probe(const AVProbeData *p)
 
     while (i < p->buf_size) {
         mode = b[i] >> 3 & 0x0F;
-        if (mode < 10 && (b[i] & 0x4) == 0x4) {
+        if (mode < 10 && (b[i] & 0x4) == 0x4 && (b[i] & 0x03) == 0) {
             int last = b[i];
             int size = amrwb_packed_size[mode];
             while (size--) {

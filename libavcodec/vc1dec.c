@@ -336,7 +336,7 @@ static int vc1_decode_sprites(VC1Context *v, GetBitContext* gb)
     return 0;
 }
 
-static void vc1_sprite_flush(AVCodecContext *avctx)
+static av_cold void vc1_sprite_flush(AVCodecContext *avctx)
 {
     VC1Context *v     = avctx->priv_data;
     MpegEncContext *s = &v->s;
@@ -399,7 +399,7 @@ static av_cold int vc1_decode_init_alloc_tables(VC1Context *v)
     v->mb_type = v->mb_type_base + s->b8_stride + 1;
 
     /* allocate memory to store block level MV info */
-    v->blk_mv_type_base = av_mallocz(     s->b8_stride * (mb_height * 2 + 1) + s->mb_stride * (mb_height + 1) * 2);
+    v->blk_mv_type_base = av_mallocz(     s->b8_stride * (mb_height * 2 + 1));
     if (!v->blk_mv_type_base)
         return AVERROR(ENOMEM);
     v->blk_mv_type      = v->blk_mv_type_base + s->b8_stride + 1;
@@ -467,9 +467,6 @@ av_cold int ff_vc1_decode_init(AVCodecContext *avctx)
     ret = ff_mpv_common_init(s);
     if (ret < 0)
         return ret;
-
-    ff_permute_scantable(s->intra_scantable.permutated, ff_wmv1_scantable[1],
-                         s->idsp.idct_permutation);
 
     ret = vc1_decode_init_alloc_tables(v);
     if (ret < 0) {
@@ -686,7 +683,11 @@ static av_cold int vc1_decode_init(AVCodecContext *avctx)
             if (size <= 0)
                 continue;
             buf2_size = v->vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
-            init_get_bits(&gb, buf2, buf2_size * 8);
+            ret = init_get_bits8(&gb, buf2, buf2_size);
+            if (ret < 0) {
+                av_free(buf2);
+                return ret;
+            }
             switch (AV_RB32(start)) {
             case VC1_CODE_SEQHDR:
                 if ((ret = ff_vc1_decode_sequence_header(avctx, v, &gb)) < 0) {
@@ -835,8 +836,11 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
     if(s->avctx->flags & AV_CODEC_FLAG_LOW_DELAY)
         s->low_delay = 1;
 
+    if (buf_size >= 4 && AV_RB32(&buf[buf_size-4]) == VC1_CODE_ENDOFSEQ)
+        buf_size -= 4;
+
     /* no supplementary picture */
-    if (buf_size == 0 || (buf_size == 4 && AV_RB32(buf) == VC1_CODE_ENDOFSEQ)) {
+    if (buf_size == 0) {
         /* special case for last picture */
         if (s->low_delay == 0 && s->next_pic.ptr) {
             if ((ret = av_frame_ref(pict, s->next_pic.ptr->f)) < 0)
@@ -888,8 +892,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     }
                     buf_size3 = v->vc1dsp.vc1_unescape_buffer(start + 4, size,
                                                               slices[n_slices].buf);
-                    init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
-                                  buf_size3 << 3);
+                    ret = init_get_bits8(&slices[n_slices].gb, slices[n_slices].buf, buf_size3);
+                    if (ret < 0)
+                        goto err;
                     slices[n_slices].mby_start = avctx->coded_height + 31 >> 5;
                     slices[n_slices].rawbuf = start;
                     slices[n_slices].raw_size = size + 4;
@@ -899,7 +904,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                 }
                 case VC1_CODE_ENTRYPOINT: /* it should be before frame data */
                     buf_size2 = v->vc1dsp.vc1_unescape_buffer(start + 4, size, buf2);
-                    init_get_bits(&v->gb, buf2, buf_size2 * 8);
+                    ret = init_get_bits8(&v->gb, buf2, buf_size2);
+                    if (ret < 0)
+                        goto err;
                     ff_vc1_decode_entry_point(avctx, v, &v->gb);
                     break;
                 case VC1_CODE_SLICE: {
@@ -918,8 +925,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     }
                     buf_size3 = v->vc1dsp.vc1_unescape_buffer(start + 4, size,
                                                               slices[n_slices].buf);
-                    init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
-                                  buf_size3 << 3);
+                    ret = init_get_bits8(&slices[n_slices].gb, slices[n_slices].buf, buf_size3);
+                    if (ret < 0)
+                        goto err;
                     slices[n_slices].mby_start = get_bits(&slices[n_slices].gb, 9);
                     slices[n_slices].rawbuf = start;
                     slices[n_slices].raw_size = size + 4;
@@ -952,8 +960,9 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                     goto err;
                 }
                 buf_size3 = v->vc1dsp.vc1_unescape_buffer(divider + 4, buf + buf_size - divider - 4, slices[n_slices].buf);
-                init_get_bits(&slices[n_slices].gb, slices[n_slices].buf,
-                              buf_size3 << 3);
+                ret = init_get_bits8(&slices[n_slices].gb, slices[n_slices].buf, buf_size3);
+                if (ret < 0)
+                    goto err;
                 slices[n_slices].mby_start = s->mb_height + 1 >> 1;
                 slices[n_slices].rawbuf = divider;
                 slices[n_slices].raw_size = buf + buf_size - divider;
@@ -964,11 +973,13 @@ static int vc1_decode_frame(AVCodecContext *avctx, AVFrame *pict,
         } else {
             buf_size2 = v->vc1dsp.vc1_unescape_buffer(buf, buf_size, buf2);
         }
-        init_get_bits(&v->gb, buf2, buf_size2*8);
+        ret = init_get_bits8(&v->gb, buf2, buf_size2);
+        if (ret < 0)
+            goto err;
     } else{
         ret = init_get_bits8(&v->gb, buf, buf_size);
         if (ret < 0)
-            return ret;
+            goto err;
     }
 
     if (v->res_sprite) {
@@ -1369,12 +1380,7 @@ image:
     }
 
 end:
-    av_free(buf2);
-    for (i = 0; i < n_slices; i++)
-        av_free(slices[i].buf);
-    av_free(slices);
-    return buf_size;
-
+    ret = buf_size;
 err:
     av_free(buf2);
     for (i = 0; i < n_slices; i++)

@@ -39,6 +39,7 @@
 #include "pixdesc.h"
 #include "pixfmt.h"
 #include "imgutils.h"
+#include "thread.h"
 #include "libavutil/avassert.h"
 #include <AMF/core/Surface.h>
 #include <AMF/core/Trace.h>
@@ -49,6 +50,15 @@
 #endif
 #define FFMPEG_AMF_WRITER_ID L"ffmpeg_amf"
 
+static void amf_lock_default(void *opaque)
+{
+    ff_mutex_lock((AVMutex*)opaque);
+}
+
+static void amf_unlock_default(void *opaque)
+{
+    ff_mutex_unlock((AVMutex*)opaque);
+}
 
 typedef struct AmfTraceWriter {
     AMFTraceWriterVtbl *vtblp;
@@ -137,7 +147,7 @@ enum AVPixelFormat av_amf_to_av_format(enum AMF_SURFACE_FORMAT fmt)
             return format_map[i].av_format;
         }
     }
-    return AMF_SURFACE_UNKNOWN;
+    return AV_PIX_FMT_NONE;
 }
 
 static const enum AVPixelFormat supported_formats[] = {
@@ -145,6 +155,7 @@ static const enum AVPixelFormat supported_formats[] = {
     AV_PIX_FMT_YUV420P,
     AV_PIX_FMT_BGRA,
     AV_PIX_FMT_RGBA,
+    AV_PIX_FMT_BGR0,
     AV_PIX_FMT_P010,
 #if CONFIG_D3D11VA
     AV_PIX_FMT_D3D11,
@@ -352,7 +363,7 @@ static int amf_transfer_data_from(AVHWFramesContext *ctx, AVFrame *dst,
 
 static void amf_device_uninit(AVHWDeviceContext *device_ctx)
 {
-    AVAMFDeviceContext      *amf_ctx = device_ctx->hwctx;
+    AVAMFDeviceContext *amf_ctx = device_ctx->hwctx;
     AMF_RESULT          res = AMF_NOT_INITIALIZED;
     AMFTrace           *trace;
 
@@ -377,6 +388,13 @@ static void amf_device_uninit(AVHWDeviceContext *device_ctx)
         amf_writer_free(amf_ctx->trace_writer);
     }
 
+    if (amf_ctx->lock_ctx == amf_lock_default) {
+        ff_mutex_destroy((AVMutex*)amf_ctx->lock_ctx);
+        av_freep(&amf_ctx->lock_ctx);
+        amf_ctx->lock = NULL;
+        amf_ctx->unlock = NULL;
+    }
+
     amf_ctx->version = 0;
 }
 
@@ -385,6 +403,16 @@ static int amf_device_init(AVHWDeviceContext *ctx)
     AVAMFDeviceContext *amf_ctx = ctx->hwctx;
     AMFContext1 *context1 = NULL;
     AMF_RESULT res;
+
+    if (!amf_ctx->lock) {
+        amf_ctx->lock_ctx = av_mallocz(sizeof(AVMutex));
+        if (!amf_ctx->lock_ctx) {
+            return AVERROR(ENOMEM);
+        }
+        ff_mutex_init((AVMutex*)amf_ctx->lock_ctx, NULL);
+        amf_ctx->lock   = amf_lock_default;
+        amf_ctx->unlock = amf_unlock_default;
+    }
 
 #ifdef _WIN32
     res = amf_ctx->context->pVtbl->InitDX11(amf_ctx->context, NULL, AMF_DX11_1);
@@ -414,7 +442,8 @@ static int amf_device_init(AVHWDeviceContext *ctx)
         }
      }
 #endif
-     return 0;
+
+    return 0;
 }
 
 static int amf_load_library(AVAMFDeviceContext* amf_ctx,  void* avcl)
@@ -609,33 +638,23 @@ static int amf_device_derive(AVHWDeviceContext *device_ctx,
         return ret;
 
     switch (child_device_ctx->type) {
-
 #if CONFIG_DXVA2
-    case AV_HWDEVICE_TYPE_DXVA2: {
-            return amf_init_from_dxva2_device(amf_ctx, child_device_ctx);
-        }
-        break;
+    case AV_HWDEVICE_TYPE_DXVA2:
+        return amf_init_from_dxva2_device(amf_ctx, child_device_ctx);
 #endif
-
 #if CONFIG_D3D11VA
-    case AV_HWDEVICE_TYPE_D3D11VA: {
-            return amf_init_from_d3d11_device(amf_ctx, child_device_ctx);
-        }
-        break;
+    case AV_HWDEVICE_TYPE_D3D11VA:
+        return amf_init_from_d3d11_device(amf_ctx, child_device_ctx);
 #endif
 #if CONFIG_D3D12VA
-    case AV_HWDEVICE_TYPE_D3D12VA: {
-            return amf_init_from_d3d12_device(amf_ctx, child_device_ctx);
-        }
-        break;
+    case AV_HWDEVICE_TYPE_D3D12VA:
+        return amf_init_from_d3d12_device(amf_ctx, child_device_ctx);
 #endif
-    default: {
-            av_log(child_device_ctx, AV_LOG_ERROR, "AMF initialisation from a %s device is not supported.\n",
-                av_hwdevice_get_type_name(child_device_ctx->type));
-            return AVERROR(ENOSYS);
-        }
+    default:
+        av_log(child_device_ctx, AV_LOG_ERROR, "AMF initialisation from a %s device is not supported.\n",
+               av_hwdevice_get_type_name(child_device_ctx->type));
+        return AVERROR(ENOSYS);
     }
-    return 0;
 }
 
 const HWContextType ff_hwcontext_type_amf = {

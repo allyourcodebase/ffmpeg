@@ -502,7 +502,7 @@ static int config_audio_output(AVFilterLink *outlink)
             return AVERROR(ENOMEM);
     }
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_ebur128_init_x86(&ebur128->dsp, nb_channels);
 #endif
     return 0;
@@ -1022,7 +1022,7 @@ static int query_formats(const AVFilterContext *ctx,
 
     /* set optional output video format */
     if (ebur128->do_video) {
-        formats = ff_make_format_list(pix_fmts);
+        formats = ff_make_pixel_format_list(pix_fmts);
         if ((ret = ff_formats_ref(formats, &cfg_out[0]->formats)) < 0)
             return ret;
         out_idx = 1;
@@ -1031,7 +1031,7 @@ static int query_formats(const AVFilterContext *ctx,
     /* set input and output audio formats
      * Note: ff_set_common_* functions are not used because they affect all the
      * links, and thus break the video format negotiation */
-    formats = ff_make_format_list(sample_fmts);
+    formats = ff_make_sample_format_list(sample_fmts);
     if ((ret = ff_formats_ref(formats, &cfg_in[0]->formats)) < 0 ||
         (ret = ff_formats_ref(formats, &cfg_out[out_idx]->formats)) < 0)
         return ret;

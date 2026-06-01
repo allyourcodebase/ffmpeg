@@ -25,6 +25,7 @@
  */
 
 #include "parser.h"
+#include "parser_internal.h"
 
 typedef struct QOIParseContext {
     ParseContext pc;
@@ -69,9 +70,9 @@ static int qoi_parse(AVCodecParserContext *s, AVCodecContext *avctx,
     return next;
 }
 
-const AVCodecParser ff_qoi_parser = {
-    .codec_ids      = { AV_CODEC_ID_QOI },
+const FFCodecParser ff_qoi_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_QOI),
     .priv_data_size = sizeof(QOIParseContext),
-    .parser_parse   = qoi_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = qoi_parse,
+    .close          = ff_parse_close,
 };

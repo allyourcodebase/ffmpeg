@@ -32,6 +32,7 @@
 
 #include "bytestream.h"
 #include "codec_id.h"
+#include "parser_internal.h"
 #define UNCHECKED_BITSTREAM_READER 0
 #define BITSTREAM_READER_LE
 #include "get_bits.h"
@@ -1074,6 +1075,11 @@ static void populate_fields(AVCodecParserContext *s, AVCodecContext *avctx, cons
         else
             s->format = meta->have_alpha ? AV_PIX_FMT_RGBAF32 : AV_PIX_FMT_RGBF32;
     }
+
+    if (meta->have_alpha) {
+        avctx->alpha_mode = meta->alpha_associated ? AVALPHA_MODE_PREMULTIPLIED
+                                                   : AVALPHA_MODE_STRAIGHT;
+    }
 }
 
 static int skip_icc_profile(void *avctx, JXLParseContext *ctx, GetBitContext *gb)
@@ -1540,9 +1546,9 @@ flush:
     return next;
 }
 
-const AVCodecParser ff_jpegxl_parser = {
-    .codec_ids      = { AV_CODEC_ID_JPEGXL, AV_CODEC_ID_JPEGXL_ANIM },
+const FFCodecParser ff_jpegxl_parser = {
+    PARSER_CODEC_LIST(AV_CODEC_ID_JPEGXL, AV_CODEC_ID_JPEGXL_ANIM),
     .priv_data_size = sizeof(JXLParseContext),
-    .parser_parse   = jpegxl_parse,
-    .parser_close   = ff_parse_close,
+    .parse          = jpegxl_parse,
+    .close          = ff_parse_close,
 };

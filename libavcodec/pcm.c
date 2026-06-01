@@ -38,21 +38,32 @@
 #include "encode.h"
 #include "pcm_tablegen.h"
 
-static av_cold int pcm_encode_init(AVCodecContext *avctx)
+av_unused av_cold static int pcm_encode_init(AVCodecContext *avctx)
 {
     avctx->frame_size = 0;
 #if !CONFIG_HARDCODED_TABLES
     switch (avctx->codec->id) {
-#define INIT_ONCE(id, name)                                                 \
-    case AV_CODEC_ID_PCM_ ## id:                                            \
-        if (CONFIG_PCM_ ## id ## _ENCODER) {                                \
-            static AVOnce init_static_once = AV_ONCE_INIT;                  \
-            ff_thread_once(&init_static_once, pcm_ ## name ## _tableinit);  \
-        }                                                                   \
-        break
-        INIT_ONCE(ALAW,  alaw);
-        INIT_ONCE(MULAW, ulaw);
-        INIT_ONCE(VIDC,  vidc);
+#if CONFIG_PCM_ALAW_ENCODER
+    case AV_CODEC_ID_PCM_ALAW: {
+        static AVOnce once_alaw = AV_ONCE_INIT;
+        ff_thread_once(&once_alaw, pcm_alaw_tableinit);
+        break;
+    }
+#endif
+#if CONFIG_PCM_MULAW_ENCODER
+    case AV_CODEC_ID_PCM_MULAW: {
+        static AVOnce once_mulaw = AV_ONCE_INIT;
+        ff_thread_once(&once_mulaw, pcm_ulaw_tableinit);
+        break;
+    }
+#endif
+#if CONFIG_PCM_VIDC_ENCODER
+    case AV_CODEC_ID_PCM_VIDC: {
+        static AVOnce once_vidc = AV_ONCE_INIT;
+        ff_thread_once(&once_vidc, pcm_vidc_tableinit);
+        break;
+    }
+#endif
     default:
         break;
     }
@@ -93,10 +104,10 @@ static av_cold int pcm_encode_init(AVCodecContext *avctx)
         }                                                               \
     }
 
-static int pcm_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
-                            const AVFrame *frame, int *got_packet_ptr)
+av_unused static int pcm_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
+                                      const AVFrame *frame, int *got_packet_ptr)
 {
-    int n, c, sample_size, v, ret;
+    int n, c, sample_size, ret;
     const short *samples;
     unsigned char *dst;
     const uint8_t *samples_uint8_t;
@@ -216,24 +227,30 @@ static int pcm_encode_frame(AVCodecContext *avctx, AVPacket *avpkt,
             bytestream_put_buffer(&dst, src, n * sample_size);
         }
         break;
+#if CONFIG_PCM_ALAW_ENCODER
     case AV_CODEC_ID_PCM_ALAW:
         for (; n > 0; n--) {
-            v      = *samples++;
+            int v = *samples++;
             *dst++ = linear_to_alaw[(v + 32768) >> 2];
         }
         break;
+#endif
+#if CONFIG_PCM_MULAW_ENCODER
     case AV_CODEC_ID_PCM_MULAW:
         for (; n > 0; n--) {
-            v      = *samples++;
+            int v = *samples++;
             *dst++ = linear_to_ulaw[(v + 32768) >> 2];
         }
         break;
+#endif
+#if CONFIG_PCM_VIDC_ENCODER
     case AV_CODEC_ID_PCM_VIDC:
         for (; n > 0; n--) {
-            v      = *samples++;
+            int v = *samples++;
             *dst++ = linear_to_vidc[(v + 32768) >> 2];
         }
         break;
+#endif
     default:
         return -1;
     }
@@ -246,7 +263,7 @@ typedef struct PCMDecode {
     int sample_size;
 } PCMDecode;
 
-static av_cold av_unused int pcm_decode_init(AVCodecContext *avctx)
+av_unused av_cold static int pcm_decode_init(AVCodecContext *avctx)
 {
     PCMDecode *s = avctx->priv_data;
     static const struct {
@@ -296,7 +313,7 @@ typedef struct PCMScaleDecode {
     float   scale;
 } PCMScaleDecode;
 
-static av_cold av_unused int pcm_scale_decode_init(AVCodecContext *avctx)
+av_unused av_cold static int pcm_scale_decode_init(AVCodecContext *avctx)
 {
     PCMScaleDecode *s = avctx->priv_data;
     AVFloatDSPContext *fdsp;
@@ -322,25 +339,31 @@ typedef struct PCMLUTDecode {
     int16_t   table[256];
 } PCMLUTDecode;
 
-static av_cold av_unused int pcm_lut_decode_init(AVCodecContext *avctx)
+av_unused av_cold static int pcm_lut_decode_init(AVCodecContext *avctx)
 {
     PCMLUTDecode *s = avctx->priv_data;
 
     switch (avctx->codec_id) {
     default:
         av_unreachable("pcm_lut_decode_init() only used with alaw, mulaw and vidc");
+#if CONFIG_PCM_ALAW_DECODER
     case AV_CODEC_ID_PCM_ALAW:
         for (int i = 0; i < 256; i++)
             s->table[i] = alaw2linear(i);
         break;
+#endif
+#if CONFIG_PCM_MULAW_DECODER
     case AV_CODEC_ID_PCM_MULAW:
         for (int i = 0; i < 256; i++)
             s->table[i] = ulaw2linear(i);
         break;
+#endif
+#if CONFIG_PCM_VIDC_DECODER
     case AV_CODEC_ID_PCM_VIDC:
         for (int i = 0; i < 256; i++)
             s->table[i] = vidc2linear(i);
         break;
+#endif
     }
 
     avctx->sample_fmt = AV_SAMPLE_FMT_S16;
@@ -547,6 +570,8 @@ static int pcm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             bytestream_get_buffer(&src, samples, n * sample_size);
         }
         break;
+#if CONFIG_PCM_ALAW_DECODER || CONFIG_PCM_MULAW_DECODER || \
+    CONFIG_PCM_VIDC_DECODER
     case AV_CODEC_ID_PCM_ALAW:
     case AV_CODEC_ID_PCM_MULAW:
     case AV_CODEC_ID_PCM_VIDC: {
@@ -557,6 +582,7 @@ static int pcm_decode_frame(AVCodecContext *avctx, AVFrame *frame,
             *samples_16++ = lut[*src++];
         break;
     }
+#endif
     case AV_CODEC_ID_PCM_LXF:
     {
         int i;

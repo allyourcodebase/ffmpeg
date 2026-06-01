@@ -21,6 +21,35 @@
 #include "libswscale/swscale.h"
 #include "libswscale/swscale_internal.h"
 #include "libavutil/aarch64/cpu.h"
+#include "asm-offsets.h"
+
+#define SIZEOF_MEMBER(type, member) \
+    sizeof(((type*)0)->member)
+
+static_assert(offsetof(SwsLuts, in)  == SL_IN,  "struct layout mismatch");
+static_assert(offsetof(SwsLuts, out) == SL_OUT, "struct layout mismatch");
+
+static_assert(offsetof(SwsColorXform, gamma) == SCX_GAMMA,
+              "struct layout mismatch");
+static_assert(offsetof(SwsColorXform, mat) == SCX_MAT,
+              "struct layout mismatch");
+
+static_assert(offsetof(SwsColorXform, mat) +
+              2 * SIZEOF_MEMBER(SwsColorXform, mat[0]) +
+              2 * SIZEOF_MEMBER(SwsColorXform, mat[0][0]) == SCX_MAT_22,
+              "struct layout mismatch");
+
+void ff_xyz12Torgb48le_neon_asm(const SwsColorXform *c, uint8_t *dst,
+                                int dst_stride, const uint8_t *src,
+                                int src_stride, int w, int h);
+
+static void xyz12Torgb48le_neon(const SwsInternal *c, uint8_t *dst,
+                                int dst_stride, const uint8_t *src,
+                                int src_stride, int w, int h)
+{
+    ff_xyz12Torgb48le_neon_asm(&c->xyz2rgb, dst, dst_stride, src, src_stride,
+                               w, h);
+}
 
 void ff_hscale16to15_4_neon_asm(int shift, int16_t *_dst, int dstW,
                       const uint8_t *_src, const int16_t *filter,
@@ -158,6 +187,29 @@ void ff_hscale ## from_bpc ## to ## to_bpc ## _ ## filter_n ## _ ## opt( \
 
 ALL_SCALE_FUNCS(neon);
 
+void ff_yuv2planeX_10_neon(const int16_t *filter, int filterSize,
+                           const int16_t **src, uint16_t *dest, int dstW,
+                           int big_endian, int output_bits);
+
+#define yuv2NBPS(bits, BE_LE, is_be, template_size, typeX_t)                                    \
+static void yuv2planeX_ ## bits ## BE_LE ## _neon(const int16_t *filter, int filterSize,        \
+                                                  const int16_t **src, uint8_t *dest, int dstW, \
+                                                  const uint8_t *dither, int offset)            \
+{                                                                                               \
+    ff_yuv2planeX_## template_size ## _neon(filter,                                             \
+                                            filterSize, (const typeX_t **) src,                 \
+                                            (uint16_t *) dest, dstW, is_be, bits);              \
+}
+
+yuv2NBPS( 9, BE, 1, 10, int16_t)
+yuv2NBPS( 9, LE, 0, 10, int16_t)
+yuv2NBPS(10, BE, 1, 10, int16_t)
+yuv2NBPS(10, LE, 0, 10, int16_t)
+yuv2NBPS(12, BE, 1, 10, int16_t)
+yuv2NBPS(12, LE, 0, 10, int16_t)
+yuv2NBPS(14, BE, 1, 10, int16_t)
+yuv2NBPS(14, LE, 0, 10, int16_t)
+
 void ff_yuv2planeX_8_neon(const int16_t *filter, int filterSize,
                           const int16_t **src, uint8_t *dest, int dstW,
                           const uint8_t *dither, int offset);
@@ -167,6 +219,25 @@ void ff_yuv2plane1_8_neon(
         int dstW,
         const uint8_t *dither,
         int offset);
+
+void ff_yuv2nv12cX_neon_asm(int isSwapped, const uint8_t *chrDither,
+                            const int16_t *chrFilter, int chrFilterSize,
+                            const int16_t **chrUSrc, const int16_t **chrVSrc,
+                            uint8_t *dest, int chrDstW);
+
+static void ff_yuv2nv12cX_neon(enum AVPixelFormat dstFormat, const uint8_t *chrDither,
+                               const int16_t *chrFilter, int chrFilterSize,
+                               const int16_t **chrUSrc, const int16_t **chrVSrc,
+                               uint8_t *dest, int chrDstW)
+{
+    if (!isSwappedChroma(dstFormat)) {
+        ff_yuv2nv12cX_neon_asm(1, chrDither, chrFilter, chrFilterSize,
+                               chrUSrc, chrVSrc, dest, chrDstW);
+    } else {
+        ff_yuv2nv12cX_neon_asm(0, chrDither, chrFilter, chrFilterSize,
+                               chrUSrc, chrVSrc, dest, chrDstW);
+    }
+}
 
 #define ASSIGN_SCALE_FUNC2(hscalefn, filtersize, opt) do {              \
     if (c->srcBpc == 8) {                                               \
@@ -265,9 +336,22 @@ av_cold void ff_sws_init_range_convert_aarch64(SwsInternal *c)
     }
 }
 
+av_cold void ff_sws_init_xyzdsp_aarch64(SwsInternal *c)
+{
+    int cpu_flags = av_get_cpu_flags();
+
+    if (have_neon(cpu_flags)) {
+        if (!isBE(c->opts.src_format)) {
+            c->xyz12Torgb48 = xyz12Torgb48le_neon;
+        }
+    }
+}
+
 av_cold void ff_sws_init_swscale_aarch64(SwsInternal *c)
 {
     int cpu_flags = av_get_cpu_flags();
+    enum AVPixelFormat dstFormat = c->opts.dst_format;
+    const AVPixFmtDescriptor *desc = av_pix_fmt_desc_get(dstFormat);
 
     if (have_neon(cpu_flags)) {
         ASSIGN_SCALE_FUNC(c->hyScale, c->hLumFilterSize, neon);
@@ -275,6 +359,21 @@ av_cold void ff_sws_init_swscale_aarch64(SwsInternal *c)
         ASSIGN_VSCALE_FUNC(c->yuv2plane1, neon);
         if (c->dstBpc == 8) {
             c->yuv2planeX = ff_yuv2planeX_8_neon;
+            if (isSemiPlanarYUV(dstFormat) && !isDataInHighBits(dstFormat))
+                c->yuv2nv12cX = ff_yuv2nv12cX_neon;
+        }
+
+        if (isNBPS(dstFormat) && !isSemiPlanarYUV(dstFormat) && !isDataInHighBits(dstFormat)) {
+            if (desc->comp[0].depth == 9) {
+                c->yuv2planeX = isBE(dstFormat) ? yuv2planeX_9BE_neon  : yuv2planeX_9LE_neon;
+            } else if (desc->comp[0].depth == 10) {
+                c->yuv2planeX = isBE(dstFormat) ? yuv2planeX_10BE_neon  : yuv2planeX_10LE_neon;
+            } else if (desc->comp[0].depth == 12) {
+                c->yuv2planeX = isBE(dstFormat) ? yuv2planeX_12BE_neon  : yuv2planeX_12LE_neon;
+            } else if (desc->comp[0].depth == 14) {
+                c->yuv2planeX = isBE(dstFormat) ? yuv2planeX_14BE_neon  : yuv2planeX_14LE_neon;
+            } else
+                av_assert0(0);
         }
         switch (c->opts.src_format) {
         case AV_PIX_FMT_ABGR:

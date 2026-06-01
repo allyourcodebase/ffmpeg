@@ -24,39 +24,30 @@
 #include "libavutil/vulkan.h"
 #include "ffv1.h"
 
-int ff_ffv1_vk_update_state_transition_data(FFVulkanContext *s,
-                                            FFVkBuffer *vkb, FFV1Context *f);
+void ff_ffv1_vk_set_common_sl(AVCodecContext *avctx, FFV1Context *f,
+                              VkSpecializationInfo *sl,
+                              enum AVPixelFormat sw_format);
 
-int ff_ffv1_vk_init_state_transition_data(FFVulkanContext *s,
-                                          FFVkBuffer *vkb, FFV1Context *f);
+int ff_ffv1_vk_init_consts(FFVulkanContext *s, FFVkBuffer *vkb, FFV1Context *f);
 
-int ff_ffv1_vk_init_quant_table_data(FFVulkanContext *s,
-                                     FFVkBuffer *vkb, FFV1Context *f);
+typedef struct FFv1ShaderParams {
+    VkDeviceAddress slice_data;
 
-int ff_ffv1_vk_init_crc_table_data(FFVulkanContext *s,
-                                   FFVkBuffer *vkb, FFV1Context *f);
+    uint32_t extend_lookup[8];
+    uint16_t context_count[8];
 
-typedef struct FFv1VkRCTParameters {
     int fmt_lut[4];
-    int offset;
-    uint8_t bits;
-    uint8_t planar_rgb;
-    uint8_t color_planes;
-    uint8_t transparency;
-    uint8_t version;
-    uint8_t micro_version;
-    uint8_t padding[2];
-} FFv1VkRCTParameters;
+    uint16_t img_size[2];
 
-typedef struct FFv1VkResetParameters {
-    uint32_t context_count[MAX_QUANT_TABLES];
-    VkDeviceAddress slice_state;
     uint32_t plane_state_size;
-    uint8_t codec_planes;
-    uint8_t key_frame;
-    uint8_t version;
-    uint8_t micro_version;
-    uint8_t padding[1];
-} FFv1VkResetParameters;
+    uint32_t key_frame;
+    uint32_t crcref;
+    int micro_version;
+
+    /* Encoder-only */
+    int sar[2];
+    int pic_mode;
+    uint32_t slice_size_max;
+} FFv1ShaderParams;
 
 #endif /* AVCODEC_FFV1_VULKAN_H */

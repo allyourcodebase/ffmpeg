@@ -155,7 +155,7 @@ static int query_formats(const AVFilterContext *ctx,
     };
     int ret;
 
-    ret = ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts[vol->precision]);
+    ret = ff_set_sample_formats_from_list2(ctx, cfg_in, cfg_out, sample_fmts[vol->precision]);
     if (ret < 0)
         return ret;
 
@@ -236,7 +236,7 @@ static av_cold void volume_init(VolumeContext *vol)
         break;
     }
 
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_volume_init_x86(vol);
 #endif
 }

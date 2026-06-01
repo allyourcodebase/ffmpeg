@@ -52,9 +52,15 @@ typedef struct D3D12VAEncodePicture {
     ID3D12Resource *encoded_metadata;
     ID3D12Resource *resolved_metadata;
 
+    int            subresource_index;
+
     D3D12_VIDEO_ENCODER_PICTURE_CONTROL_CODEC_DATA pic_ctl;
 
     int             fence_value;
+
+    // ROI delta QP map (void* to support both INT8 for H.264/HEVC and INT16 for AV1)
+    void           *qp_map;
+    int             qp_map_size;
 } D3D12VAEncodePicture;
 
 typedef struct D3D12VAEncodeProfile {
@@ -150,6 +156,11 @@ typedef struct D3D12VAEncodeContext {
     const struct D3D12VAEncodeType *codec;
 
     /**
+     * Max frame size
+     */
+    int max_frame_size;
+
+    /**
      * Explicitly set RC mode (otherwise attempt to pick from
      * available modes).
      */
@@ -188,6 +199,16 @@ typedef struct D3D12VAEncodeContext {
      * Pool of (reusable) bitstream output buffers.
      */
     AVBufferPool *output_buffer_pool;
+
+    /**
+     * Flag indicates if the HW is texture array mode.
+     */
+    int is_texture_array;
+
+    /**
+     * The number of planes in the input DXGI FORMAT.
+     */
+    int plane_count;
 
     /**
      * D3D12 video encoder.
@@ -247,6 +268,28 @@ typedef struct D3D12VAEncodeContext {
     D3D12_VIDEO_ENCODER_SEQUENCE_GOP_STRUCTURE gop;
 
     D3D12_VIDEO_ENCODER_LEVEL_SETTING level;
+
+    D3D12_VIDEO_ENCODER_PICTURE_CONTROL_SUBREGIONS_LAYOUT_DATA subregions_layout;
+
+    /**
+     * Intra refresh configuration
+     */
+    D3D12_VIDEO_ENCODER_INTRA_REFRESH intra_refresh;
+
+    /**
+     * Current frame index within intra refresh cycle
+     */
+    UINT intra_refresh_frame_index;
+
+    /**
+     * Motion estimation precision mode
+     */
+    D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE me_precision;
+
+    /**
+     * QP map region pixel size (block size for QP map)
+     */
+    int qp_map_region_size;
 } D3D12VAEncodeContext;
 
 typedef struct D3D12VAEncodeType {
@@ -290,6 +333,11 @@ typedef struct D3D12VAEncodeType {
     int (*set_level)(AVCodecContext *avctx);
 
     /**
+     * Set codec-specific tile setting.
+     */
+    int (*set_tile)(AVCodecContext *avctx);
+
+    /**
      * The size of any private data structure associated with each
      * picture (can be zero if not required).
      */
@@ -310,12 +358,74 @@ typedef struct D3D12VAEncodeType {
      */
     int (*write_sequence_header)(AVCodecContext *avctx,
                                  char *data, size_t *data_len);
+
+    /**
+     * Fill the coded data into AVPacket
+     */
+    int (*get_coded_data)(AVCodecContext *avctx,
+                          D3D12VAEncodePicture *pic, AVPacket *pkt);
 } D3D12VAEncodeType;
 
 int ff_d3d12va_encode_receive_packet(AVCodecContext *avctx, AVPacket *pkt);
 
 int ff_d3d12va_encode_init(AVCodecContext *avctx);
 int ff_d3d12va_encode_close(AVCodecContext *avctx);
+
+void ff_d3d12va_encode_check_encoder_feature_flags(void *log_ctx,
+                                                   D3D12_VIDEO_ENCODER_VALIDATION_FLAGS flags);
+
+#define D3D12VA_ENCODE_INTRA_REFRESH_MODE(name, mode, desc) \
+    { #name, desc, 0, AV_OPT_TYPE_CONST, { .i64 = D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_ ## mode }, \
+      0, 0, FLAGS, .unit = "intra_refresh_mode" }
+
+#if CONFIG_D3D12VA_ME_PRECISION_EIGHTH_PIXEL
+#define D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAX_VALUE D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_EIGHTH_PIXEL
+#else
+#define D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAX_VALUE D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_QUARTER_PIXEL
+#endif
+
+#define D3D12VA_ENCODE_ME_PRECISION_MODE(name, mode, desc) \
+    { #name, #desc " pixel precision", 0, AV_OPT_TYPE_CONST, \
+      { .i64 = D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_ ## mode }, \
+      0, 0, FLAGS, .unit = "me_precision" }
+
+#if CONFIG_D3D12VA_ME_PRECISION_EIGHTH_PIXEL
+#define FFPP_D3D12VA_ME_PRECISION_EIGHTH_PIXEL \
+    , D3D12VA_ENCODE_ME_PRECISION_MODE(eighth_pixel, EIGHTH_PIXEL, Eighth)
+#else
+#define FFPP_D3D12VA_ME_PRECISION_EIGHTH_PIXEL
+#endif
+
+#define D3D12VA_ENCODE_COMMON_OPTIONS \
+    { "max_frame_size", \
+      "Maximum frame size (in bytes)",\
+      OFFSET(common.max_frame_size), AV_OPT_TYPE_INT, \
+      { .i64 = 0 }, 0, INT_MAX / 8, FLAGS }, \
+    { "intra_refresh_mode", \
+      "Set intra refresh mode", \
+      OFFSET(common.intra_refresh.Mode), AV_OPT_TYPE_INT, \
+      { .i64 = D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE }, \
+      D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_NONE, \
+      D3D12_VIDEO_ENCODER_INTRA_REFRESH_MODE_ROW_BASED, FLAGS, .unit = "intra_refresh_mode" }, \
+    D3D12VA_ENCODE_INTRA_REFRESH_MODE(none, NONE, "Disable intra refresh"), \
+    D3D12VA_ENCODE_INTRA_REFRESH_MODE(row_based, ROW_BASED, "Row-based intra refresh"), \
+    { "intra_refresh_duration", \
+      "Number of frames over which to spread intra refresh (0 = GOP size)", \
+      OFFSET(common.intra_refresh.IntraRefreshDuration), AV_OPT_TYPE_INT, \
+      { .i64 = 0 }, 0, INT_MAX, FLAGS }, \
+    { "me_precision", "Motion estimation precision mode", \
+      OFFSET(common.me_precision), AV_OPT_TYPE_INT, \
+      { .i64 = D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAXIMUM }, \
+      D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAXIMUM, \
+      D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAX_VALUE, \
+      FLAGS, .unit = "me_precision" }, \
+    { "maximum", "Maximum (best quality, slowest)", 0, AV_OPT_TYPE_CONST, \
+      { .i64 = D3D12_VIDEO_ENCODER_MOTION_ESTIMATION_PRECISION_MODE_MAXIMUM }, \
+      0, 0, FLAGS, .unit = "me_precision" }, \
+    D3D12VA_ENCODE_ME_PRECISION_MODE(full_pixel, FULL_PIXEL, Full), \
+    D3D12VA_ENCODE_ME_PRECISION_MODE(half_pixel, HALF_PIXEL, Half), \
+    D3D12VA_ENCODE_ME_PRECISION_MODE(quarter_pixel, QUARTER_PIXEL, Quarter) \
+    FFPP_D3D12VA_ME_PRECISION_EIGHTH_PIXEL
 
 #define D3D12VA_ENCODE_RC_MODE(name, desc) \
     { #name, desc, 0, AV_OPT_TYPE_CONST, { .i64 = RC_MODE_ ## name }, \

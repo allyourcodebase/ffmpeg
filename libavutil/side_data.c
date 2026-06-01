@@ -53,6 +53,7 @@ static const AVSideDataDescriptor sd_props[] = {
     [AV_FRAME_DATA_AMBIENT_VIEWING_ENVIRONMENT] = { "Ambient viewing environment",                  AV_SIDE_DATA_PROP_GLOBAL },
     [AV_FRAME_DATA_SPHERICAL]                   = { "Spherical Mapping",                            AV_SIDE_DATA_PROP_GLOBAL | AV_SIDE_DATA_PROP_SIZE_DEPENDENT },
     [AV_FRAME_DATA_ICC_PROFILE]                 = { "ICC profile",                                  AV_SIDE_DATA_PROP_GLOBAL | AV_SIDE_DATA_PROP_COLOR_DEPENDENT },
+    [AV_FRAME_DATA_EXIF]                        = { "EXIF metadata",                                AV_SIDE_DATA_PROP_GLOBAL },
     [AV_FRAME_DATA_SEI_UNREGISTERED]            = { "H.26[45] User Data Unregistered SEI message",  AV_SIDE_DATA_PROP_MULTI },
     [AV_FRAME_DATA_VIDEO_HINT]                  = { "Encoding video hint",                          AV_SIDE_DATA_PROP_SIZE_DEPENDENT },
     [AV_FRAME_DATA_3D_REFERENCE_DISPLAYS]       = { "3D Reference Displays Information",            AV_SIDE_DATA_PROP_GLOBAL },
@@ -150,7 +151,7 @@ static AVFrameSideData *add_side_data_from_buf_ext(AVFrameSideData ***sd,
     if ((unsigned)*nb_sd >= FFMIN(INT_MAX, SIZE_MAX))
         return NULL;
 
-    tmp = av_realloc_array(*sd, sizeof(**sd), *nb_sd + 1);
+    tmp = av_realloc_array(*sd, *nb_sd + 1, sizeof(**sd));
     if (!tmp)
         return NULL;
     *sd = tmp;

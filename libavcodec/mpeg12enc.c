@@ -47,6 +47,7 @@
 #include "mpeg12vlc.h"
 #include "mpegutils.h"
 #include "mpegvideo.h"
+#include "mpegvideodata.h"
 #include "mpegvideoenc.h"
 #include "profiles.h"
 #include "put_bits.h"
@@ -481,7 +482,7 @@ static int mpeg1_encode_picture_header(MPVMainEncContext *const m)
                 put_bits(&s->pb, 8, 0xff);                  // marker_bits
             } else {
                 av_log(s->c.avctx, AV_LOG_WARNING,
-                    "Closed Caption size (%"SIZE_SPECIFIER") can not exceed "
+                    "Closed Caption size (%zu) can not exceed "
                     "93 bytes and must be a multiple of 3\n", side_data->size);
             }
         }
@@ -589,9 +590,9 @@ static void mpeg1_encode_block(MPVEncContext *const s, const int16_t block[], in
     if (s->c.mb_intra) {
         component = (n <= 3 ? 0 : (n & 1) + 1);
         dc        = block[0];                   /* overflow is impossible */
-        diff      = dc - s->c.last_dc[component];
+        diff      = dc - s->last_dc[component];
         encode_dc(s, diff, component);
-        s->c.last_dc[component] = dc;
+        s->last_dc[component] = dc;
         i = 1;
         if (s->c.intra_vlc_format)
             table_vlc = ff_mpeg2_vlc_table;
@@ -936,7 +937,7 @@ static void mpeg12_encode_mb(MPVEncContext *const s, int16_t block[][64],
                              int motion_x, int motion_y)
 {
     if (!s->c.mb_intra)
-        s->c.last_dc[0] = s->c.last_dc[1] = s->c.last_dc[2] = 128 << s->c.intra_dc_precision;
+        s->last_dc[0] = s->last_dc[1] = s->last_dc[2] = 128 << s->c.intra_dc_precision;
     if (s->c.chroma_format == CHROMA_420)
         mpeg1_encode_mb_internal(s, block, motion_x, motion_y, 6, 1);
     else
@@ -1125,7 +1126,34 @@ static av_cold int encode_init(AVCodecContext *avctx)
         s->min_qcoeff = -2047;
         s->max_qcoeff = 2047;
         s->mpeg_quant = 1;
+#if FF_API_INTRA_DC_PRECISION
+        if (s->c.intra_dc_precision < 0) {
+FF_DISABLE_DEPRECATION_WARNINGS
+        s->c.intra_dc_precision = avctx->intra_dc_precision;
+FF_ENABLE_DEPRECATION_WARNINGS
+        // workaround some differences between how applications specify dc precision
+        if (s->c.intra_dc_precision < 0) {
+            s->c.intra_dc_precision += 8;
+        } else if (s->c.intra_dc_precision >= 8)
+            s->c.intra_dc_precision -= 8;
+
+        if (s->c.intra_dc_precision < 0) {
+            av_log(avctx, AV_LOG_ERROR,
+                   "intra dc precision must be positive, note some applications use"
+                   " 0 and some 8 as base meaning 8bit, the value must not be smaller than that\n");
+            return AVERROR(EINVAL);
+        }
+
+        if (s->c.intra_dc_precision > 3) {
+            av_log(avctx, AV_LOG_ERROR, "intra dc precision too large\n");
+            return AVERROR(EINVAL);
+        }
+        }
+#endif
     }
+    s->c.y_dc_scale_table =
+    s->c.c_dc_scale_table = ff_mpeg12_dc_scale_table[s->c.intra_dc_precision];
+
     if (s->c.intra_vlc_format) {
         s->intra_ac_vlc_length      =
         s->intra_ac_vlc_last_length = uni_mpeg2_ac_vlc_len;
@@ -1231,6 +1259,11 @@ static const AVOption mpeg1_options[] = {
 
 static const AVOption mpeg2_options[] = {
     COMMON_OPTS
+#if FF_API_INTRA_DC_PRECISION
+    { "intra_dc_precision", "Precision of the DC coefficient - 8", FF_MPV_OFFSET(c.intra_dc_precision), AV_OPT_TYPE_INT, { .i64 = -1 }, -1, 3, VE },
+#else
+    { "intra_dc_precision", "Precision of the DC coefficient - 8", FF_MPV_OFFSET(c.intra_dc_precision), AV_OPT_TYPE_INT, { .i64 = 0 }, 0, 3, VE },
+#endif
     { "intra_vlc",        "Use MPEG-2 intra VLC table.",
       FF_MPV_OFFSET(c.intra_vlc_format),    AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },
     { "non_linear_quant", "Use nonlinear quantizer.",    FF_MPV_OFFSET(c.q_scale_type),   AV_OPT_TYPE_BOOL, { .i64 = 0 }, 0, 1, VE },

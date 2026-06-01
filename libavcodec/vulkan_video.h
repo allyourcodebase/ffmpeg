@@ -34,8 +34,6 @@ typedef struct FFVkVideoSession {
     VkDeviceMemory *mem;
     uint32_t nb_mem;
 
-    VkSamplerYcbcrConversion yuv_sampler;
-
     AVBufferRef *dpb_hwfc_ref;
     int layered_dpb;
     AVFrame *layered_frame;
@@ -85,7 +83,7 @@ StdVideoAV1Profile     ff_vk_av1_profile_to_vk(int profile);
  */
 int ff_vk_create_view(FFVulkanContext *s, FFVkVideoCommon *common,
                       VkImageView *view, VkImageAspectFlags *aspect,
-                      AVVkFrame *src, VkFormat vkf, int is_dpb);
+                      AVVkFrame *src, VkFormat vkf, VkImageUsageFlags flags);
 
 /**
  * Initialize video session, allocating and binding necessary memory.

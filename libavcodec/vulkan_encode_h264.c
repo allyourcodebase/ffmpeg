@@ -1147,7 +1147,7 @@ static int init_base_units(AVCodecContext *avctx)
         if (!data)
             return AVERROR(ENOMEM);
     } else {
-        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.264 units = %"SIZE_SPECIFIER"\n", data_size);
+        av_log(avctx, AV_LOG_ERROR, "Unable to get feedback for H.264 units = %zu\n", data_size);
         return err;
     }
 
@@ -1634,6 +1634,7 @@ static const FFCodecDefault vulkan_encode_h264_defaults[] = {
     { "b_qoffset",      "0"   },
     { "qmin",           "-1"  },
     { "qmax",           "-1"  },
+    { "refs",           "0"   },
     { NULL },
 };
 

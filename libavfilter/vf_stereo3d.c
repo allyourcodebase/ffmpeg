@@ -307,7 +307,7 @@ static int query_formats(const AVFilterContext *ctx,
         pix_fmts = other_pix_fmts;
     }
 
-    return ff_set_common_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
+    return ff_set_pixel_formats_from_list2(ctx, cfg_in, cfg_out, pix_fmts);
 }
 
 static inline uint8_t ana_convert(const int *coeff, const uint8_t *left, const uint8_t *right)
@@ -595,7 +595,7 @@ static int config_output(AVFilterLink *outlink)
     s->vsub = desc->log2_chroma_h;
 
     s->dsp.anaglyph = anaglyph;
-#if ARCH_X86
+#if ARCH_X86 && HAVE_X86ASM
     ff_stereo3d_init_x86(&s->dsp);
 #endif
 

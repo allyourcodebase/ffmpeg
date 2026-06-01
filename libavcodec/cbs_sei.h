@@ -33,13 +33,15 @@ typedef struct SEIRawFillerPayload {
 typedef struct SEIRawUserDataRegistered {
     uint8_t      itu_t_t35_country_code;
     uint8_t      itu_t_t35_country_code_extension_byte;
-    uint8_t     *data; ///< RefStruct reference
+    uint8_t     *data;
+    uint8_t     *data_ref; ///< RefStruct reference
     size_t       data_length;
 } SEIRawUserDataRegistered;
 
 typedef struct SEIRawUserDataUnregistered {
     uint8_t      uuid_iso_iec_11578[16];
-    uint8_t     *data; ///< RefStruct reference
+    uint8_t     *data;
+    uint8_t     *data_ref; ///< RefStruct reference
     size_t       data_length;
 } SEIRawUserDataUnregistered;
 
@@ -200,6 +202,9 @@ typedef struct SEIMessageTypeDescriptor {
 #define SEI_MESSAGE_TYPE_END { .type = -1 }
 
 
+extern const SEIMessageTypeDescriptor ff_cbs_sei_h264_types[];
+extern const SEIMessageTypeDescriptor ff_cbs_sei_h265_types[];
+
 /**
  * Find the type descriptor for the given payload type.
  *
@@ -260,5 +265,14 @@ int ff_cbs_sei_find_message(CodedBitstreamContext *ctx,
 void ff_cbs_sei_delete_message_type(CodedBitstreamContext *ctx,
                                     CodedBitstreamFragment *au,
                                     uint32_t payload_type);
+
+int ff_cbs_sei_read_message_list(CodedBitstreamContext *ctx, struct GetBitContext *rw,
+                                 SEIRawMessageList *current, int prefix);
+int ff_cbs_sei_write_message_list(CodedBitstreamContext *ctx, struct PutBitContext *rw,
+                                  SEIRawMessageList *current, int prefix);
+int ff_cbs_sei_read_message(CodedBitstreamContext *ctx, struct GetBitContext *rw,
+                            SEIRawMessage *current);
+int ff_cbs_sei_write_message(CodedBitstreamContext *ctx, struct PutBitContext *rw,
+                             SEIRawMessage *current);
 
 #endif /* AVCODEC_CBS_SEI_H */

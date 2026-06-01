@@ -33,7 +33,7 @@ static int cbs_apv_get_num_comp(const APVRawFrameHeader *fh)
     case APV_CHROMA_FORMAT_4444:
         return 4;
     default:
-        av_assert0(0 && "Invalid chroma_format_idc");
+        av_unreachable("Invalid chroma_format_idc");
     }
 }
 
@@ -67,8 +67,6 @@ static void cbs_apv_derive_tile_info(CodedBitstreamContext *ctx,
 
 #define u(width, name, range_min, range_max) \
     xu(width, name, current->name, range_min, range_max, 0, )
-#define ub(width, name) \
-    xu(width, name, current->name, 0, MAX_UINT_BITS(width), 0, )
 #define us(width, name, range_min, range_max, subs, ...) \
     xu(width, name, current->name, range_min, range_max,  subs, __VA_ARGS__)
 #define ubs(width, name, subs, ...) \
@@ -86,6 +84,12 @@ static void cbs_apv_derive_tile_info(CodedBitstreamContext *ctx,
 #define RWContext GetBitContext
 #define FUNC(name) cbs_apv_read_ ## name
 
+#define ub(width, name) do { \
+        uint32_t value; \
+        CHECK(CBS_FUNC(read_simple_unsigned)(ctx, rw, width, #name, \
+                                             &value)); \
+        current->name = value; \
+    } while (0)
 #define xu(width, name, var, range_min, range_max, subs, ...) do { \
         uint32_t value; \
         CHECK(CBS_FUNC(read_unsigned)(ctx, rw, width, #name, \
@@ -106,6 +110,7 @@ static void cbs_apv_derive_tile_info(CodedBitstreamContext *ctx,
 #undef READWRITE
 #undef RWContext
 #undef FUNC
+#undef ub
 #undef xu
 #undef infer
 #undef byte_alignment
@@ -117,6 +122,11 @@ static void cbs_apv_derive_tile_info(CodedBitstreamContext *ctx,
 #define RWContext PutBitContext
 #define FUNC(name) cbs_apv_write_ ## name
 
+#define ub(width, name) do { \
+        uint32_t value = current->name; \
+        CHECK(CBS_FUNC(write_simple_unsigned)(ctx, rw, width, #name, \
+                                              value)); \
+    } while (0)
 #define xu(width, name, var, range_min, range_max, subs, ...) do { \
         uint32_t value = var; \
         CHECK(CBS_FUNC(write_unsigned)(ctx, rw, width, #name, \
@@ -142,6 +152,7 @@ static void cbs_apv_derive_tile_info(CodedBitstreamContext *ctx,
 #undef READWRITE
 #undef RWContext
 #undef FUNC
+#undef ub
 #undef xu
 #undef infer
 #undef byte_alignment
@@ -190,7 +201,7 @@ static int cbs_apv_split_fragment(CodedBitstreamContext *ctx,
 
         if (size < 8) {
             av_log(ctx->log_ctx, AV_LOG_ERROR, "Invalid PBU: "
-                   "fragment too short (%"SIZE_SPECIFIER" bytes).\n",
+                   "fragment too short (%zu bytes).\n",
                    size);
             err = AVERROR_INVALIDDATA;
             goto fail;
@@ -421,7 +432,7 @@ static void cbs_apv_free_metadata(AVRefStructOpaque unused, void *content)
     }
 }
 
-static const CodedBitstreamUnitTypeDescriptor cbs_apv_unit_types[] = {
+static CodedBitstreamUnitTypeDescriptor cbs_apv_unit_types[] = {
     {
         .nb_unit_types   = CBS_UNIT_TYPE_RANGE,
         .unit_type.range = {

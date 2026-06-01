@@ -29,21 +29,21 @@
 
 #include "config.h"
 
-typedef struct MpegEncContext MpegEncContext;
+typedef struct MpegEncContext MPVContext;
 
 typedef struct MPVUnquantDSPContext {
-    void (*dct_unquantize_mpeg1_intra)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
-    void (*dct_unquantize_mpeg1_inter)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
-    void (*dct_unquantize_mpeg2_intra)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
-    void (*dct_unquantize_mpeg2_inter)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
-    void (*dct_unquantize_h263_intra)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
-    void (*dct_unquantize_h263_inter)(struct MpegEncContext *s,
-                           int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_mpeg1_intra)(const MPVContext *s,
+                                       int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_mpeg1_inter)(const MPVContext *s,
+                                       int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_mpeg2_intra)(const MPVContext *s,
+                                       int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_mpeg2_inter)(const MPVContext *s,
+                                       int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_h263_intra)(const MPVContext *s,
+                                      int16_t *block/*align 16*/, int n, int qscale);
+    void (*dct_unquantize_h263_inter)(const MPVContext *s,
+                                      int16_t *block/*align 16*/, int n, int qscale);
 } MPVUnquantDSPContext;
 
 #if !ARCH_MIPS
@@ -55,6 +55,7 @@ void ff_mpv_unquantize_init(MPVUnquantDSPContext *s,
 void ff_mpv_unquantize_init_arm (MPVUnquantDSPContext *s, int bitexact);
 void ff_mpv_unquantize_init_neon(MPVUnquantDSPContext *s, int bitexact);
 void ff_mpv_unquantize_init_ppc (MPVUnquantDSPContext *s, int bitexact);
+void ff_mpv_unquantize_init_riscv(MPVUnquantDSPContext *s, int bitexact);
 void ff_mpv_unquantize_init_x86 (MPVUnquantDSPContext *s, int bitexact);
 void ff_mpv_unquantize_init_mips(MPVUnquantDSPContext *s, int bitexact,
                                  int q_scale_type);

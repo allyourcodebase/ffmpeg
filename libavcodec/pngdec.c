@@ -39,6 +39,7 @@
 #include "bytestream.h"
 #include "codec_internal.h"
 #include "decode.h"
+#include "exif_internal.h"
 #include "apng.h"
 #include "png.h"
 #include "pngdsp.h"
@@ -125,6 +126,8 @@ typedef struct PNGDecContext {
     int pass_row_size; /* decompress row size of the current pass */
     int y;
     FFZStream zstream;
+
+    AVBufferRef *exif_data;
 } PNGDecContext;
 
 /* Mask to determine which pixels are valid in a pass */
@@ -215,34 +218,6 @@ static void png_put_interlaced_row(uint8_t *dst, int width,
     }
 }
 
-void ff_add_png_paeth_prediction(uint8_t *dst, uint8_t *src, uint8_t *top,
-                                 int w, int bpp)
-{
-    int i;
-    for (i = 0; i < w; i++) {
-        int a, b, c, p, pa, pb, pc;
-
-        a = dst[i - bpp];
-        b = top[i];
-        c = top[i - bpp];
-
-        p  = b - c;
-        pc = a - c;
-
-        pa = abs(p);
-        pb = abs(pc);
-        pc = abs(p + pc);
-
-        if (pa <= pb && pa <= pc)
-            p = a;
-        else if (pb <= pc)
-            p = b;
-        else
-            p = c;
-        dst[i] = p + src[i];
-    }
-}
-
 #define UNROLL1(bpp, op)                                                      \
     {                                                                         \
         r = dst[0];                                                           \
@@ -282,7 +257,7 @@ void ff_add_png_paeth_prediction(uint8_t *dst, uint8_t *src, uint8_t *top,
 
 /* NOTE: 'dst' can be equal to 'last' */
 void ff_png_filter_row(PNGDSPContext *dsp, uint8_t *dst, int filter_type,
-                       uint8_t *src, uint8_t *last, int size, int bpp)
+                       const uint8_t *src, const uint8_t *last, int size, int bpp)
 {
     int i, p, r, g, b, a;
 
@@ -296,7 +271,7 @@ void ff_png_filter_row(PNGDSPContext *dsp, uint8_t *dst, int filter_type,
         if (bpp == 4) {
             p = *(int *)dst;
             for (; i < size; i += bpp) {
-                unsigned s = *(int *)(src + i);
+                unsigned s = *(const int *)(src + i);
                 p = ((s & 0x7f7f7f7f) + (p & 0x7f7f7f7f)) ^ ((s ^ p) & 0x80808080);
                 *(int *)(dst + i) = p;
             }
@@ -331,7 +306,7 @@ void ff_png_filter_row(PNGDSPContext *dsp, uint8_t *dst, int filter_type,
                 i = w;
             }
         }
-        ff_add_png_paeth_prediction(dst + i, src + i, last + i, size - i, bpp);
+        ff_png_add_paeth_prediction(dst + i, src + i, last + i, size - i, bpp);
         break;
     }
 }
@@ -540,6 +515,98 @@ static char *iso88591_to_utf8(const char *in, size_t size_in)
     return out;
 }
 
+static int decode_text_to_exif(PNGDecContext *s, const char *txt_utf8)
+{
+    size_t len = strlen(txt_utf8);
+    const char *ptr = txt_utf8;
+    const char *end = txt_utf8 + len;
+    size_t exif_len = 0;
+    uint8_t *exif_ptr;
+    const uint8_t *exif_end;
+
+    // first we find a newline
+    while (*ptr++ != '\n') {
+        if (ptr >= end)
+            return AVERROR_BUFFER_TOO_SMALL;
+    }
+
+    // we check for "exif" and skip over it
+    if (end - ptr < 4 || strncmp("exif", ptr, 4))
+        return AVERROR_INVALIDDATA;
+    ptr += 3;
+
+    // then we find the next printable non-space character
+    while (!av_isgraph(*++ptr)) {
+        if (ptr >= end)
+            return AVERROR_BUFFER_TOO_SMALL;
+    }
+
+    // parse the length
+    while (av_isdigit(*ptr)) {
+        size_t nlen = exif_len * 10 + (*ptr - '0');
+        if (nlen < exif_len) // overflow
+            return AVERROR_INVALIDDATA;
+        exif_len = nlen;
+        if (++ptr >= end)
+            return AVERROR_BUFFER_TOO_SMALL;
+    }
+
+    // then we find the next printable non-space character
+    while (!av_isgraph(*ptr)) {
+        if (++ptr >= end)
+            return AVERROR_BUFFER_TOO_SMALL;
+    }
+
+    // first condition checks for overflow in 2 * exif_len
+    if (exif_len > SIZE_MAX / 2 || end - ptr < 2 * exif_len)
+        return AVERROR_INVALIDDATA;
+    if (exif_len < 10)
+        return AVERROR_INVALIDDATA;
+
+    av_buffer_unref(&s->exif_data);
+    // the buffer starts with "Exif  " which we skip over
+    // we don't use AV_EXIF_EXIF00 because that disagrees
+    // with the eXIf chunk format
+    s->exif_data = av_buffer_alloc(exif_len - 6);
+    if (!s->exif_data)
+        return AVERROR(ENOMEM);
+
+    // we subtract one because we call ++ptr later
+    // compiler will optimize out the call
+    ptr += strlen("Exif  ") * 2 - 1;
+
+    exif_ptr = s->exif_data->data;
+    exif_end = exif_ptr + s->exif_data->size;
+
+    while (exif_ptr < exif_end) {
+        while (++ptr < end) {
+            if (*ptr >= '0' && *ptr <= '9') {
+                *exif_ptr = (*ptr - '0') << 4;
+                break;
+            }
+            if (*ptr >= 'a' && *ptr <= 'f') {
+                *exif_ptr = (*ptr - 'a' + 10) << 4;
+                break;
+            }
+        }
+        while (++ptr < end) {
+            if (*ptr >= '0' && *ptr <= '9') {
+                *exif_ptr += *ptr - '0';
+                break;
+            }
+            if (*ptr >= 'a' && *ptr <= 'f') {
+                *exif_ptr += *ptr - 'a' + 10;
+                break;
+            }
+        }
+        if (ptr > end)
+            return AVERROR_INVALIDDATA;
+        exif_ptr++;
+    }
+
+    return 0;
+}
+
 static int decode_text_chunk(PNGDecContext *s, GetByteContext *gb, int compressed)
 {
     int ret, method;
@@ -580,6 +647,17 @@ static int decode_text_chunk(PNGDecContext *s, GetByteContext *gb, int compresse
     if (!kw_utf8) {
         av_free(txt_utf8);
         return AVERROR(ENOMEM);
+    }
+
+    if (!strcmp(kw_utf8, "Raw profile type exif")) {
+        ret = decode_text_to_exif(s, txt_utf8);
+        if (ret < 0) {;
+            av_buffer_unref(&s->exif_data);
+        } else {
+            av_freep(&kw_utf8);
+            av_freep(&txt_utf8);
+            return ret;
+        }
     }
 
     av_dict_set(&s->frame_metadata, kw_utf8, txt_utf8,
@@ -650,6 +728,23 @@ static int decode_phys_chunk(AVCodecContext *avctx, PNGDecContext *s,
     if (avctx->sample_aspect_ratio.num < 0 || avctx->sample_aspect_ratio.den < 0)
         avctx->sample_aspect_ratio = (AVRational){ 0, 1 };
     bytestream2_skip(gb, 1); /* unit specifier */
+
+    return 0;
+}
+
+static int decode_exif_chunk(AVCodecContext *avctx, PNGDecContext *s,
+                             GetByteContext *gb)
+{
+    if (!(s->hdr_state & PNG_IHDR)) {
+        av_log(avctx, AV_LOG_ERROR, "eXIf before IHDR\n");
+        return AVERROR_INVALIDDATA;
+    }
+
+    av_buffer_unref(&s->exif_data);
+    s->exif_data = av_buffer_alloc(bytestream2_get_bytes_left(gb));
+    if (!s->exif_data)
+        return AVERROR(ENOMEM);
+    bytestream2_get_buffer(gb, s->exif_data->data, s->exif_data->size);
 
     return 0;
 }
@@ -874,6 +969,11 @@ static int decode_idat_chunk(AVCodecContext *avctx, PNGDecContext *s,
 
             s->bpp += byte_depth;
         }
+
+        /* PNG spec mandates independent alpha channel */
+        if (s->color_type == PNG_COLOR_TYPE_RGB_ALPHA ||
+            s->color_type == PNG_COLOR_TYPE_GRAY_ALPHA)
+            avctx->alpha_mode = AVALPHA_MODE_STRAIGHT;
 
         ff_progress_frame_unref(&s->picture);
         if (s->dispose_op == APNG_DISPOSE_OP_PREVIOUS) {
@@ -1594,6 +1694,11 @@ static int decode_frame_common(AVCodecContext *avctx, PNGDecContext *s,
             s->mdcv_max_lum = bytestream2_get_be32u(&gb_chunk);
             s->mdcv_min_lum = bytestream2_get_be32u(&gb_chunk);
             break;
+        case MKTAG('e', 'X', 'I', 'f'):
+            ret = decode_exif_chunk(avctx, s, &gb_chunk);
+            if (ret < 0)
+                goto fail;
+            break;
         case MKTAG('I', 'E', 'N', 'D'):
             if (!(s->pic_state & PNG_ALLIMAGE))
                 av_log(avctx, AV_LOG_ERROR, "IEND without all image\n");
@@ -1621,6 +1726,17 @@ exit_loop:
 
     if (s->bits_per_pixel <= 4)
         handle_small_bpp(s, p);
+
+    if (s->exif_data) {
+        // we swap because ff_decode_exif_attach_buffer adds to p->metadata
+        FFSWAP(AVDictionary *, p->metadata, s->frame_metadata);
+        ret = ff_decode_exif_attach_buffer(avctx, p, &s->exif_data, AV_EXIF_TIFF_HEADER);
+        FFSWAP(AVDictionary *, p->metadata, s->frame_metadata);
+        if (ret < 0) {
+            av_log(avctx, AV_LOG_WARNING, "unable to attach EXIF buffer\n");
+            return ret;
+        }
+    }
 
     if (s->color_type == PNG_COLOR_TYPE_PALETTE && avctx->codec_id == AV_CODEC_ID_APNG) {
         for (int y = 0; y < s->height; y++) {
@@ -1914,6 +2030,7 @@ static av_cold int png_dec_end(AVCodecContext *avctx)
     s->tmp_row_size = 0;
 
     av_freep(&s->iccp_data);
+    av_buffer_unref(&s->exif_data);
     av_dict_free(&s->frame_metadata);
     ff_inflate_end(&s->zstream);
 
