@@ -165,6 +165,10 @@ static int dcadec_decode_frame(AVCodecContext *avctx, AVFrame *frame,
     // Convert input to BE format
     mrk = AV_RB32(input);
     if (mrk != DCA_SYNCWORD_CORE_BE && mrk != DCA_SYNCWORD_SUBSTREAM) {
+        if (input_size > MAX_PACKET_SIZE) {
+            av_log(avctx, AV_LOG_ERROR, "Invalid packet size\n");
+            return AVERROR_INVALIDDATA;
+        }
         av_fast_padded_malloc(&s->buffer, &s->buffer_size, input_size);
         if (!s->buffer)
             return AVERROR(ENOMEM);
