@@ -4195,6 +4195,7 @@ const all_sources = [_][]const u8{
     "libavcodec/cavsdsp.c",
     "libavcodec/cbrt_data.c",
     "libavcodec/cbrt_data_fixed.c",
+    "libavcodec/cbrt_tablegen_common.c",
     "libavcodec/cbs.c",
     "libavcodec/cbs_apv.c",
     "libavcodec/cbs_av1.c",
