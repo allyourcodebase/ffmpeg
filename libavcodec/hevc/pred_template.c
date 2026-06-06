@@ -22,7 +22,7 @@
 
 #include "libavutil/pixdesc.h"
 
-#include "bit_depth_template.c"
+#include "libavcodec/bit_depth_template.c"
 #include "pred.h"
 
 #define POS(x, y) src[(x) + stride * (y)]
