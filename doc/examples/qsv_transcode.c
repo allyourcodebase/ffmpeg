@@ -38,6 +38,7 @@
 #include <errno.h>
 
 #include <libavutil/hwcontext.h>
+#include <libavutil/mem.h>
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/opt.h>
@@ -75,8 +76,7 @@ static int str_to_dict(char* optstr, AVDictionary **opt)
         if (value == NULL)
             return AVERROR(EINVAL);
         av_dict_set(opt, key, value, 0);
-    } while(key != NULL);
-    return 0;
+    } while(1);
 }
 
 static int dynamic_set_parameter(AVCodecContext *avctx)
@@ -101,7 +101,7 @@ static int dynamic_set_parameter(AVCodecContext *avctx)
         /* Set codec specific option */
         if ((ret = av_opt_set_dict(avctx->priv_data, &opts)) < 0)
             goto fail;
-        /* There is no "framerate" option in commom option list. Use "-r" to set
+        /* There is no "framerate" option in common option list. Use "-r" to set
          * framerate, which is compatible with ffmpeg commandline. The video is
          * assumed to be average frame rate, so set time_base to 1/framerate. */
         e = av_dict_get(opts, "r", NULL, 0);
@@ -180,7 +180,7 @@ static int open_input_file(char *filename)
         decoder = avcodec_find_decoder_by_name("mjpeg_qsv");
         break;
     default:
-        fprintf(stderr, "Codec is not supportted by qsv\n");
+        fprintf(stderr, "Codec is not supported by qsv\n");
         return AVERROR(EINVAL);
     }
 
@@ -289,7 +289,7 @@ static int dec_enc(AVPacket *pkt, const AVCodec *enc_codec, char *optstr)
                 fprintf(stderr, "Failed to set encoding parameter.\n");
                 goto fail;
             }
-            /* There is no "framerate" option in commom option list. Use "-r" to
+            /* There is no "framerate" option in common option list. Use "-r" to
             * set framerate, which is compatible with ffmpeg commandline. The
             * video is assumed to be average frame rate, so set time_base to
             * 1/framerate. */
@@ -334,17 +334,15 @@ static int dec_enc(AVPacket *pkt, const AVCodec *enc_codec, char *optstr)
 
 fail:
         av_frame_free(&frame);
-        if (ret < 0)
-            return ret;
     }
-    return 0;
+    return ret;
 }
 
 int main(int argc, char **argv)
 {
     const AVCodec *enc_codec;
     int ret = 0;
-    AVPacket *dec_pkt;
+    AVPacket *dec_pkt = NULL;
 
     if (argc < 5 || (argc - 5) % 2) {
         av_log(NULL, AV_LOG_ERROR, "Usage: %s <input file> <encoder> <output file>"
@@ -353,6 +351,10 @@ int main(int argc, char **argv)
     }
     setting_number = (argc - 5) / 2;
     dynamic_setting = av_malloc(setting_number * sizeof(*dynamic_setting));
+    if (!dynamic_setting) {
+        ret = AVERROR(ENOMEM);
+        goto end;
+    }
     current_setting_number = 0;
     for (int i = 0; i < setting_number; i++) {
         dynamic_setting[i].frame_number = atoi(argv[i*2 + 5]);
