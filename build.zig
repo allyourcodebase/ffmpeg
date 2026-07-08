@@ -6295,7 +6295,7 @@ const all_sources = [_][]const u8{
     "libavformat/aacdec.c",
     "libavformat/aadec.c",
     "libavformat/aaxdec.c",
-    "libavformat/ac3_channel_layout_tab.c",
+    // "libavformat/ac3_channel_layout_tab.c", redundant with libavutil
     "libavformat/ac3dec.c",
     "libavformat/ac4dec.c",
     "libavformat/ac4enc.c",
