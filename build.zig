@@ -6525,7 +6525,7 @@ const all_sources = [_][]const u8{
     "libavformat/jacosubenc.c",
     // "libavformat/jpegtables.c", redundant with libavcodec
     "libavformat/jpegxl_anim_dec.c",
-    "libavformat/jpegxl_parse.c",
+    // "libavformat/jpegxl_parse.c", redundant with libavcodec
     "libavformat/jvdec.c",
     "libavformat/kvag.c",
     "libavformat/lafdec.c",
