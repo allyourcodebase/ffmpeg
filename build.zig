@@ -6658,7 +6658,7 @@ const all_sources = [_][]const u8{
     "libavformat/qoadec.c",
     "libavformat/qtpalette.c",
     "libavformat/r3d.c",
-    "libavformat/rangecoder_dec.c",
+    // "libavformat/rangecoder_dec.c", redundant with libavcodec
     "libavformat/rawdec.c",
     "libavformat/rawenc.c",
     "libavformat/rawutils.c",
