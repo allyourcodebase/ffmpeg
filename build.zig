@@ -6459,7 +6459,7 @@ const all_sources = [_][]const u8{
     "libavformat/genh.c",
     "libavformat/gif.c",
     "libavformat/gifdec.c",
-    "libavformat/golomb_tab.c",
+    // "libavformat/golomb_tab.c", redundant with libavcodec
     "libavformat/gopher.c",
     "libavformat/gsmdec.c",
     "libavformat/gxf.c",
