@@ -6585,7 +6585,7 @@ const all_sources = [_][]const u8{
     "libavformat/mpc.c",
     "libavformat/mpc8.c",
     "libavformat/mpeg.c",
-    "libavformat/mpeg4audio_sample_rates.c",
+    // "libavformat/mpeg4audio_sample_rates.c", redundant with libavcodec
     "libavformat/mpegaudiotabs.c",
     "libavformat/mpegenc.c",
     "libavformat/mpegts.c",
