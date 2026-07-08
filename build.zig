@@ -6811,7 +6811,7 @@ const all_sources = [_][]const u8{
     "/W/libavformat/tls_schannel.c",
     "libavformat/tls_securetransport.c",
     "libavformat/tmv.c",
-    "libavformat/to_upper4.c",
+    // "libavformat/to_upper4.c", redundant with libavcodec
     "libavformat/tta.c",
     "libavformat/ttaenc.c",
     "libavformat/ttmlenc.c",
