@@ -4372,7 +4372,9 @@ const all_sources = [_][]const u8{
     //"libavcodec/ffv1enc_vulkan.c",
     "libavcodec/ffwavesynth.c",
     "libavcodec/fic.c",
-    "libavcodec/file_open.c",
+    // This file only pound includes libavutil/file_open.c, unnecessary since
+    // we compile everything to one static archive.
+    //"libavcodec/file_open.c",
     "libavcodec/fits.c",
     "libavcodec/fitsdec.c",
     "libavcodec/fitsenc.c",
@@ -5635,7 +5637,9 @@ const all_sources = [_][]const u8{
     "libavdevice/fbdev_common.c",
     "libavdevice/fbdev_dec.c",
     "libavdevice/fbdev_enc.c",
-    "libavdevice/file_open.c",
+    // This file only pound includes libavutil/file_open.c, unnecessary since
+    // we compile everything to one static archive.
+    //"libavdevice/file_open.c",
     "libavdevice/gdigrab.c",
     "libavdevice/iec61883.c",
     //"libavdevice/indev_list.c",
@@ -5836,7 +5840,9 @@ const all_sources = [_][]const u8{
     "libavfilter/f_streamselect.c",
     //"libavfilter/f_zmq.c",
     //"libavfilter/fflcms2.c",
-    "libavfilter/file_open.c",
+    // This file only pound includes libavutil/file_open.c, unnecessary since
+    // we compile everything to one static archive.
+    //"libavfilter/file_open.c",
     //"libavfilter/filter_list.c",
     "libavfilter/formats.c",
     "libavfilter/framepool.c",
@@ -6431,7 +6437,9 @@ const all_sources = [_][]const u8{
     "libavformat/ffmetaenc.c",
     "libavformat/fifo.c",
     "libavformat/file.c",
-    "libavformat/file_open.c",
+    // This file only pound includes libavutil/file_open.c, unnecessary since
+    // we compile everything to one static archive.
+    //"libavformat/file_open.c",
     "libavformat/filmstripdec.c",
     "libavformat/filmstripenc.c",
     "libavformat/fitsdec.c",
