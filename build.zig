@@ -3825,7 +3825,8 @@ const all_sources = [_][]const u8{
     "libavcodec/aacenc_is.c",
     "libavcodec/aacenc_tns.c",
     "libavcodec/aacenctab.c",
-    "libavcodec/aacps.c",
+    // This is a template file, included by both aacps_fixed.c and aacps_float.c
+    //"libavcodec/aacps.c",
     "libavcodec/aacps_common.c",
     "libavcodec/aacps_fixed.c",
     "libavcodec/aacps_float.c",
