@@ -5208,7 +5208,7 @@ const all_sources = [_][]const u8{
     "libavcodec/tiff.c",
     "libavcodec/tiff_common.c",
     "libavcodec/tiffenc.c",
-    "libavcodec/timecode_internal.c",
+    // "libavcodec/timecode_internal.c", redundant with libavutil
     "libavcodec/tmv.c",
     "libavcodec/to_upper4.c",
     "libavcodec/tpeldsp.c",
