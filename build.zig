@@ -5011,7 +5011,7 @@ const all_sources = [_][]const u8{
     "libavcodec/rawdec.c",
     "libavcodec/rawenc.c",
     "libavcodec/realtextdec.c",
-    "libavcodec/reverse.c",
+    // "libavcodec/reverse.c", redundant with libavutil
     "libavcodec/riscv/aacencdsp_init.c",
     "libavcodec/riscv/aacencdsp_rvv.S",
     "libavcodec/riscv/aacpsdsp_init.c",
@@ -5652,7 +5652,7 @@ const all_sources = [_][]const u8{
     "libavdevice/pulse_audio_common.c",
     "libavdevice/pulse_audio_dec.c",
     "libavdevice/pulse_audio_enc.c",
-    "libavdevice/reverse.c",
+    // "libavdevice/reverse.c", redundant with libavutil
     "libavdevice/riscv/cpu_common.c",
     "libavdevice/sndio.c",
     "libavdevice/sndio_dec.c",
