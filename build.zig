@@ -6523,7 +6523,7 @@ const all_sources = [_][]const u8{
     "libavformat/ivfenc.c",
     "libavformat/jacosubdec.c",
     "libavformat/jacosubenc.c",
-    "libavformat/jpegtables.c",
+    // "libavformat/jpegtables.c", redundant with libavcodec
     "libavformat/jpegxl_anim_dec.c",
     "libavformat/jpegxl_parse.c",
     "libavformat/jvdec.c",
