@@ -6295,7 +6295,7 @@ const all_sources = [_][]const u8{
     "libavformat/aacdec.c",
     "libavformat/aadec.c",
     "libavformat/aaxdec.c",
-    // "libavformat/ac3_channel_layout_tab.c", redundant with libavutil
+    // "libavformat/ac3_channel_layout_tab.c", redundant with libavcodec
     "libavformat/ac3dec.c",
     "libavformat/ac4dec.c",
     "libavformat/ac4enc.c",
@@ -6396,7 +6396,7 @@ const all_sources = [_][]const u8{
     "libavformat/data_uri.c",
     "libavformat/dauddec.c",
     "libavformat/daudenc.c",
-    "libavformat/dca_sample_rate_tab.c",
+    // "libavformat/dca_sample_rate_tab.c", redundant with libavcodec
     "libavformat/dcstr.c",
     "libavformat/demux.c",
     "libavformat/demux_utils.c",
