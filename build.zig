@@ -4372,9 +4372,7 @@ const all_sources = [_][]const u8{
     //"libavcodec/ffv1enc_vulkan.c",
     "libavcodec/ffwavesynth.c",
     "libavcodec/fic.c",
-    // This file only pound includes the corresponding file from libavutil,
-    // unnecessary since we compile everything to one static archive.
-    //"libavcodec/file_open.c",
+    //"libavcodec/file_open.c", redundant with libavutil
     "libavcodec/fits.c",
     "libavcodec/fitsdec.c",
     "libavcodec/fitsenc.c",
@@ -4389,10 +4387,8 @@ const all_sources = [_][]const u8{
     "libavcodec/flashsv2enc.c",
     "libavcodec/flashsvenc.c",
     "libavcodec/flicvideo.c",
-    // This file only pound includes the corresponding file from libavutil,
-    // unnecessary since we compile everything to one static archive.
-    //"libavcodec/float2half.c",
-    "libavcodec/float_scalarproduct.c",
+    //"libavcodec/float2half.c", redundant with libavutil
+    //"libavcodec/float_scalarproduct.c", redundant with libavutil
     "libavcodec/flvdec.c",
     "libavcodec/flvenc.c",
     "libavcodec/fmtconvert.c",
@@ -4462,7 +4458,7 @@ const all_sources = [_][]const u8{
     "libavcodec/h264qpel.c",
     "libavcodec/h265_profile_level.c",
     "libavcodec/h274.c",
-    "libavcodec/half2float.c",
+    //"libavcodec/half2float.c", redundant with libavutil
     "libavcodec/hap.c",
     "libavcodec/hapdec.c",
     //"libavcodec/hapenc.c",
@@ -5639,9 +5635,7 @@ const all_sources = [_][]const u8{
     "libavdevice/fbdev_common.c",
     "libavdevice/fbdev_dec.c",
     "libavdevice/fbdev_enc.c",
-    // This file only pound includes the corresponding file from libavutil,
-    // unnecessary since we compile everything to one static archive.
-    //"libavdevice/file_open.c",
+    //"libavdevice/file_open.c", redundant with libavutil
     "libavdevice/gdigrab.c",
     "libavdevice/iec61883.c",
     //"libavdevice/indev_list.c",
@@ -5842,9 +5836,7 @@ const all_sources = [_][]const u8{
     "libavfilter/f_streamselect.c",
     //"libavfilter/f_zmq.c",
     //"libavfilter/fflcms2.c",
-    // This file only pound includes the corresponding file from libavutil,
-    // unnecessary since we compile everything to one static archive.
-    //"libavfilter/file_open.c",
+    //"libavfilter/file_open.c", redundant with libavutil
     //"libavfilter/filter_list.c",
     "libavfilter/formats.c",
     "libavfilter/framepool.c",
@@ -6439,9 +6431,7 @@ const all_sources = [_][]const u8{
     "libavformat/ffmetaenc.c",
     "libavformat/fifo.c",
     "libavformat/file.c",
-    // This file only pound includes the corresponding file from libavutil,
-    // unnecessary since we compile everything to one static archive.
-    //"libavformat/file_open.c",
+    //"libavformat/file_open.c", redundant with libavutil
     "libavformat/filmstripdec.c",
     "libavformat/filmstripenc.c",
     "libavformat/fitsdec.c",
@@ -7107,7 +7097,7 @@ const all_sources = [_][]const u8{
     "libswscale/format.c",
     "libswscale/gamma.c",
     "libswscale/graph.c",
-    "libswscale/half2float.c",
+    //"libswscale/half2float.c", redundant with libavutil
     "libswscale/hscale.c",
     "libswscale/hscale_fast_bilinear.c",
     "libswscale/input.c",
