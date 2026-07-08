@@ -6637,7 +6637,7 @@ const all_sources = [_][]const u8{
     "libavformat/omadec.c",
     "libavformat/omaenc.c",
     "libavformat/options.c",
-    "libavformat/opus_frame_duration_tab.c",
+    // "libavformat/opus_frame_duration_tab.c", redundant with libavcodec
     "libavformat/os_support.c",
     "libavformat/osq.c",
     "libavformat/paf.c",
