@@ -4615,7 +4615,7 @@ const all_sources = [_][]const u8{
     //"libavcodec/libzvbi-teletextdec.c",
     "libavcodec/ljpegenc.c",
     "libavcodec/loco.c",
-    "libavcodec/log2_tab.c",
+    // "libavcodec/log2_tab.c", redundant with libavutil
     "libavcodec/loongarch/h264_cabac.c",
     "libavcodec/loongarch/h264_deblock_lasx.c",
     "libavcodec/loongarch/h264_intrapred_init_loongarch.c",
@@ -5846,7 +5846,7 @@ const all_sources = [_][]const u8{
     "libavfilter/graphdump.c",
     "libavfilter/graphparser.c",
     "libavfilter/lavfutils.c",
-    "libavfilter/log2_tab.c",
+    // "libavfilter/log2_tab.c", redundant with libavutil
     "libavfilter/lswsutils.c",
     "libavfilter/motion_estimation.c",
     //"libavfilter/opencl.c",
@@ -6543,7 +6543,7 @@ const all_sources = [_][]const u8{
     //"libavformat/libzmq.c",
     "libavformat/lmlm4.c",
     "libavformat/loasdec.c",
-    "libavformat/log2_tab.c",
+    // "libavformat/log2_tab.c", redundant with libavutil
     "libavformat/lrc.c",
     "libavformat/lrcdec.c",
     "libavformat/lrcenc.c",
@@ -7055,7 +7055,7 @@ const all_sources = [_][]const u8{
     "libswresample/arm/resample_init.c",
     "libswresample/audioconvert.c",
     "libswresample/dither.c",
-    "libswresample/log2_tab.c",
+    // "libswresample/log2_tab.c", redundant with libavutil
     //"libswresample/noise_shaping_data.c",
     "libswresample/options.c",
     "libswresample/rematrix.c",
@@ -7101,7 +7101,7 @@ const all_sources = [_][]const u8{
     "libswscale/hscale.c",
     "libswscale/hscale_fast_bilinear.c",
     "libswscale/input.c",
-    "libswscale/log2_tab.c",
+    // "libswscale/log2_tab.c", redundant with libavutil
     "libswscale/loongarch/input.S",
     "libswscale/loongarch/input_lasx.c",
     "libswscale/loongarch/input_lsx.c",
