@@ -32,7 +32,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const libogg_dep = libvorbis_dep.builder.dependency("libogg", .{
+    const libogg_dep = b.dependency("libogg", .{
         .target = target,
         .optimize = optimize,
     });

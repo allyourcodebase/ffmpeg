@@ -33,6 +33,10 @@
             .url = "git+https://codeberg.org/allyourcodebase/libvorbis#410cdd66bd207aef0d248475dbed3cf7ca1eb9d4",
             .hash = "libvorbis-0.0.0+1.3.7-1wt9j_QPAADVure94TG4ecBMLD8eIAzWd6ZxVOmBBPCu",
         },
+        .libogg = .{
+            .url = "git+https://codeberg.org/allyourcodebase/libogg#4accc2e0c6710e07a5070ac3bf0a9a319f9da6a6",
+            .hash = "libogg-0.0.0+1.3.7-0KP-foYNAAAaj0YJOwRQs7kTN-ivzRMYTjtKzr6Apelj",
+        },
 
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
