@@ -745,7 +745,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RUNTIME_CPUDETECT = !target.query.isNativeCpu(),
         .CONFIG_SAFE_BITSTREAM_READER = true,
         .CONFIG_SHARED = false,
-        .CONFIG_SMALL = optimize == .ReleaseSmall,
+        .CONFIG_SMALL = optimize == .small,
         .CONFIG_STATIC = true,
         .CONFIG_SWSCALE_ALPHA = true,
         .CONFIG_UNSTABLE = true,
