@@ -175,11 +175,21 @@ static const FFCodec * const codec_list[] = {
     &ff_xsub_encoder,
     &ff_libmp3lame_encoder,
     &ff_libvorbis_encoder,
+#if CONFIG_H263_V4L2M2M_ENCODER
     &ff_h263_v4l2m2m_encoder,
+#endif
+#if CONFIG_H264_V4L2M2M_ENCODER
     &ff_h264_v4l2m2m_encoder,
+#endif
+#if CONFIG_HEVC_V4L2M2M_ENCODER
     &ff_hevc_v4l2m2m_encoder,
+#endif
+#if CONFIG_MPEG4_V4L2M2M_ENCODER
     &ff_mpeg4_v4l2m2m_encoder,
+#endif
+#if CONFIG_VP8_V4L2M2M_ENCODER
     &ff_vp8_v4l2m2m_encoder,
+#endif
     &ff_vnull_encoder,
     &ff_anull_encoder,
     &ff_aasc_decoder,
@@ -265,12 +275,18 @@ static const FFCodec * const codec_list[] = {
     &ff_h263_decoder,
     &ff_h263i_decoder,
     &ff_h263p_decoder,
+#if CONFIG_H263_V4L2M2M_DECODER
     &ff_h263_v4l2m2m_decoder,
+#endif
     &ff_h264_decoder,
+#if CONFIG_H264_V4L2M2M_DECODER
     &ff_h264_v4l2m2m_decoder,
+#endif
     &ff_hap_decoder,
     &ff_hevc_decoder,
+#if CONFIG_HEVC_V4L2M2M_DECODER
     &ff_hevc_v4l2m2m_decoder,
+#endif
     &ff_hnm4_video_decoder,
     &ff_hq_hqa_decoder,
     &ff_hqx_decoder,
@@ -308,10 +324,16 @@ static const FFCodec * const codec_list[] = {
     &ff_mpeg1video_decoder,
     &ff_mpeg2video_decoder,
     &ff_mpeg4_decoder,
+#if CONFIG_MPEG4_V4L2M2M_DECODER
     &ff_mpeg4_v4l2m2m_decoder,
+#endif
     &ff_mpegvideo_decoder,
+#if CONFIG_MPEG1_V4L2M2M_DECODER
     &ff_mpeg1_v4l2m2m_decoder,
+#endif
+#if CONFIG_MPEG2_V4L2M2M_DECODER
     &ff_mpeg2_v4l2m2m_decoder,
+#endif
     &ff_msa1_decoder,
     &ff_mscc_decoder,
     &ff_msmpeg4v1_decoder,
@@ -418,7 +440,9 @@ static const FFCodec * const codec_list[] = {
     &ff_vble_decoder,
     &ff_vc1_decoder,
     &ff_vc1image_decoder,
+#if CONFIG_VC1_V4L2M2M_DECODER
     &ff_vc1_v4l2m2m_decoder,
+#endif
     &ff_vcr1_decoder,
     &ff_vmdvideo_decoder,
     &ff_vmix_decoder,
@@ -431,9 +455,13 @@ static const FFCodec * const codec_list[] = {
     &ff_vp6f_decoder,
     &ff_vp7_decoder,
     &ff_vp8_decoder,
+#if CONFIG_VP8_V4L2M2M_DECODER
     &ff_vp8_v4l2m2m_decoder,
+#endif
     &ff_vp9_decoder,
+#if CONFIG_VP9_V4L2M2M_DECODER
     &ff_vp9_v4l2m2m_decoder,
+#endif
     &ff_vqa_decoder,
     &ff_vqc_decoder,
     &ff_vvc_decoder,
