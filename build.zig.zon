@@ -38,6 +38,12 @@
             .hash = "libogg-0.0.0+1.3.7-0KP-foYNAAAaj0YJOwRQs7kTN-ivzRMYTjtKzr6Apelj",
         },
 
+        .xcode_frameworks = .{
+            .url = "git+https://code.hexops.org/hexops/xcode-frameworks.git#8a1cfb373587ea4c9bb1468b7c986462d8d4e10e",
+            .hash = "N-V-__8AALShqgXkvqYU6f__FrA22SMWmi2TXCJjNTO1m8XJ",
+            .lazy = true,
+        },
+
         // This is used to compile some assembly files into object files for x86.
         // Without this, ffmpeg considers the build "crippled".
         .nasm = .{
