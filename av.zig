@@ -2013,6 +2013,17 @@ pub const ChannelCustom = extern struct {
     @"opaque": ?*anyopaque,
 };
 
+pub const AlphaMode = enum(c_uint) {
+    // Unknown alpha handling, or no alpha channel
+    UNSPECIFIED = 0,
+    // Alpha channel is multiplied into color values
+    PREMULTIPLIED = 1,
+    // Alpha channel is independent of color values
+    STRAIGHT = 2,
+    // Not part of ABI
+    NB,
+};
+
 pub const Buffer = opaque {};
 
 pub const Channel = enum(c_int) {
@@ -3010,7 +3021,6 @@ pub const Frame = extern struct {
         pixel: PixelFormat,
         sample: SampleFormat,
     },
-    key_frame: c_int,
     pict_type: PictureType,
     sample_aspect_ratio: Rational,
     pts: i64,
@@ -3024,9 +3034,6 @@ pub const Frame = extern struct {
     quality: c_int,
     @"opaque": ?*anyopaque,
     repeat_pict: c_int,
-    interlaced_frame: c_int,
-    top_field_first: c_int,
-    palette_has_changed: c_int,
     /// Sample rate of the audio data.
     sample_rate: c_int,
     buf: [NUM_DATA_POINTERS]?*BufferRef,
@@ -3041,10 +3048,8 @@ pub const Frame = extern struct {
     colorspace: ColorSpace,
     chroma_location: ChromaLocation,
     best_effort_timestamp: i64,
-    pkt_pos: i64,
     metadata: Dictionary.Mutable,
     decode_error_flags: c_int,
-    pkt_size: c_int,
     hw_frames_ctx: *BufferRef,
     opaque_ref: *BufferRef,
     crop_top: usize,
@@ -3055,6 +3060,7 @@ pub const Frame = extern struct {
     /// Channel layout of the audio data.
     ch_layout: ChannelLayout,
     duration: i64,
+    alpha_mode: AlphaMode,
 
     /// Allocate a `Frame` and set its fields to default values.  The resulting
     /// struct must be freed using `free`.
