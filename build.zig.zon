@@ -19,11 +19,11 @@
             .hash = "openssl-3.3.2-TC9C3Ze3ZABaKR5hc8KRnRPhTClKrKQKqTnXTUYkvmSR",
             .lazy = true,
         },
-        .libressl = .{
-            .url = "git+https://github.com/allyourcodebase/libressl#43f34e823bddea90329e4475bb9c4f9d05e8542a",
-            .hash = "libressl-4.0.0--kqV4KPTAACsSRP8mSIZmqgVa5OZjw6WEgvcftWkLu-c",
-            .lazy = true,
-        },
+        // .libressl = .{
+        //     .url = "git+https://github.com/allyourcodebase/libressl#8c63fadf71925d74942a847b9a6b3a28930792a3",
+        //     .hash = "libressl-4.0.0--kqV4FHUAABdqKrbT3i3K-m1m7s_HyZZMMoBpbHjCiNQ",
+        //     .lazy = true,
+        // },
 
         .libmp3lame = .{
             .url = "https://github.com/andrewrk/libmp3lame/archive/b2322045e93dc0361006fdc736b9617522b00cd6.tar.gz",
