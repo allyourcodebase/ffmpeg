@@ -3315,7 +3315,11 @@ pub fn build(b: *std.Build) void {
                 const output_basename = basenameNewExtension(b, input_file, ".o");
                 const nasm_run = b.addRunArtifact(nasm_exe);
 
-                nasm_run.addArgs(&.{ "-f", "elf64", "-g", "-F", "dwarf" });
+                switch (t.ofmt) {
+                    .elf => nasm_run.addArgs(&.{ "-f", "elf64", "-g", "-F", "dwarf" }),
+                    .coff => nasm_run.addArgs(&.{ "-f", "win64" }),
+                    else => unreachable,
+                }
 
                 // nasm requires a trailing slash on include directories
                 nasm_run.addDecoratedDirectoryArg("-I", b.path("."), "/");
