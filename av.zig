@@ -204,7 +204,7 @@ pub extern fn sws_scale(c: *sws.Context, srcSlice: [*]const [*]const u8, srcStri
 pub extern fn sws_scale_frame(c: *sws.Context, dst: *Frame, src: *const Frame) c_int;
 
 /// Prefer `swr.Context.alloc`.
-pub extern fn swr_alloc() ?*sws.Context;
+pub extern fn swr_alloc() ?*swr.Context;
 /// Prefer `swr.Context.init`.
 pub extern fn swr_init(swr_context: *swr.Context) c_int;
 /// Prefer `swr.Context.is_initialized`.
@@ -212,7 +212,7 @@ pub extern fn swr_is_initialized(swr_context: *swr.Context) c_int;
 /// Prefer `swr.Context.alloc_set_opts`
 pub extern fn swr_alloc_set_opts2(swr_context: *?*swr.Context, out_ch_layout: *const ChannelLayout, out_sample_fmt: SampleFormat, out_sample_rate: c_int, in_ch_layout: *const ChannelLayout, in_sample_fmt: SampleFormat, in_sample_rate: c_int, log_offset: c_int, log_ctx: ?[*]u8) c_int;
 /// Prefer `swr.Context.free`.
-pub extern fn swr_free(swsContext: *?*swr.Context) void;
+pub extern fn swr_free(swr_context: *?*swr.Context) void;
 /// Prefer `swr.Context.close`
 pub extern fn swr_close(swr_context: *swr.Context) void;
 /// Prefer `swr.Context.convert`
