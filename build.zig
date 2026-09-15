@@ -3553,7 +3553,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
                 });
             }
 
-            libs[3].list.append(ally, path); // TODO: horrible
+            libs[std.mem.indexOfScalar([]const u8, field_names, "avformat").?].list.append(ally, path);
         }
     }
 
