@@ -7,6 +7,7 @@ pub fn build(b: *std.Build) void {
     const is_darwin = t.os.tag.isDarwin();
 
     const tls = b.option(Tls, "tls", "Enable tls support using the specified library") orelse .disabled;
+    const networking = b.option(bool, "networking", "Enable networking") orelse false;
 
     const libz_dep = b.dependency("libz", .{
         .target = target,
@@ -769,7 +770,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_IAMF = true,
         .CONFIG_LSP = true,
         .CONFIG_PIXELUTILS = true,
-        .CONFIG_NETWORK = false,
+        .CONFIG_NETWORK = networking,
         .CONFIG_AUTODETECT = false,
         .CONFIG_FONTCONFIG = false,
         .CONFIG_LARGE_TESTS = true,
@@ -2894,11 +2895,11 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RPL_DEMUXER = true,
         .CONFIG_RSD_DEMUXER = true,
         .CONFIG_RSO_DEMUXER = true,
-        .CONFIG_RTP_DEMUXER = false,
-        .CONFIG_RTSP_DEMUXER = false,
+        .CONFIG_RTP_DEMUXER = networking,
+        .CONFIG_RTSP_DEMUXER = networking,
         .CONFIG_S337M_DEMUXER = true,
         .CONFIG_SAMI_DEMUXER = true,
-        .CONFIG_SAP_DEMUXER = false,
+        .CONFIG_SAP_DEMUXER = networking,
         .CONFIG_SBC_DEMUXER = true,
         .CONFIG_SBG_DEMUXER = true,
         .CONFIG_SCC_DEMUXER = true,
@@ -3161,10 +3162,10 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RM_MUXER = true,
         .CONFIG_ROQ_MUXER = true,
         .CONFIG_RSO_MUXER = true,
-        .CONFIG_RTP_MUXER = false,
+        .CONFIG_RTP_MUXER = networking,
         .CONFIG_RTP_MPEGTS_MUXER = true,
-        .CONFIG_RTSP_MUXER = false,
-        .CONFIG_SAP_MUXER = false,
+        .CONFIG_RTSP_MUXER = networking,
+        .CONFIG_SAP_MUXER = networking,
         .CONFIG_SBC_MUXER = true,
         .CONFIG_SCC_MUXER = true,
         .CONFIG_SEGAFILM_MUXER = true,
@@ -3214,13 +3215,13 @@ pub fn build(b: *std.Build) void {
         .CONFIG_DATA_PROTOCOL = true,
         .CONFIG_FD_PROTOCOL = true,
         .CONFIG_FFRTMPCRYPT_PROTOCOL = false,
-        .CONFIG_FFRTMPHTTP_PROTOCOL = false,
+        .CONFIG_FFRTMPHTTP_PROTOCOL = networking,
         .CONFIG_FILE_PROTOCOL = true,
-        .CONFIG_FTP_PROTOCOL = false,
-        .CONFIG_GOPHER_PROTOCOL = false,
+        .CONFIG_FTP_PROTOCOL = networking,
+        .CONFIG_GOPHER_PROTOCOL = networking,
         .CONFIG_GOPHERS_PROTOCOL = false,
-        .CONFIG_HTTP_PROTOCOL = false,
-        .CONFIG_HTTPPROXY_PROTOCOL = false,
+        .CONFIG_HTTP_PROTOCOL = networking,
+        .CONFIG_HTTPPROXY_PROTOCOL = networking,
         .CONFIG_HTTPS_PROTOCOL = tls != .disabled,
         .CONFIG_ICECAST_PROTOCOL = true,
         .CONFIG_MMSH_PROTOCOL = true,
@@ -3234,17 +3235,17 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RTMPT_PROTOCOL = true,
         .CONFIG_RTMPTE_PROTOCOL = false,
         .CONFIG_RTMPTS_PROTOCOL = false,
-        .CONFIG_RTP_PROTOCOL = false,
+        .CONFIG_RTP_PROTOCOL = networking,
         .CONFIG_SCTP_PROTOCOL = false,
-        .CONFIG_SRTP_PROTOCOL = false,
+        .CONFIG_SRTP_PROTOCOL = networking,
         .CONFIG_SUBFILE_PROTOCOL = true,
         .CONFIG_TEE_PROTOCOL = true,
-        .CONFIG_TCP_PROTOCOL = false,
+        .CONFIG_TCP_PROTOCOL = networking,
         .CONFIG_TLS_PROTOCOL = tls != .disabled,
         .CONFIG_DTLS_PROTOCOL = false,
-        .CONFIG_UDP_PROTOCOL = false,
-        .CONFIG_UDPLITE_PROTOCOL = false,
-        .CONFIG_UNIX_PROTOCOL = false,
+        .CONFIG_UDP_PROTOCOL = networking,
+        .CONFIG_UDPLITE_PROTOCOL = networking,
+        .CONFIG_UNIX_PROTOCOL = networking,
         .CONFIG_LIBAMQP_PROTOCOL = false,
         .CONFIG_LIBRIST_PROTOCOL = false,
         .CONFIG_LIBRTMP_PROTOCOL = false,
@@ -3274,7 +3275,9 @@ pub fn build(b: *std.Build) void {
     const sources = categorizeSources(b.allocator, t, switch (tls) {
         else => tls,
         // .libressl => .openssl,
-    });
+    }, networking);
+
+    const avformat_lists_dir = if (networking) "-Ilibavformat/yes_networking_srcs" else "-Ilibavformat/no_networking_srcs";
 
     lib.root_module.addCSourceFiles(.{
         .files = sources.avcodec,
@@ -3286,7 +3289,7 @@ pub fn build(b: *std.Build) void {
     });
     lib.root_module.addCSourceFiles(.{
         .files = sources.avformat,
-        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avformat"},
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avformat"} ++ [_][]const u8{avformat_lists_dir},
     });
     lib.root_module.addCSourceFiles(.{
         .files = sources.avfilter,
@@ -3309,7 +3312,7 @@ pub fn build(b: *std.Build) void {
             });
             const nasm_exe = nasm_dep.artifact("nasm");
 
-            for (all_sources) |input_file| {
+            for (no_networking_sources) |input_file| {
                 if (!std.mem.endsWith(u8, input_file, ".asm")) continue;
 
                 const output_basename = basenameNewExtension(b, input_file, ".o");
@@ -3445,7 +3448,7 @@ const CategorizedSources = struct {
 };
 
 /// For x86, files ending in .asm are omitted.
-fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) CategorizedSources {
+fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, networking: bool) CategorizedSources {
     const field_names = @typeInfo(CategorizedSources).@"struct".field_names;
 
     var libs: [field_names.len]struct {
@@ -3456,7 +3459,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
     inline for (field_names, 0..) |field_name, i| {
         libs[i] = .{ .prefix = "lib" ++ field_name ++ "/" };
     }
-    for (all_sources) |prefixed_path| {
+    for (no_networking_sources) |prefixed_path| {
         const path = if (std.mem.startsWith(u8, prefixed_path, "/L/")) p: {
             if (target.os.tag != .linux) continue;
             break :p prefixed_path["/L/".len..];
@@ -3540,6 +3543,18 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
         }
 
         lib.list.append(ally, path) catch @panic("OOM");
+    }
+
+    if (networking) {
+        for (yes_networking_sources) |path| {
+            if (!std.mem.startsWith(u8, path, "libavformat/")) {
+                std.debug.panic("networking source file '{s}' is not from libavformat", .{
+                    path,
+                });
+            }
+
+            libs[3].list.append(ally, path); // TODO: horrible
+        }
     }
 
     var result: CategorizedSources = undefined;
@@ -3813,7 +3828,7 @@ fn basenameNewExtension(b: *std.Build, path: []const u8, new_extension: []const 
     return b.fmt("{s}{s}", .{ basename[0 .. basename.len - ext.len], new_extension });
 }
 
-const all_sources = [_][]const u8{
+const no_networking_sources = [_][]const u8{
     "libavcodec/012v.c",
     "libavcodec/4xm.c",
     "libavcodec/8bps.c",
@@ -6487,7 +6502,6 @@ const all_sources = [_][]const u8{
     "libavformat/hlsenc.c",
     "libavformat/hlsplaylist.c",
     "libavformat/hnm.c",
-    // "libavformat/http.c",
     "libavformat/httpauth.c",
     "libavformat/hxvs.c",
     "libavformat/iamf.c",
@@ -6621,7 +6635,6 @@ const all_sources = [_][]const u8{
     "libavformat/mxg.c",
     "libavformat/nal.c",
     "libavformat/ncdec.c",
-    // "libavformat/network.c",
     "libavformat/nistspheredec.c",
     "libavformat/nspdec.c",
     "libavformat/nsvdec.c",
@@ -6747,14 +6760,8 @@ const all_sources = [_][]const u8{
     "libavformat/rtpenc_vp8.c",
     "libavformat/rtpenc_vp9.c",
     "libavformat/rtpenc_xiph.c",
-    // "libavformtt/rtpproto.c",
-    // "libavformat/rtsp.c",
-    // "libavformat/rtspdec.c",
-    // "libavformat/rtspenc.c",
     "libavformat/s337m.c",
     "libavformat/samidec.c",
-    // "libavformat/sapdec.c",
-    // "libavformat/sapenc.c",
     "libavformat/sauce.c",
     "libavformat/sbcdec.c",
     "libavformat/sbgdec.c",
@@ -6791,7 +6798,6 @@ const all_sources = [_][]const u8{
     "libavformat/srtdec.c",
     "libavformat/srtenc.c",
     "libavformat/srtp.c",
-    // "libavformat/srtpproto.c",
     "libavformat/stldec.c",
     "libavformat/subfile.c",
     "libavformat/subtitles.c",
@@ -6805,7 +6811,6 @@ const all_sources = [_][]const u8{
     "libavformat/swfdec.c",
     "libavformat/swfenc.c",
     "libavformat/takdec.c",
-    // "libavformat/tcp.c",
     "libavformat/tedcaptionsdec.c",
     "libavformat/tee.c",
     "libavformat/tee_common.c",
@@ -6827,9 +6832,7 @@ const all_sources = [_][]const u8{
     "libavformat/tty.c",
     "libavformat/txd.c",
     "libavformat/ty.c",
-    // "libavformat/udp.c",
     "libavformat/uncodedframecrcenc.c",
-    // "libavformat/unix.c",
     "libavformat/url.c",
     "libavformat/urldecode.c",
     "libavformat/usmdec.c",
@@ -7176,4 +7179,19 @@ const all_sources = [_][]const u8{
     "libswscale/x86/yuv2yuvX.asm",
     "libswscale/x86/yuv_2_rgb.asm",
     "libswscale/yuv2rgb.c",
+};
+
+const yes_networking_sources = [_][]const u8{
+    "libavformat/http.c",
+    "libavformat/network.c",
+    "libavformat/rtpproto.c",
+    "libavformat/rtsp.c",
+    "libavformat/rtspdec.c",
+    "libavformat/rtspenc.c",
+    "libavformat/sapdec.c",
+    "libavformat/sapenc.c",
+    "libavformat/srtpproto.c",
+    "libavformat/tcp.c",
+    "libavformat/udp.c",
+    "libavformat/unix.c",
 };
