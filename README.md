@@ -63,7 +63,7 @@ released upstream.
 2. `find libavcodec/ libavdevice/ libavfilter/ libavformat libavutil/ libswscale/ libswresample/ -type f -name "*.asm" -o -name "*.c" -o -name "*.S"`
    * Edit to omit files ending in `_template.c` or `_tablegen.c`
    * Sort the list
-   * Update the `all_sources` list in `build.zig`.
+   * Update the `no_networking_sources` and `yes_networking_srcs` lists in `build.zig`.
 3. Inspect the git diff to keep some of the source files commented out like
    they were before. Some handy filtering rules apply:
    * `/L` prefix means Linux-only
@@ -79,12 +79,16 @@ released upstream.
    * `libavcodec/codec_list.c`
    * `libavcodec/parser_list.c`
    * `libavcodec/bsf_list.c`
-   * `libavformat/demuxer_list.c`
-   * `libavformat/muxer_list.c`
+   * `libavformat/demuxer_list.c` into `libavformat/yes_networking_srcs/demuxer_list.c`
+   * `libavformat/muxer_list.c` into `libavformat/yes_networking_srcs/muxer_list.c`
    * `libavdevice/indev_list.c`
    * `libavdevice/outdev_list.c`
    * `libavformat/protocol_list.c`
-6. Update the `headers` list in `build.zig` based on what files are present in
+6. Run `./configure --prefix=$HOME/local/ffmpeg --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-programs --enable-libmp3lame --enable-libvorbis --disable-shared --enable-static --disable-networking`
+   against upstream. Apply appropriate changes to `build.zig` and update these generated files:
+   * `libavformat/demuxer_list.c` into `libavformat/no_networking_srcs/demuxer_list.c`
+   * `libavformat/muxer_list.c` into `libavformat/no_networking_srcs/muxer_list.c`
+7. Update the `headers` list in `build.zig` based on what files are present in
    `$HOME/local/ffmpeg/include`.
 
 ## License
