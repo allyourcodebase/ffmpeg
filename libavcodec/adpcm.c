@@ -294,7 +294,8 @@ static av_cold int adpcm_decode_init(AVCodecContext * avctx)
         break;
     case AV_CODEC_ID_ADPCM_PSXC:
         max_channels = 8;
-        if (avctx->ch_layout.nb_channels <= 0 || avctx->block_align <= 0)
+        if (avctx->ch_layout.nb_channels <= 0 || avctx->block_align <= 0 ||
+            avctx->block_align % avctx->ch_layout.nb_channels)
             return AVERROR_INVALIDDATA;
         break;
     case AV_CODEC_ID_ADPCM_IMA_DAT4:
@@ -1173,7 +1174,7 @@ static int get_nb_samples(AVCodecContext *avctx, GetByteContext *gb,
 
     if(ch <= 0)
         return 0;
-    if (buf_size > INT_MAX / 2)
+    if (buf_size > INT_MAX / 14)
         return 0;
 
     switch (avctx->codec->id) {

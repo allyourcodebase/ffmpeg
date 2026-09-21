@@ -54,7 +54,7 @@ typedef struct ThreadData {
 // and the frame is a multiple of 4 high then filter_line will never be called
 static inline int job_start(const int jobnr, const int nb_jobs, const int h)
 {
-    return jobnr >= nb_jobs ? h : ((h * jobnr) / nb_jobs) & ~3;
+    return jobnr >= nb_jobs ? h : (ff_slice_pos(h, jobnr, nb_jobs)) & ~3;
 }
 
 static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
@@ -77,24 +77,15 @@ static int filter_slice(AVFilterContext *ctx, void *arg, int jobnr, int nb_jobs)
             uint8_t *next = &yadif->next->data[td->plane][y * linesize];
             uint8_t *dst  = &td->frame->data[td->plane][y * td->frame->linesize[td->plane]];
             if (yadif->current_field == YADIF_FIELD_END) {
-                if ((y < 3) || ((y + 3) >= td->h)) {
-                    s->dsp.filter_edge(dst, prev, cur, next, td->w,
-                                   (y + df) < td->h ? refs : -refs,
-                                   y > (df - 1) ? -refs : refs,
-                                   refs << 1, -(refs << 1),
-                                   td->parity ^ td->tff, clip_max,
-                                   (y < 2) || ((y + 3) > td->h) ? 0 : 1);
-                } else {
-                    s->dsp.filter_intra(dst, cur, td->w, (y + df) < td->h ? refs : -refs,
-                                    y > (df - 1) ? -refs : refs,
-                                    (y + 3*df) < td->h ? 3 * refs : -refs,
-                                    y > (3*df - 1) ? -3 * refs : refs,
-                                    td->parity ^ td->tff, clip_max);
-                }
+                s->dsp.filter_intra(dst, cur, td->w, (y + 1) < td->h ? refs : -refs,
+                                y > 0 ? -refs : refs,
+                                (y + 3) < td->h ? 3 * refs : -refs,
+                                y > 2 ? -3 * refs : refs,
+                                td->parity ^ td->tff, clip_max);
             } else if ((y < 4) || ((y + 5) > td->h)) {
                 s->dsp.filter_edge(dst, prev, cur, next, td->w,
-                               (y + df) < td->h ? refs : -refs,
-                               y > (df - 1) ? -refs : refs,
+                               (y + 1) < td->h ? refs : -refs,
+                               y > 0 ? -refs : refs,
                                refs << 1, -(refs << 1),
                                td->parity ^ td->tff, clip_max,
                                (y < 2) || ((y + 3) > td->h) ? 0 : 1);

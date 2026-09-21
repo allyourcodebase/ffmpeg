@@ -29,6 +29,7 @@
 #include "libavcodec/parser.h"
 
 #include "hevc.h"
+#include "libavcodec/parser_internal.h"
 #include "parse.h"
 #include "ps.h"
 #include "sei.h"

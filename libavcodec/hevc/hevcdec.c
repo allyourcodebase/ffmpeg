@@ -38,7 +38,6 @@
 #include "libavutil/stereo3d.h"
 #include "libavutil/tdrdi.h"
 #include "libavutil/timecode.h"
-#include "libavutil/refstruct.h"
 
 #include "libavcodec/aom_film_grain.h"
 #include "libavcodec/bswapdsp.h"
@@ -47,17 +46,17 @@
 #include "libavcodec/decode.h"
 #include "libavcodec/golomb.h"
 #include "libavcodec/h274.h"
+#include "hevc.h"
+#include "parse.h"
+#include "hevcdec.h"
 #include "libavcodec/hwaccel_internal.h"
 #include "libavcodec/hwconfig.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/profiles.h"
 #include "libavcodec/progressframe.h"
+#include "libavutil/refstruct.h"
 #include "libavcodec/thread.h"
 #include "libavcodec/threadprogress.h"
-
-#include "hevc.h"
-#include "parse.h"
-#include "hevcdec.h"
 
 static const uint8_t hevc_pel_weight[65] = { [2] = 0, [4] = 1, [6] = 2, [8] = 3, [12] = 4, [16] = 5, [24] = 6, [32] = 7, [48] = 8, [64] = 9 };
 
@@ -2935,7 +2934,7 @@ static int hls_slice_data_wpp(HEVCContext *s, const H2645NAL *nal)
     int64_t startheader, cmpt = 0;
     int i, j, res = 0;
 
-    if (s->sh.slice_ctb_addr_rs + s->sh.num_entry_point_offsets * sps->ctb_width >= sps->ctb_width * sps->ctb_height) {
+    if (s->sh.slice_ctb_addr_rs + s->sh.num_entry_point_offsets * (int64_t)sps->ctb_width >= sps->ctb_width * (int64_t)sps->ctb_height) {
         av_log(s->avctx, AV_LOG_ERROR, "WPP ctb addresses are wrong (%d %d %d %d)\n",
             s->sh.slice_ctb_addr_rs, s->sh.num_entry_point_offsets,
             sps->ctb_width, sps->ctb_height
@@ -3544,6 +3543,11 @@ static int decode_slice(HEVCContext *s, unsigned nal_idx, GetBitContext *gb)
         (s->nuh_layer_id > 0 && !(s->layers_active_decode & (1 << layer_idx))))
         return 0;
 
+    // the first slice of this picture was skipped, so drop the remaining
+    // slices before parsing, the context is stale for them
+    if (s->skipping_frame && !show_bits1(gb))
+        return 0;
+
     ret = hls_slice_header(&s->sh, s, gb);
     // Once hls_slice_header has been called, the context is inconsistent with the slice header
     // until the context is reinitialized according to the contents of the new slice header
@@ -3558,8 +3562,12 @@ static int decode_slice(HEVCContext *s, unsigned nal_idx, GetBitContext *gb)
         (s->avctx->skip_frame >= AVDISCARD_NONKEY && !IS_IRAP(s)) ||
         ((s->nal_unit_type == HEVC_NAL_RASL_R || s->nal_unit_type == HEVC_NAL_RASL_N) &&
          s->no_rasl_output_flag)) {
+        if (s->sh.first_slice_in_pic_flag)
+            s->skipping_frame = 1;
         return 0;
     }
+    if (s->sh.first_slice_in_pic_flag)
+        s->skipping_frame = 0;
 
     // switching to a new layer, mark previous layer's frame (if any) as done
     if (s->cur_layer != layer_idx &&
@@ -4055,6 +4063,7 @@ static int hevc_update_thread_context(AVCodecContext *dst,
     s->poc_tid0   = s0->poc_tid0;
     s->eos        = s0->eos;
     s->no_rasl_output_flag = s0->no_rasl_output_flag;
+    s->skipping_frame = s0->skipping_frame;
 
     s->is_nalff        = s0->is_nalff;
     s->nal_length_size = s0->nal_length_size;
@@ -4200,6 +4209,7 @@ static av_cold void hevc_decode_flush(AVCodecContext *avctx)
     ff_dovi_ctx_flush(&s->dovi_ctx);
     av_buffer_unref(&s->rpu_buf);
     s->eos = 1;
+    s->skipping_frame = 0;
 
     if (FF_HW_HAS_CB(avctx, flush))
         FF_HW_SIMPLE_CALL(avctx, flush);

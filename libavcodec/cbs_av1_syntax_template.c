@@ -186,9 +186,12 @@ static int FUNC(decoder_model_info)(CodedBitstreamContext *ctx, RWContext *rw,
 static int FUNC(sequence_header_obu)(CodedBitstreamContext *ctx, RWContext *rw,
                                      AV1RawSequenceHeader *current)
 {
+    CodedBitstreamAV1Context *priv = ctx->priv_data;
     int i, err;
 
     HEADER("Sequence Header");
+
+    priv->seen_frame_header = 0;
 
     fc(3, seq_profile, AV_PROFILE_AV1_MAIN,
                        AV_PROFILE_AV1_PROFESSIONAL);
@@ -2007,10 +2010,12 @@ static int FUNC(metadata_itut_t35)(CodedBitstreamContext *ctx, RWContext *rw,
     // be arbitrarily many trailing zeroes so we need to read through twice.
     current->payload_size = cbs_av1_get_payload_bytes_left(rw);
 
-    current->payload_ref = av_buffer_alloc(current->payload_size);
+    current->payload_ref = av_buffer_alloc(current->payload_size +
+                                           AV_INPUT_BUFFER_PADDING_SIZE);
     if (!current->payload_ref)
         return AVERROR(ENOMEM);
     current->payload = current->payload_ref->data;
+    memset(current->payload + current->payload_size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
 #endif
 
     for (i = 0; i < current->payload_size; i++)
