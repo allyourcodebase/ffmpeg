@@ -59,7 +59,17 @@ These are the instructions to update this package when a new FFmpeg version is
 released upstream.
 
 1. Merge the new tag into main and resolve all conflicts by replacing the
-   conflicting files with the files from upstream.
+   conflicting files with the files from upstream. Three things survive that
+   rule:
+   * Files this package deleted stay deleted, and new files upstream added
+     under `doc/`, `tests/`, `tools/` or any `Makefile` are deleted too.
+   * `README.md` and `.gitignore` are this package's, not ffmpeg's.
+   * The sources under `libavcodec/bsf`, `libavcodec/hevc` and
+     `libavcodec/opus` include their siblings through `libavcodec/`, because
+     the build adds only `-I.`. Taking upstream's copy drops that, so redo it.
+
+   Finally grep the tree for conflict markers. A rename that git merges
+   without reporting a conflict can still leave them in the file.
 2. `find libavcodec/ libavdevice/ libavfilter/ libavformat libavutil/ libswscale/ libswresample/ -type f -name "*.asm" -o -name "*.c" -o -name "*.S"`
    * Edit to omit files ending in `_template.c` or `_tablegen.c`
    * Sort the list

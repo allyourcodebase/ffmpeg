@@ -722,7 +722,7 @@ static inline void rv34_mc(RV34DecContext *r, const int block_type,
         /* wait for the referenced mb row to be finished */
         int mb_row = s->mb_y + ((yoff + my + 5 + 8 * height) >> 4);
         const ThreadProgress *p = dir ? &s->next_pic.ptr->progress : &s->last_pic.ptr->progress;
-        ff_thread_progress_await(p, mb_row);
+        ff_thread_progress_await(p, FFMAX(0, mb_row));
     }
 
     dxy = ly*4 + lx;
@@ -742,7 +742,7 @@ static inline void rv34_mc(RV34DecContext *r, const int block_type,
         srcY -= 2 + 2*s->linesize;
         s->vdsp.emulated_edge_mc(s->sc.edge_emu_buffer, srcY,
                                  s->linesize, s->linesize,
-                                 (width << 3) + 6, (height << 3) + 6,
+                                 (width << 3) + 6, (height << 3) + 5,
                                  src_x - 2, src_y - 2,
                                  s->h_edge_pos, s->v_edge_pos);
         srcY = s->sc.edge_emu_buffer + 2 + 2*s->linesize;
@@ -1427,7 +1427,9 @@ static int rv34_decode_slice(RV34DecContext *r, int end, const uint8_t* buf, int
     int mb_pos, slice_type;
     int res;
 
-    init_get_bits(gb, buf, buf_size*8);
+    res = init_get_bits8(gb, buf, buf_size);
+    if (res < 0)
+        return res;
     res = r->parse_slice_header(r, gb, &r->si);
     if(res < 0){
         av_log(s->avctx, AV_LOG_ERROR, "Incorrect or unknown slice header\n");
@@ -1647,7 +1649,8 @@ int ff_rv34_decode_frame(AVCodecContext *avctx, AVFrame *pict,
         av_log(avctx, AV_LOG_ERROR, "Slice offset is invalid\n");
         return AVERROR_INVALIDDATA;
     }
-    init_get_bits(&r->gb, buf+offset, (buf_size-offset)*8);
+    if ((ret = init_get_bits8(&r->gb, buf+offset, buf_size-offset)) < 0)
+        return ret;
     if (r->parse_slice_header(r, &r->gb, &si) < 0 || si.start) {
         av_log(avctx, AV_LOG_ERROR, "First slice header is incorrect\n");
         return AVERROR_INVALIDDATA;
@@ -1777,7 +1780,9 @@ int ff_rv34_decode_frame(AVCodecContext *avctx, AVFrame *pict,
                 av_log(avctx, AV_LOG_ERROR, "Slice offset is invalid\n");
                 break;
             }
-            init_get_bits(&r->gb, buf+offset1, (buf_size-offset1)*8);
+            ret = init_get_bits8(&r->gb, buf+offset1, buf_size-offset1);
+            if (ret < 0)
+                return ret;
             if (r->parse_slice_header(r, &r->gb, &si) < 0) {
                 size = offset2 - offset;
             }else

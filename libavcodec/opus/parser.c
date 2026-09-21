@@ -26,14 +26,12 @@
  */
 
 #include "libavutil/mem.h"
-
 #include "libavcodec/avcodec.h"
 #include "libavcodec/bytestream.h"
-#include "libavcodec/parser.h"
-#include "libavcodec/parser_internal.h"
-
 #include "opus.h"
 #include "parse.h"
+#include "libavcodec/parser.h"
+#include "libavcodec/parser_internal.h"
 
 typedef struct OpusParserContext {
     ParseContext pc;

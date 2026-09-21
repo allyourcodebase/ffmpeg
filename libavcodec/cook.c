@@ -1080,6 +1080,7 @@ static av_cold int cook_decode_init(AVCodecContext *avctx)
     int s = 0;
     unsigned int channel_mask = 0;
     int samples_per_frame = 0;
+    int total_channels = 0;
     int ret;
     int channels = avctx->ch_layout.nb_channels;
 
@@ -1237,13 +1238,21 @@ static av_cold int cook_decode_init(AVCodecContext *avctx)
         q->subpacket[s].gains2.now      = q->subpacket[s].gain_3;
         q->subpacket[s].gains2.previous = q->subpacket[s].gain_4;
 
-        if (q->num_subpackets + q->subpacket[s].num_channels > channels) {
-            av_log(avctx, AV_LOG_ERROR, "Too many subpackets %d for channels %d\n", q->num_subpackets, channels);
+        if (total_channels + q->subpacket[s].num_channels > channels) {
+            av_log(avctx, AV_LOG_ERROR, "Too many subpacket channels %d for channels %d\n",
+                   total_channels + q->subpacket[s].num_channels, channels);
             return AVERROR_INVALIDDATA;
         }
+        total_channels += q->subpacket[s].num_channels;
 
         q->num_subpackets++;
         s++;
+    }
+
+    if (channel_mask && av_popcount(channel_mask) != total_channels) {
+        av_log(avctx, AV_LOG_ERROR, "Channel mask 0x%x does not match %d subpacket channels\n",
+               channel_mask, total_channels);
+        return AVERROR_INVALIDDATA;
     }
 
     /* Try to catch some obviously faulty streams, otherwise it might be exploitable */

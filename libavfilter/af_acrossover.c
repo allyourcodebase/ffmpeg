@@ -172,6 +172,10 @@ static int parse_gains(AVFilterContext *ctx)
             s->gains[i] = expf(gain * M_LN10 / 20.f);
         else
             s->gains[i] = gain;
+        if (!isfinite(s->gains[i])) {
+            av_log(ctx, AV_LOG_ERROR, "Gain %f must be finite.\n", gain);
+            return AVERROR(EINVAL);
+        }
     }
 
     for (; i < MAX_BANDS; i++)
@@ -203,8 +207,8 @@ static av_cold int init(AVFilterContext *ctx)
             av_log(ctx, AV_LOG_ERROR, "Invalid syntax for frequency[%d].\n", i);
             return AVERROR(EINVAL);
         }
-        if (freq <= 0) {
-            av_log(ctx, AV_LOG_ERROR, "Frequency %f must be positive number.\n", freq);
+        if (!isfinite(freq) || freq <= 0) {
+            av_log(ctx, AV_LOG_ERROR, "Frequency %f must be a positive finite number.\n", freq);
             return AVERROR(EINVAL);
         }
 
@@ -397,8 +401,8 @@ static int filter_channels_## name(AVFilterContext *ctx, void *arg, int jobnr, i
     AudioCrossoverContext *s = ctx->priv;                                                   \
     AVFrame *in = arg;                                                           \
     AVFrame **frames = s->frames;                                                           \
-    const int start = (in->ch_layout.nb_channels * jobnr) / nb_jobs;                        \
-    const int end = (in->ch_layout.nb_channels * (jobnr+1)) / nb_jobs;                      \
+    const int start = ff_slice_pos(in->ch_layout.nb_channels, jobnr, nb_jobs);              \
+    const int end = ff_slice_pos(in->ch_layout.nb_channels, jobnr + 1, nb_jobs);            \
     const int nb_samples = in->nb_samples;                                                  \
     const int nb_outs = ctx->nb_outputs;                                                    \
     const int first_order = s->first_order;                                                 \

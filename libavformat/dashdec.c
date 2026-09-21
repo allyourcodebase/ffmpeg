@@ -109,6 +109,7 @@ struct representation {
     int64_t cur_seg_offset;
     int64_t cur_seg_size;
     struct fragment *cur_seg;
+    int n_open_failures;            /* consecutive open_input failures since last good read */
 
     /* Currently active Media Initialization Section */
     struct fragment *init_section;
@@ -153,6 +154,7 @@ typedef struct DASHContext {
     char *allowed_extensions;
     AVDictionary *avio_opts;
     int max_url_size;
+    int max_reload;
     char *cenc_decryption_key;
     char *cenc_decryption_keys;
 
@@ -447,7 +449,7 @@ static int open_url(AVFormatContext *s, AVIOContext **pb, const char *url,
     av_freep(pb);
     av_dict_copy(&tmp, *opts, 0);
     av_dict_copy(&tmp, opts2, 0);
-    ret = ffio_open_whitelist(pb, url, AVIO_FLAG_READ, c->interrupt_callback, &tmp, s->protocol_whitelist, s->protocol_blacklist);
+    ret = s->io_open(s, pb, url, AVIO_FLAG_READ, &tmp);
     if (ret >= 0) {
         // update cookies on http response with setcookies.
         char *new_cookies = NULL;
@@ -579,7 +581,7 @@ static enum AVMediaType get_content_type(xmlNodePtr node)
     return type;
 }
 
-static struct fragment *get_fragment(char *range)
+static struct fragment *get_fragment(AVFormatContext *s, char *range)
 {
     struct fragment *seg = av_mallocz(sizeof(struct fragment));
 
@@ -590,6 +592,11 @@ static struct fragment *get_fragment(char *range)
     if (range) {
         char *str_end_offset;
         char *str_offset = av_strtok(range, "-", &str_end_offset);
+        if (!str_offset || !str_end_offset) {
+            av_log(s, AV_LOG_WARNING, "%s will get invalid range\n", range);
+            av_freep(&seg);
+            return NULL;
+        }
         seg->url_offset = strtoll(str_offset, NULL, 10);
         seg->size = strtoll(str_end_offset, NULL, 10) - seg->url_offset + 1;
     }
@@ -615,7 +622,7 @@ static int parse_manifest_segmenturlnode(AVFormatContext *s, struct representati
         range_val = xmlGetProp(fragmenturl_node, "range");
         if (initialization_val || range_val) {
             free_fragment(&rep->init_section);
-            rep->init_section = get_fragment(range_val);
+            rep->init_section = get_fragment(s, range_val);
             xmlFree(range_val);
             if (!rep->init_section) {
                 xmlFree(initialization_val);
@@ -636,7 +643,7 @@ static int parse_manifest_segmenturlnode(AVFormatContext *s, struct representati
         media_val = xmlGetProp(fragmenturl_node, "media");
         range_val = xmlGetProp(fragmenturl_node, "mediaRange");
         if (media_val || range_val) {
-            struct fragment *seg = get_fragment(range_val);
+            struct fragment *seg = get_fragment(s, range_val);
             xmlFree(range_val);
             if (!seg) {
                 xmlFree(media_val);
@@ -1255,7 +1262,7 @@ static int parse_manifest(AVFormatContext *s, const char *url, AVIOContext *in)
         close_in = 1;
 
         av_dict_copy(&opts, c->avio_opts, 0);
-        ret = ffio_open_whitelist(&in, url, AVIO_FLAG_READ, c->interrupt_callback, &opts, s->protocol_whitelist, s->protocol_blacklist);
+        ret = s->io_open(s, &in, url, AVIO_FLAG_READ, &opts);
         av_dict_free(&opts);
         if (ret < 0)
             return ret;
@@ -1398,7 +1405,7 @@ cleanup:
 
     av_bprint_finalize(&buf, NULL);
     if (close_in) {
-        avio_close(in);
+        ff_format_io_close(s, &in);
     }
     return ret;
 }
@@ -1466,8 +1473,7 @@ static int64_t calc_max_seg_no(struct representation *pls, DASHContext *c)
         num = pls->first_seq_no + pls->n_timelines - 1;
         for (i = 0; i < pls->n_timelines; i++) {
             if (pls->timelines[i]->repeat == -1) {
-                int length_of_each_segment = pls->timelines[i]->duration / pls->fragment_timescale;
-                num =  c->period_duration / length_of_each_segment;
+                num = pls->timelines[i]->duration ? av_rescale(c->period_duration, pls->fragment_timescale, pls->timelines[i]->duration) : pls->first_seq_no;
             } else {
                 num += pls->timelines[i]->repeat;
             }
@@ -1501,8 +1507,11 @@ static void move_segments(struct representation *rep_src, struct representation 
         free_fragment_list(rep_dest);
         if (rep_src->start_number > (rep_dest->start_number + rep_dest->n_fragments))
             rep_dest->cur_seq_no = 0;
-        else
+        else {
             rep_dest->cur_seq_no += rep_src->start_number - rep_dest->start_number;
+            if (rep_dest->cur_seq_no < 0)
+                rep_dest->cur_seq_no = 0;
+        }
         rep_dest->fragments    = rep_src->fragments;
         rep_dest->n_fragments  = rep_src->n_fragments;
         rep_dest->parent  = rep_src->parent;
@@ -1559,7 +1568,7 @@ static int refresh_manifest(AVFormatContext *s)
     for (i = 0; i < n_videos; i++) {
         struct representation *cur_video = videos[i];
         struct representation *ccur_video = c->videos[i];
-        if (cur_video->timelines) {
+        if (cur_video->timelines && cur_video->fragment_timescale > 0) {
             // calc current time
             int64_t currentTime = get_segment_start_time_based_on_timeline(cur_video, cur_video->cur_seq_no) / cur_video->fragment_timescale;
             // update segments
@@ -1575,7 +1584,7 @@ static int refresh_manifest(AVFormatContext *s)
     for (i = 0; i < n_audios; i++) {
         struct representation *cur_audio = audios[i];
         struct representation *ccur_audio = c->audios[i];
-        if (cur_audio->timelines) {
+        if (cur_audio->timelines && cur_audio->fragment_timescale > 0) {
             // calc current time
             int64_t currentTime = get_segment_start_time_based_on_timeline(cur_audio, cur_audio->cur_seq_no) / cur_audio->fragment_timescale;
             // update segments
@@ -1619,9 +1628,10 @@ static struct fragment *get_current_fragment(struct representation *pls)
     struct fragment *seg = NULL;
     struct fragment *seg_ptr = NULL;
     DASHContext *c = pls->parent->priv_data;
+    int reload_count = 0;
 
     while (( !ff_check_interrupt(c->interrupt_callback)&& pls->n_fragments > 0)) {
-        if (pls->cur_seq_no < pls->n_fragments) {
+        if (pls->cur_seq_no >= 0 && pls->cur_seq_no < pls->n_fragments) {
             seg_ptr = pls->fragments[pls->cur_seq_no];
             seg = av_mallocz(sizeof(struct fragment));
             if (!seg) {
@@ -1636,6 +1646,12 @@ static struct fragment *get_current_fragment(struct representation *pls)
             seg->url_offset = seg_ptr->url_offset;
             return seg;
         } else if (c->is_live) {
+            if (reload_count++ >= c->max_reload) {
+                av_log(pls->parent, AV_LOG_ERROR,
+                       "Reached max manifest reloads (%d) at seq %"PRId64"\n",
+                       c->max_reload, pls->cur_seq_no);
+                return NULL;
+            }
             refresh_manifest(pls->parent);
         } else {
             break;
@@ -1826,9 +1842,17 @@ restart:
                 goto end;
             }
             av_log(v->parent, AV_LOG_WARNING, "Failed to open fragment of playlist\n");
+            if (++v->n_open_failures > c->max_reload) {
+                av_log(v->parent, AV_LOG_ERROR,
+                       "Reached max consecutive fragment open failures (%d), giving up\n",
+                       c->max_reload);
+                ret = AVERROR_EOF;
+                goto end;
+            }
             v->cur_seq_no++;
             goto restart;
         }
+        v->n_open_failures = 0;
     }
 
     if (v->init_sec_buf_read_offset < v->init_sec_data_len) {
@@ -2084,6 +2108,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2102,6 +2128,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2120,6 +2148,8 @@ static int dash_read_header(AVFormatContext *s)
 
         if (ret)
             return ret;
+        if (rep->ctx->nb_streams == 0)
+            return AVERROR_PATCHWELCOME;
         rep->stream_index = stream_index;
         ++stream_index;
     }
@@ -2379,6 +2409,8 @@ static const AVOption dash_options[] = {
         INT_MIN, INT_MAX, FLAGS},
     { "cenc_decryption_key", "Media default decryption key (hex)", OFFSET(cenc_decryption_key), AV_OPT_TYPE_STRING, {.str = NULL}, INT_MIN, INT_MAX, .flags = FLAGS },
     { "cenc_decryption_keys", "Media decryption keys by KID (hex)", OFFSET(cenc_decryption_keys), AV_OPT_TYPE_STRING, {.str = NULL}, INT_MIN, INT_MAX, .flags = FLAGS },
+    { "max_reload", "Maximum number of manifest reloads in get_current_fragment() before giving up",
+        OFFSET(max_reload), AV_OPT_TYPE_INT, { .i64 = 100 }, 0, INT_MAX, FLAGS },
     {NULL}
 };
 
