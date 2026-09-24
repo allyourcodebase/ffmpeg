@@ -1,3 +1,5 @@
+#include "config_components.h"
+
 static const FFInputFormat * const demuxer_list[] = {
     &ff_aa_demuxer,
     &ff_aac_demuxer,

@@ -1,3 +1,5 @@
+#include "config_components.h"
+
 static const URLProtocol * const url_protocols[] = {
     &ff_async_protocol,
     &ff_cache_protocol,
