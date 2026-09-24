@@ -237,17 +237,25 @@ static const FFInputFormat * const demuxer_list[] = {
     &ff_rpl_demuxer,
     &ff_rsd_demuxer,
     &ff_rso_demuxer,
+#if CONFIG_RTP_DEMUXER
     &ff_rtp_demuxer,
+#endif
+#if CONFIG_RTSP_DEMUXER
     &ff_rtsp_demuxer,
+#endif
     &ff_s337m_demuxer,
     &ff_sami_demuxer,
+#if CONFIG_SAP_DEMUXER
     &ff_sap_demuxer,
+#endif
     &ff_sbc_demuxer,
     &ff_sbg_demuxer,
     &ff_scc_demuxer,
     &ff_scd_demuxer,
     &ff_sdns_demuxer,
+#if CONFIG_SDP_DEMUXER
     &ff_sdp_demuxer,
+#endif
     &ff_sdr2_demuxer,
     &ff_sds_demuxer,
     &ff_sdx_demuxer,

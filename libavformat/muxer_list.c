@@ -142,8 +142,12 @@ static const FFOutputFormat * const muxer_list[] = {
     &ff_rso_muxer,
     &ff_rtp_muxer,
     &ff_rtp_mpegts_muxer,
+#if CONFIG_RTSP_MUXER
     &ff_rtsp_muxer,
+#endif
+#if CONFIG_SAP_MUXER
     &ff_sap_muxer,
+#endif
     &ff_sbc_muxer,
     &ff_scc_muxer,
     &ff_segafilm_muxer,

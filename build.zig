@@ -3277,8 +3277,6 @@ pub fn build(b: *std.Build) void {
         // .libressl => .openssl,
     }, networking);
 
-    const avformat_lists_dir = if (networking) "-Ilibavformat/yes_networking_srcs" else "-Ilibavformat/no_networking_srcs";
-
     lib.root_module.addCSourceFiles(.{
         .files = sources.avcodec,
         .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avcodec"},
@@ -3289,7 +3287,7 @@ pub fn build(b: *std.Build) void {
     });
     lib.root_module.addCSourceFiles(.{
         .files = sources.avformat,
-        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avformat"} ++ [_][]const u8{avformat_lists_dir},
+        .flags = ffmpeg_cflags ++ [_][]const u8{"-DBUILDING_avformat"},
     });
     lib.root_module.addCSourceFiles(.{
         .files = sources.avfilter,
