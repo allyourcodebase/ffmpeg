@@ -43,9 +43,7 @@ static const URLProtocol * const url_protocols[] = {
 #if CONFIG_RTP_PROTOCOL
     &ff_rtp_protocol,
 #endif
-#if CONFIG_SRTP_PROTOCOL
     &ff_srtp_protocol,
-#endif
     &ff_subfile_protocol,
     &ff_tee_protocol,
 #if CONFIG_TCP_PROTOCOL
