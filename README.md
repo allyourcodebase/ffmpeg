@@ -79,15 +79,16 @@ released upstream.
    * `libavcodec/codec_list.c`
    * `libavcodec/parser_list.c`
    * `libavcodec/bsf_list.c`
-   * `libavformat/demuxer_list.c` into `libavformat/yes_networking_srcs/demuxer_list.c`
-   * `libavformat/muxer_list.c` into `libavformat/yes_networking_srcs/muxer_list.c`
+   * `libavformat/demuxer_list.c` into `libavformat/yes_networking_srcs/libavformat/demuxer_list.c`
+   * `libavformat/muxer_list.c` into `libavformat/yes_networking_srcs/libavformat/muxer_list.c`
    * `libavdevice/indev_list.c`
    * `libavdevice/outdev_list.c`
-   * `libavformat/protocol_list.c`
-6. Run `./configure --prefix=$HOME/local/ffmpeg --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-programs --enable-libmp3lame --enable-libvorbis --disable-shared --enable-static --disable-networking`
+   * `libavformat/protocol_list.c` into `libavformat/yes_networking_srcs/libavformat/protocol_list.c`
+6. Run `./configure --prefix=$HOME/local/ffmpeg --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-programs --enable-libmp3lame --enable-libvorbis --disable-shared --enable-static --disable-network`
    against upstream. Apply appropriate changes to `build.zig` and update these generated files:
-   * `libavformat/demuxer_list.c` into `libavformat/no_networking_srcs/demuxer_list.c`
-   * `libavformat/muxer_list.c` into `libavformat/no_networking_srcs/muxer_list.c`
+   * `libavformat/demuxer_list.c` into `libavformat/no_networking_srcs/libavformat/demuxer_list.c`
+   * `libavformat/muxer_list.c` into `libavformat/no_networking_srcs/libavformat/muxer_list.c`
+   * `libavformat/protocol_list.c` into `libavformat/no_networking_srcs/libavformat/muxer_list.c`
 7. Update the `headers` list in `build.zig` based on what files are present in
    `$HOME/local/ffmpeg/include`.
 

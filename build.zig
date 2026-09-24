@@ -7,7 +7,7 @@ pub fn build(b: *std.Build) void {
     const is_darwin = t.os.tag.isDarwin();
 
     const tls = b.option(Tls, "tls", "Enable tls support using the specified library") orelse .disabled;
-    const networking = b.option(bool, "networking", "Enable networking") orelse false;
+    const networking = b.option(bool, "networking", "Enable networking") orelse true;
 
     const libz_dep = b.dependency("libz", .{
         .target = target,
@@ -889,7 +889,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_RANGECODER = true,
         .CONFIG_RIFFDEC = true,
         .CONFIG_RIFFENC = true,
-        .CONFIG_RTPDEC = true,
+        .CONFIG_RTPDEC = networking,
         .CONFIG_RTPENC_CHAIN = true,
         .CONFIG_RV34DSP = true,
         .CONFIG_RV40_DECODER = true,
@@ -897,7 +897,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_SINEWIN = true,
         .CONFIG_SMPTE_436M = true,
         .CONFIG_SNAPPY = true,
-        .CONFIG_SRTP = true,
+        .CONFIG_SRTP = networking,
         .CONFIG_STARTCODE = true,
         .CONFIG_TEXTUREDSP = true,
         .CONFIG_TEXTUREDSPENC = true,
@@ -2905,7 +2905,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_SCC_DEMUXER = true,
         .CONFIG_SCD_DEMUXER = true,
         .CONFIG_SDNS_DEMUXER = true,
-        .CONFIG_SDP_DEMUXER = true,
+        .CONFIG_SDP_DEMUXER = networking,
         .CONFIG_SDR2_DEMUXER = true,
         .CONFIG_SDS_DEMUXER = true,
         .CONFIG_SDX_DEMUXER = true,
@@ -3223,16 +3223,16 @@ pub fn build(b: *std.Build) void {
         .CONFIG_HTTP_PROTOCOL = networking,
         .CONFIG_HTTPPROXY_PROTOCOL = networking,
         .CONFIG_HTTPS_PROTOCOL = tls != .disabled,
-        .CONFIG_ICECAST_PROTOCOL = true,
-        .CONFIG_MMSH_PROTOCOL = true,
-        .CONFIG_MMST_PROTOCOL = true,
+        .CONFIG_ICECAST_PROTOCOL = networking,
+        .CONFIG_MMSH_PROTOCOL = networking,
+        .CONFIG_MMST_PROTOCOL = networking,
         .CONFIG_MD5_PROTOCOL = true,
         .CONFIG_PIPE_PROTOCOL = true,
         .CONFIG_PROMPEG_PROTOCOL = true,
-        .CONFIG_RTMP_PROTOCOL = true,
+        .CONFIG_RTMP_PROTOCOL = networking,
         .CONFIG_RTMPE_PROTOCOL = false,
         .CONFIG_RTMPS_PROTOCOL = false,
-        .CONFIG_RTMPT_PROTOCOL = true,
+        .CONFIG_RTMPT_PROTOCOL = networking,
         .CONFIG_RTMPTE_PROTOCOL = false,
         .CONFIG_RTMPTS_PROTOCOL = false,
         .CONFIG_RTP_PROTOCOL = networking,
@@ -3548,12 +3548,17 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
     if (networking) {
         for (yes_networking_sources) |path| {
             if (!std.mem.startsWith(u8, path, "libavformat/")) {
-                std.debug.panic("networking source file '{s}' is not from libavformat", .{
-                    path,
-                });
+                std.debug.panic("networking source file '{s}' is not from libavformat", .{path});
             }
 
-            libs[std.mem.indexOfScalar([]const u8, field_names, "avformat").?].list.append(ally, path);
+            var avformat_idx: ?usize = null;
+            for (field_names, 0..) |f, i| {
+                if (std.mem.eql(u8, f, "avformat")) {
+                    avformat_idx = i;
+                }
+            }
+
+            libs[avformat_idx.?].list.append(ally, path) catch @panic("OOM");
         }
     }
 
