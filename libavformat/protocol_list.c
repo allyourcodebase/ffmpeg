@@ -1,3 +1,5 @@
+// If you're updating ffmpeg you must preserve the following include, and the
+// #ifs scattered throughout the file
 #include "config_components.h"
 
 static const URLProtocol * const url_protocols[] = {
