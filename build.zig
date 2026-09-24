@@ -3522,9 +3522,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
         const sub_path = path[lib.prefix.len..];
 
         // Skip files from wrong targets.
-        if (std.mem.startsWith(u8, sub_path, "tls_")) {
-            if (!std.mem.startsWith(u8, sub_path["tls_".len..], @tagName(tls))) continue;
-        } else if (std.mem.startsWith(u8, sub_path, "aarch64/")) {
+        if (std.mem.startsWith(u8, sub_path, "aarch64/")) {
             if (!target.cpu.arch.isAARCH64()) continue;
         } else if (std.mem.startsWith(u8, sub_path, "alpha/")) {
             continue;
@@ -3589,10 +3587,14 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
 
     if (networking) {
         for (yes_networking_sources) |prefixed_path| {
-            const input_file = stripTargetPrefix(target, prefixed_path) orelse continue;
+            const path = stripTargetPrefix(target, prefixed_path) orelse continue;
 
-            if (!std.mem.startsWith(u8, input_file, "libavformat/")) {
-                std.debug.panic("networking source file '{s}' is not from libavformat", .{input_file});
+            if (!std.mem.startsWith(u8, path, "libavformat/")) {
+                std.debug.panic("networking source file '{s}' is not from libavformat", .{path});
+            }
+
+            if (std.mem.startsWith(u8, path, "libavformat/tls_")) {
+                if (!std.mem.startsWith(u8, path["libavformat/tls_".len..], @tagName(tls))) continue;
             }
 
             var avformat_idx: ?usize = null;
@@ -3602,7 +3604,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
                 }
             }
 
-            libs[avformat_idx.?].list.append(ally, input_file) catch @panic("OOM");
+            libs[avformat_idx.?].list.append(ally, path) catch @panic("OOM");
         }
     }
 
@@ -6580,7 +6582,6 @@ const no_networking_sources = [_][]const u8{
     "libavformat/img2enc.c",
     "libavformat/imx.c",
     "libavformat/ingenientdec.c",
-    "libavformat/ip.c",
     "libavformat/ipfsgateway.c",
     "libavformat/ipmovie.c",
     "libavformat/ipudec.c",
@@ -6867,13 +6868,6 @@ const no_networking_sources = [_][]const u8{
     "libavformat/teeproto.c",
     "libavformat/thp.c",
     "libavformat/tiertexseq.c",
-    "libavformat/tls.c",
-    "libavformat/tls_gnutls.c",
-    "libavformat/tls_libtls.c",
-    "libavformat/tls_mbedtls.c",
-    "libavformat/tls_openssl.c",
-    "/W/libavformat/tls_schannel.c",
-    "libavformat/tls_securetransport.c",
     "libavformat/tmv.c",
     // "libavformat/to_upper4.c", redundant with libavcodec
     "libavformat/tta.c",
@@ -7233,6 +7227,7 @@ const no_networking_sources = [_][]const u8{
 
 const yes_networking_sources = [_][]const u8{
     "libavformat/http.c",
+    "libavformat/ip.c",
     "libavformat/network.c",
     "libavformat/rtpproto.c",
     "libavformat/rtsp.c",
@@ -7241,6 +7236,13 @@ const yes_networking_sources = [_][]const u8{
     "libavformat/sapdec.c",
     "libavformat/sapenc.c",
     "libavformat/tcp.c",
+    "libavformat/tls.c",
+    "libavformat/tls_gnutls.c",
+    "libavformat/tls_libtls.c",
+    "libavformat/tls_mbedtls.c",
+    "libavformat/tls_openssl.c",
+    "/W/libavformat/tls_schannel.c",
+    "libavformat/tls_securetransport.c",
     "libavformat/udp.c",
     "/U/libavformat/unix.c",
 };
