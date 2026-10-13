@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const t = target.result;
     const is_darwin = t.os.tag.isDarwin();
+    const is_windows = t.os.tag == .windows;
 
     const tls = b.option(Tls, "tls", "Enable tls support using the specified library") orelse .disabled;
 
@@ -20,10 +21,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }) else null;
-    const lazy_libressl_dep = if (tls == .libressl) b.lazyDependency("libressl", .{
-        .target = target,
-        .optimize = optimize,
-    }) else null;
+    // const lazy_libressl_dep = if (tls == .libressl) b.lazyDependency("libressl", .{
+    //     .target = target,
+    //     .optimize = optimize,
+    // }) else null;
     const libmp3lame_dep = b.dependency("libmp3lame", .{
         .target = target,
         .optimize = optimize,
@@ -49,11 +50,16 @@ pub fn build(b: *std.Build) void {
     lib.root_module.linkLibrary(libz_dep.artifact("z"));
     if (lazy_mbedtls_dep) |mbedtls_dep| lib.root_module.linkLibrary(mbedtls_dep.artifact("mbedtls"));
     if (lazy_openssl_dep) |openssl_dep| lib.root_module.linkLibrary(openssl_dep.artifact("openssl"));
-    if (lazy_libressl_dep) |libressl_dep| lib.root_module.linkLibrary(libressl_dep.artifact("ssl"));
+    // if (lazy_libressl_dep) |libressl_dep| lib.root_module.linkLibrary(libressl_dep.artifact("ssl"));
     lib.root_module.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
     lib.root_module.linkLibrary(libvorbis_dep.artifact("vorbis"));
     lib.root_module.linkLibrary(libogg_dep.artifact("ogg"));
     lib.root_module.addIncludePath(b.path("."));
+    if (is_windows) {
+        // Upstream configure's mingw EXTRALIBS.
+        lib.root_module.linkSystemLibrary("ws2_32", .{});
+        lib.root_module.linkSystemLibrary("bcrypt", .{});
+    }
 
     const avconfig_h = b.addConfigHeader(.{
         .style = .blank,
@@ -303,48 +309,48 @@ pub fn build(b: *std.Build) void {
         .HAVE_SIMD_ALIGN_16 = true,
         .HAVE_SIMD_ALIGN_32 = true,
         .HAVE_SIMD_ALIGN_64 = true,
-        .HAVE_MEMORYBARRIER = false,
+        .HAVE_MEMORYBARRIER = is_windows,
         .HAVE_MM_EMPTY = true,
-        .HAVE_RDTSC = false,
-        .HAVE_SEM_TIMEDWAIT = !is_darwin,
+        .HAVE_RDTSC = is_windows,
+        .HAVE_SEM_TIMEDWAIT = !is_darwin and !is_windows,
         .HAVE_INLINE_ASM = true,
         .HAVE_SYMVER = true,
         .HAVE_X86ASM = t.cpu.arch.isX86(),
         .HAVE_BIGENDIAN = t.cpu.arch.endian() == .big,
         .HAVE_FAST_UNALIGNED = fastUnalignedLoads(t),
-        .HAVE_ARPA_INET_H = true,
+        .HAVE_ARPA_INET_H = !is_windows,
         .HAVE_ASM_HWPROBE_H = false,
-        .HAVE_ASM_TYPES_H = true,
+        .HAVE_ASM_TYPES_H = !is_windows,
         .HAVE_CDIO_PARANOIA_H = false,
         .HAVE_CDIO_PARANOIA_PARANOIA_H = false,
         .HAVE_CUDA_H = false,
         .HAVE_DISPATCH_DISPATCH_H = is_darwin,
-        .HAVE_DIRECT_H = false,
+        .HAVE_DIRECT_H = is_windows,
         .HAVE_DIRENT_H = true,
-        .HAVE_DXGIDEBUG_H = false,
-        .HAVE_DXVA_H = false,
+        .HAVE_DXGIDEBUG_H = is_windows,
+        .HAVE_DXVA_H = is_windows,
         .HAVE_ES2_GL_H = false,
         .HAVE_GSM_H = false,
-        .HAVE_IO_H = false,
+        .HAVE_IO_H = is_windows,
         .HAVE_LINUX_DMA_BUF_H = t.os.tag == .linux,
         .HAVE_LINUX_PERF_EVENT_H = t.os.tag == .linux,
         .HAVE_MALLOC_H = t.os.tag == .linux,
-        .HAVE_POLL_H = true,
+        .HAVE_POLL_H = !is_windows,
         .HAVE_PTHREAD_NP_H = false,
         .HAVE_SYS_HWPROBE_H = false,
         .HAVE_SYS_PARAM_H = true,
-        .HAVE_SYS_RESOURCE_H = true,
-        .HAVE_SYS_SELECT_H = true,
+        .HAVE_SYS_RESOURCE_H = !is_windows,
+        .HAVE_SYS_SELECT_H = !is_windows,
         .HAVE_SYS_SOUNDCARD_H = t.os.tag == .linux,
         .HAVE_SYS_TIME_H = true,
-        .HAVE_SYS_UN_H = true,
+        .HAVE_SYS_UN_H = !is_windows,
         .HAVE_SYS_VIDEOIO_H = false,
-        .HAVE_TERMIOS_H = true,
+        .HAVE_TERMIOS_H = !is_windows,
         .HAVE_UDPLITE_H = false,
         .HAVE_UNISTD_H = true,
         .HAVE_VALGRIND_VALGRIND_H = false,
-        .HAVE_WINDOWS_H = t.os.tag == .windows,
-        .HAVE_WINSOCK2_H = t.os.tag == .windows,
+        .HAVE_WINDOWS_H = is_windows,
+        .HAVE_WINSOCK2_H = is_windows,
         .HAVE_INTRINSICS_NEON = have_arm_feat(t, .neon) or have_aarch64_feat(t, .neon),
         .HAVE_INTRINSICS_SSE2 = have_x86_feat(t, .sse2),
 
@@ -377,7 +383,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_SINF = true,
         .HAVE_TRUNC = true,
         .HAVE_TRUNCF = true,
-        .HAVE_DOS_PATHS = false,
+        .HAVE_DOS_PATHS = is_windows,
         .HAVE_LIBC_MSVCRT = false,
         .HAVE_MMAL_PARAMETER_VIDEO_MAX_NUM_CALLBACKS = false,
         .HAVE_SECTION_DATA_REL_RO = t.os.tag == .linux,
@@ -385,76 +391,76 @@ pub fn build(b: *std.Build) void {
         .HAVE_UWP = false,
         .HAVE_WINRT = false,
         .HAVE_ACCESS = true,
-        .HAVE_ALIGNED_MALLOC = false,
+        .HAVE_ALIGNED_MALLOC = is_windows,
         .HAVE_ARC4RANDOM_BUF = switch (t.os.tag) {
             .dragonfly, .netbsd, .freebsd, .illumos, .openbsd, .serenity, .driverkit, .ios, .maccatalyst, .macos, .tvos, .visionos, .watchos => true,
             else => false,
         },
         .HAVE_CLOCK_GETTIME = true,
-        .HAVE_CLOSESOCKET = false,
-        .HAVE_COMMANDLINETOARGVW = false,
+        .HAVE_CLOSESOCKET = is_windows,
+        .HAVE_COMMANDLINETOARGVW = is_windows,
         .HAVE_ELF_AUX_INFO = false,
-        .HAVE_FCNTL = true,
+        .HAVE_FCNTL = !is_windows,
         .HAVE_GETADDRINFO = true,
         .HAVE_GETAUXVAL = t.os.tag == .linux,
         .HAVE_GETENV = true,
         .HAVE_GETHRTIME = false,
         .HAVE_GETOPT = true,
-        .HAVE_GETMODULEHANDLE = false,
-        .HAVE_GETPROCESSAFFINITYMASK = false,
-        .HAVE_GETPROCESSMEMORYINFO = false,
-        .HAVE_GETPROCESSTIMES = false,
-        .HAVE_GETRUSAGE = true,
-        .HAVE_GETSTDHANDLE = false,
-        .HAVE_GETSYSTEMTIMEASFILETIME = false,
+        .HAVE_GETMODULEHANDLE = is_windows,
+        .HAVE_GETPROCESSAFFINITYMASK = is_windows,
+        .HAVE_GETPROCESSMEMORYINFO = is_windows,
+        .HAVE_GETPROCESSTIMES = is_windows,
+        .HAVE_GETRUSAGE = !is_windows,
+        .HAVE_GETSTDHANDLE = is_windows,
+        .HAVE_GETSYSTEMTIMEASFILETIME = is_windows,
         .HAVE_GETTIMEOFDAY = true,
-        .HAVE_GLOB = true,
+        .HAVE_GLOB = !is_windows,
         .HAVE_GLXGETPROCADDRESS = false,
         .HAVE_GMTIME_R = true,
-        .HAVE_INET_ATON = true,
+        .HAVE_INET_ATON = !is_windows,
         .HAVE_ISATTY = true,
-        .HAVE_KBHIT = false,
+        .HAVE_KBHIT = is_windows,
         .HAVE_LOCALTIME_R = true,
-        .HAVE_LSTAT = true,
+        .HAVE_LSTAT = !is_windows,
         .HAVE_LZO1X_999_COMPRESS = false,
         .HAVE_MACH_ABSOLUTE_TIME = is_darwin,
-        .HAVE_MAPVIEWOFFILE = false,
+        .HAVE_MAPVIEWOFFILE = is_windows,
         .HAVE_MEMALIGN = t.os.tag == .linux,
         .HAVE_MKSTEMP = true,
-        .HAVE_MMAP = true,
-        .HAVE_MPROTECT = true,
+        .HAVE_MMAP = !is_windows,
+        .HAVE_MPROTECT = !is_windows,
         .HAVE_NANOSLEEP = true,
-        .HAVE_PEEKNAMEDPIPE = false,
-        .HAVE_POSIX_MEMALIGN = true,
+        .HAVE_PEEKNAMEDPIPE = is_windows,
+        .HAVE_POSIX_MEMALIGN = !is_windows,
         .HAVE_PRCTL = t.os.tag == .linux,
-        .HAVE_PTHREAD_CANCEL = true,
+        .HAVE_PTHREAD_CANCEL = !is_windows,
         .HAVE_PTHREAD_SET_NAME_NP = false,
         .HAVE_PTHREAD_SETNAME_NP = is_darwin,
         .HAVE_SCHED_GETAFFINITY = t.os.tag == .linux,
         .HAVE_SECITEMIMPORT = is_darwin,
-        .HAVE_SETCONSOLETEXTATTRIBUTE = false,
-        .HAVE_SETCONSOLECTRLHANDLER = false,
-        .HAVE_SETDLLDIRECTORY = false,
-        .HAVE_SETMODE = false,
-        .HAVE_SETRLIMIT = true,
-        .HAVE_SLEEP = false,
-        .HAVE_STRERROR_R = true,
-        .HAVE_SYSCONF = true,
+        .HAVE_SETCONSOLETEXTATTRIBUTE = is_windows,
+        .HAVE_SETCONSOLECTRLHANDLER = is_windows,
+        .HAVE_SETDLLDIRECTORY = is_windows,
+        .HAVE_SETMODE = is_windows,
+        .HAVE_SETRLIMIT = !is_windows,
+        .HAVE_SLEEP = is_windows,
+        .HAVE_STRERROR_R = !is_windows,
+        .HAVE_SYSCONF = !is_windows,
         .HAVE_SYSCTL = is_darwin,
         .HAVE_SYSCTLBYNAME = is_darwin,
         .HAVE_TEMPNAM = true,
         .HAVE_USLEEP = true,
         .HAVE_UTGETOSTYPEFROMSTRING = is_darwin,
-        .HAVE_VIRTUALALLOC = false,
+        .HAVE_VIRTUALALLOC = is_windows,
         .HAVE_WGLGETPROCADDRESS = false,
-        .HAVE_BCRYPT = false,
+        .HAVE_BCRYPT = is_windows,
         .HAVE_VAAPI_DRM = false,
         .HAVE_VAAPI_X11 = false,
         .HAVE_VAAPI_WIN32 = false,
         .HAVE_VDPAU_X11 = false,
-        .HAVE_PTHREADS = true,
+        .HAVE_PTHREADS = !is_windows,
         .HAVE_OS2THREADS = false,
-        .HAVE_W32THREADS = false,
+        .HAVE_W32THREADS = is_windows,
         .HAVE_AS_ARCH_DIRECTIVE = t.cpu.arch == .aarch64,
         .HAVE_AS_ARCHEXT_CRC_DIRECTIVE = false,
         .HAVE_AS_ARCHEXT_DOTPROD_DIRECTIVE = t.cpu.arch == .aarch64,
@@ -485,8 +491,8 @@ pub fn build(b: *std.Build) void {
         .HAVE_VFP_ARGS = false,
         .HAVE_XFORM_ASM = false,
         .HAVE_XMM_CLOBBERS = t.cpu.arch == .aarch64,
-        .HAVE_DPI_AWARENESS_CONTEXT = false,
-        .HAVE_IDXGIOUTPUT5 = false,
+        .HAVE_DPI_AWARENESS_CONTEXT = is_windows,
+        .HAVE_IDXGIOUTPUT5 = is_windows,
         .HAVE___X_ABI_CWINDOWS_CGRAPHICS_CCAPTURE_CIGRAPHICSCAPTURESESSION5 = false,
         .HAVE_IDIRECT3DDXGIINTERFACEACCESS = false,
         .HAVE_KCMVIDEOCODECTYPE_HEVC = true,
@@ -517,9 +523,9 @@ pub fn build(b: *std.Build) void {
         .HAVE_STRUCT_GROUP_SOURCE_REQ = true,
         .HAVE_STRUCT_IP_MREQ_SOURCE = true,
         .HAVE_STRUCT_IPV6_MREQ = true,
-        .HAVE_STRUCT_MSGHDR_MSG_FLAGS = true,
+        .HAVE_STRUCT_MSGHDR_MSG_FLAGS = !is_windows,
         .HAVE_STRUCT_POLLFD = true,
-        .HAVE_STRUCT_RUSAGE_RU_MAXRSS = true,
+        .HAVE_STRUCT_RUSAGE_RU_MAXRSS = !is_windows,
         .HAVE_STRUCT_SCTP_EVENT_SUBSCRIBE = false,
         .HAVE_STRUCT_SOCKADDR_IN6 = true,
         .HAVE_STRUCT_SOCKADDR_SA_LEN = is_darwin,
@@ -689,7 +695,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_OHCODEC = false,
         .CONFIG_OPENAL = false,
         .CONFIG_OPENGL = false,
-        .CONFIG_OPENSSL = tls == .openssl or tls == .libressl,
+        .CONFIG_OPENSSL = tls == .openssl, // or tls == .libressl,
         .CONFIG_POCKETSPHINX = false,
         .CONFIG_VAPOURSYNTH = false,
         .CONFIG_VULKAN_STATIC = false,
@@ -932,14 +938,12 @@ pub fn build(b: *std.Build) void {
         .AVCONV_DATADIR = "/dev/null",
         .CC_IDENT = "clang 22.1.5 (CLANG)",
         .OS_NAME = osName(t.os.tag),
-        .EXTERN_PREFIX = switch (t.os.tag) {
-            .macos => "_",
-            else => "",
-        },
+        .EXTERN_PREFIX = externPrefix(t),
     });
-    switch (t.os.tag) {
-        .macos => config_h.addIdent("EXTERN_ASM", "_"),
-        else => config_h.addValues(.{ .EXTERN_ASM = {} }),
+    if (externPrefix(t).len != 0) {
+        config_h.addIdent("EXTERN_ASM", "_");
+    } else {
+        config_h.addValues(.{ .EXTERN_ASM = {} });
     }
     config_h.addValues(.{
         .BUILDSUF = "",
@@ -3244,7 +3248,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_DTLS_PROTOCOL = false,
         .CONFIG_UDP_PROTOCOL = true,
         .CONFIG_UDPLITE_PROTOCOL = true,
-        .CONFIG_UNIX_PROTOCOL = true,
+        .CONFIG_UNIX_PROTOCOL = !is_windows,
         .CONFIG_LIBAMQP_PROTOCOL = false,
         .CONFIG_LIBRIST_PROTOCOL = false,
         .CONFIG_LIBRTMP_PROTOCOL = false,
@@ -3266,6 +3270,10 @@ pub fn build(b: *std.Build) void {
     }, config_components_values);
     lib.root_module.addConfigHeader(config_components_h);
 
+    const component_lists_wf = b.addWriteFiles();
+    writeComponentLists(b, component_lists_wf, config_components_values);
+    lib.root_module.addIncludePath(component_lists_wf.getDirectory());
+
     const config_components_asm = b.addConfigHeader(.{
         .style = .nasm,
         .include_path = "config_components.asm",
@@ -3273,7 +3281,7 @@ pub fn build(b: *std.Build) void {
 
     const sources = categorizeSources(b.allocator, t, switch (tls) {
         else => tls,
-        .libressl => .openssl,
+        // .libressl => .openssl,
     });
 
     lib.root_module.addCSourceFiles(.{
@@ -3309,13 +3317,16 @@ pub fn build(b: *std.Build) void {
             });
             const nasm_exe = nasm_dep.artifact("nasm");
 
-            for (all_sources) |input_file| {
+            const nasm_args = nasmArgs(t);
+
+            for (all_sources) |prefixed_path| {
+                const input_file = stripTargetPrefix(t, prefixed_path) orelse continue;
                 if (!std.mem.endsWith(u8, input_file, ".asm")) continue;
 
                 const output_basename = basenameNewExtension(b, input_file, ".o");
                 const nasm_run = b.addRunArtifact(nasm_exe);
 
-                nasm_run.addArgs(&.{ "-f", "elf64", "-g", "-F", "dwarf" });
+                nasm_run.addArgs(nasm_args);
 
                 // nasm requires a trailing slash on include directories
                 nasm_run.addDecoratedDirectoryArg("-I", b.path("."), "/");
@@ -3384,7 +3395,7 @@ pub fn build(b: *std.Build) void {
     b.installArtifact(show_metadata_zig);
 }
 
-fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin } {
+fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin, mingw32 } {
     return switch (os_tag) {
         .driverkit,
         .ios,
@@ -3394,8 +3405,51 @@ fn osName(os_tag: std.Target.Os.Tag) enum { linux, darwin } {
         .visionos,
         .watchos,
         => .darwin,
+        .windows => .mingw32,
         else => .linux,
     };
+}
+
+/// The leading underscore the C compiler decorates symbols with, if any.
+fn externPrefix(t: std.Target) []const u8 {
+    return switch (t.ofmt) {
+        .macho => "_",
+        .coff => if (t.cpu.arch == .x86) "_" else "",
+        else => "",
+    };
+}
+
+/// PREFIX wherever `externPrefix` applies, and debug info for ELF only.
+fn nasmArgs(t: std.Target) []const []const u8 {
+    const is_64 = t.cpu.arch == .x86_64;
+    return switch (t.ofmt) {
+        .macho => if (is_64)
+            &.{ "-f", "macho64", "-DPREFIX" }
+        else
+            &.{ "-f", "macho32", "-DPREFIX" },
+        .coff => if (is_64)
+            &.{ "-f", "win64" }
+        else
+            &.{ "-f", "win32", "-DPREFIX" },
+        else => if (is_64)
+            &.{ "-f", "elf64", "-g", "-F", "dwarf" }
+        else
+            &.{ "-f", "elf32", "-g", "-F", "dwarf" },
+    };
+}
+
+/// `/L/` is Linux, `/W/` Windows, `/U/` every target but Windows.
+fn stripTargetPrefix(t: std.Target, prefixed_path: []const u8) ?[]const u8 {
+    if (std.mem.startsWith(u8, prefixed_path, "/L/")) {
+        return if (t.os.tag == .linux) prefixed_path["/L/".len..] else null;
+    }
+    if (std.mem.startsWith(u8, prefixed_path, "/W/")) {
+        return if (t.os.tag == .windows) prefixed_path["/W/".len..] else null;
+    }
+    if (std.mem.startsWith(u8, prefixed_path, "/U/")) {
+        return if (t.os.tag != .windows) prefixed_path["/U/".len..] else null;
+    }
+    return prefixed_path;
 }
 
 fn asArchLevel(b: *std.Build, t: std.Target) []const u8 {
@@ -3437,7 +3491,16 @@ fn asArchLevel(b: *std.Build, t: std.Target) []const u8 {
     return b.fmt("{s}{s}", .{ prefix, crc });
 }
 
-const Tls = enum { disabled, gnutls, libtls, mbedtls, openssl, libressl, schannel, securetransport };
+const Tls = enum {
+    disabled,
+    gnutls,
+    libtls,
+    mbedtls,
+    openssl,
+    // libressl,
+    schannel,
+    securetransport,
+};
 
 const CategorizedSources = struct {
     avcodec: []const []const u8,
@@ -3462,13 +3525,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
         libs[i] = .{ .prefix = "lib" ++ field_name ++ "/" };
     }
     for (all_sources) |prefixed_path| {
-        const path = if (std.mem.startsWith(u8, prefixed_path, "/L/")) p: {
-            if (target.os.tag != .linux) continue;
-            break :p prefixed_path["/L/".len..];
-        } else if (std.mem.startsWith(u8, prefixed_path, "/W/")) p: {
-            if (target.os.tag != .windows) continue;
-            break :p prefixed_path["/W/".len..];
-        } else prefixed_path;
+        const path = stripTargetPrefix(target, prefixed_path) orelse continue;
 
         const lib = for (&libs) |*lib| {
             if (std.mem.startsWith(u8, path, lib.prefix))
@@ -3482,6 +3539,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
         const sub_path = path[lib.prefix.len..];
 
         // Skip files from wrong targets.
+        if (target.os.tag != .macos and std.mem.indexOf(u8, sub_path, "videotoolbox") != null) continue;
         if (std.mem.startsWith(u8, sub_path, "tls_")) {
             if (!std.mem.startsWith(u8, sub_path["tls_".len..], @tagName(tls))) continue;
         } else if (std.mem.startsWith(u8, sub_path, "aarch64/")) {
@@ -3552,6 +3610,141 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
         @field(result, field_name) = libs[i].list.items;
     }
     return result;
+}
+
+/// A component registry list that upstream `configure` generates, such as `libavcodec/codec_list.c`.
+const ComponentList = struct {
+    path: []const u8,
+    struct_name: []const u8,
+    array_name: []const u8,
+    registry: []const u8,
+    kinds: []const Kind,
+    trailer: []const []const u8 = &.{},
+
+    const Kind = struct {
+        symbol: ?[]const u8,
+        config: []const u8,
+    };
+};
+
+const component_lists = [_]ComponentList{
+    .{
+        .path = "libavcodec/codec_list.c",
+        .struct_name = "FFCodec",
+        .array_name = "codec_list",
+        .registry = @embedFile("libavcodec/allcodecs.c"),
+        .kinds = &.{
+            .{ .symbol = "encoder", .config = "ENCODER" },
+            .{ .symbol = "decoder", .config = "DECODER" },
+        },
+    },
+    .{
+        .path = "libavcodec/parser_list.c",
+        .struct_name = "FFCodecParser",
+        .array_name = "parser_list",
+        .registry = @embedFile("libavcodec/parsers.c"),
+        .kinds = &.{.{ .symbol = "parser", .config = "PARSER" }},
+    },
+    .{
+        .path = "libavcodec/bsf_list.c",
+        .struct_name = "FFBitStreamFilter",
+        .array_name = "bitstream_filters",
+        .registry = @embedFile("libavcodec/bitstream_filters.c"),
+        .kinds = &.{.{ .symbol = "bsf", .config = "BSF" }},
+    },
+    .{
+        .path = "libavformat/demuxer_list.c",
+        .struct_name = "FFInputFormat",
+        .array_name = "demuxer_list",
+        .registry = @embedFile("libavformat/allformats.c"),
+        .kinds = &.{.{ .symbol = "demuxer", .config = "DEMUXER" }},
+    },
+    .{
+        .path = "libavformat/muxer_list.c",
+        .struct_name = "FFOutputFormat",
+        .array_name = "muxer_list",
+        .registry = @embedFile("libavformat/allformats.c"),
+        .kinds = &.{.{ .symbol = "muxer", .config = "MUXER" }},
+    },
+    .{
+        .path = "libavformat/protocol_list.c",
+        .struct_name = "URLProtocol",
+        .array_name = "url_protocols",
+        .registry = @embedFile("libavformat/protocols.c"),
+        .kinds = &.{.{ .symbol = "protocol", .config = "PROTOCOL" }},
+    },
+    .{
+        .path = "libavfilter/filter_list.c",
+        .struct_name = "FFFilter",
+        .array_name = "filter_list",
+        .registry = @embedFile("libavfilter/allfilters.c"),
+        .kinds = &.{.{ .symbol = null, .config = "FILTER" }},
+        .trailer = &.{ "asrc_abuffer", "vsrc_buffer", "asink_abuffer", "vsink_buffer" },
+    },
+    .{
+        .path = "libavdevice/indev_list.c",
+        .struct_name = "FFInputFormat",
+        .array_name = "indev_list",
+        .registry = @embedFile("libavdevice/alldevices.c"),
+        .kinds = &.{.{ .symbol = "demuxer", .config = "INDEV" }},
+    },
+    .{
+        .path = "libavdevice/outdev_list.c",
+        .struct_name = "FFOutputFormat",
+        .array_name = "outdev_list",
+        .registry = @embedFile("libavdevice/alldevices.c"),
+        .kinds = &.{.{ .symbol = "muxer", .config = "OUTDEV" }},
+    },
+};
+
+/// Writes files into the `wf` dir depending on the provided `config_values`.
+/// This recreates `find_things_extern` and `print_enabled_components` from the upstream configure script.
+fn writeComponentLists(b: *std.Build, wf: *std.Build.Step.WriteFile, config_values: anytype) void {
+    var enabled: std.StringHashMapUnmanaged(bool) = .empty;
+    defer enabled.deinit(b.allocator);
+    inline for (@typeInfo(@TypeOf(config_values)).@"struct".field_names) |field_name| {
+        const value = @field(config_values, field_name);
+        if (@TypeOf(value) == bool) enabled.put(b.allocator, field_name, value) catch @panic("OOM");
+    }
+
+    for (component_lists) |list| {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        defer out.deinit(b.allocator);
+        out.print(b.allocator, "static const {s} * const {s}[] = {{\n", .{ list.struct_name, list.array_name }) catch @panic("OOM");
+        for (list.kinds) |kind| {
+            var lines = std.mem.splitScalar(u8, list.registry, '\n');
+            while (lines.next()) |line| {
+                var tokens = std.mem.tokenizeAny(u8, line, " \t\r");
+                if (!std.mem.eql(u8, tokens.next() orelse continue, "extern")) continue;
+                if (!std.mem.eql(u8, tokens.next() orelse continue, "const")) continue;
+                if (!std.mem.eql(u8, tokens.next() orelse continue, list.struct_name)) continue;
+                const decl = tokens.next() orelse continue;
+                if (!std.mem.startsWith(u8, decl, "ff_") or !std.mem.endsWith(u8, decl, ";")) continue;
+                const symbol = decl["ff_".len .. decl.len - 1];
+
+                const name = if (kind.symbol) |suffix| name: {
+                    if (!std.mem.endsWith(u8, symbol, suffix)) continue;
+                    const base = symbol[0 .. symbol.len - suffix.len];
+                    if (!std.mem.endsWith(u8, base, "_")) continue;
+                    break :name base[0 .. base.len - 1];
+                } else name: {
+                    // Strip the filter type prefix, e.g. "vf_" in "vf_scale".
+                    const underscore = std.mem.indexOfScalar(u8, symbol, '_') orelse continue;
+                    break :name symbol[underscore + 1 ..];
+                };
+
+                const config_name = std.ascii.allocUpperString(
+                    b.allocator,
+                    b.fmt("CONFIG_{s}_{s}", .{ name, kind.config }),
+                ) catch @panic("OOM");
+                if (!(enabled.get(config_name) orelse false)) continue;
+                out.print(b.allocator, "    &ff_{s},\n", .{symbol}) catch @panic("OOM");
+            }
+        }
+        for (list.trailer) |symbol| out.print(b.allocator, "    &ff_{s},\n", .{symbol}) catch @panic("OOM");
+        out.appendSlice(b.allocator, "    NULL };\n") catch @panic("OOM");
+        _ = wf.add(list.path, out.items);
+    }
 }
 
 const component_subdirs = [_][]const u8{
@@ -3659,7 +3852,7 @@ const headers = [_][]const u8{
     // "libavutil/hwcontext_qsv.h",
     // "libavutil/hwcontext_vaapi.h",
     // "libavutil/hwcontext_vdpau.h",
-    // "libavutil/hwcontext_videotoolbox.h",
+    "libavutil/hwcontext_videotoolbox.h",
     // "libavutil/hwcontext_vulkan.h",
     "libavutil/iamf.h",
     "libavutil/imgutils.h",
@@ -4256,18 +4449,18 @@ const all_sources = [_][]const u8{
     "libavcodec/cscd.c",
     //"libavcodec/cuviddec.c",
     "libavcodec/cyuv.c",
-    "/W/libavcodec/d3d11va.c",
-    "/W/libavcodec/d3d12va_av1.c",
-    "/W/libavcodec/d3d12va_decode.c",
-    "/W/libavcodec/d3d12va_encode.c",
-    "/W/libavcodec/d3d12va_encode_av1.c",
-    "/W/libavcodec/d3d12va_encode_h264.c",
-    "/W/libavcodec/d3d12va_encode_hevc.c",
-    "/W/libavcodec/d3d12va_h264.c",
-    "/W/libavcodec/d3d12va_hevc.c",
-    "/W/libavcodec/d3d12va_mpeg2.c",
-    "/W/libavcodec/d3d12va_vc1.c",
-    "/W/libavcodec/d3d12va_vp9.c",
+    //"/W/libavcodec/d3d11va.c",
+    //"/W/libavcodec/d3d12va_av1.c",
+    //"/W/libavcodec/d3d12va_decode.c",
+    //"/W/libavcodec/d3d12va_encode.c",
+    //"/W/libavcodec/d3d12va_encode_av1.c",
+    //"/W/libavcodec/d3d12va_encode_h264.c",
+    //"/W/libavcodec/d3d12va_encode_hevc.c",
+    //"/W/libavcodec/d3d12va_h264.c",
+    //"/W/libavcodec/d3d12va_hevc.c",
+    //"/W/libavcodec/d3d12va_mpeg2.c",
+    //"/W/libavcodec/d3d12va_vc1.c",
+    //"/W/libavcodec/d3d12va_vp9.c",
     "libavcodec/dca.c",
     "libavcodec/dca_core.c",
     "libavcodec/dca_exss.c",
@@ -4696,8 +4889,8 @@ const all_sources = [_][]const u8{
     //"libavcodec/mediacodecdec_common.c",
     "libavcodec/mediacodecenc.c",
     "libavcodec/metasound.c",
-    "/W/libavcodec/mf_utils.c",
-    "/W/libavcodec/mfenc.c",
+    //"/W/libavcodec/mf_utils.c",
+    //"/W/libavcodec/mfenc.c",
     "libavcodec/microdvddec.c",
     "libavcodec/midivid.c",
     "libavcodec/mimic.c",
@@ -6206,7 +6399,7 @@ const all_sources = [_][]const u8{
     "libavfilter/vsink_nullsink.c",
     //"libavfilter/vsrc_amf.c",
     "libavfilter/vsrc_cellauto.c",
-    "/W/libavfilter/vsrc_ddagrab.c",
+    //"/W/libavfilter/vsrc_ddagrab.c",
     //"libavfilter/vsrc_gfxcapture.c",
     "libavfilter/vsrc_gradients.c",
     "libavfilter/vsrc_life.c",
@@ -6834,7 +7027,7 @@ const all_sources = [_][]const u8{
     "libavformat/ty.c",
     "libavformat/udp.c",
     "libavformat/uncodedframecrcenc.c",
-    "libavformat/unix.c",
+    "/U/libavformat/unix.c",
     "libavformat/url.c",
     "libavformat/urldecode.c",
     "libavformat/usmdec.c",
@@ -6973,7 +7166,7 @@ const all_sources = [_][]const u8{
     "libavutil/log2_tab.c",
     "libavutil/loongarch/cpu.c",
     "libavutil/lzo.c",
-    "libavutil/macos_kperf.c",
+    //"libavutil/macos_kperf.c",
     "libavutil/mastering_display_metadata.c",
     "libavutil/mathematics.c",
     "libavutil/md5.c",

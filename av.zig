@@ -284,40 +284,40 @@ pub fn wrap(averror: c_int) Error!c_uint {
     return switch (averror) {
         0 => unreachable, // handled above
 
-        -@as(c_int, @intFromEnum(E.INVAL)) => return error.FFmpegInvalid,
-        -@as(c_int, @intFromEnum(E.NOENT)) => return error.FileNotFound,
-        -@as(c_int, @intFromEnum(E.NOMEM)) => return error.OutOfMemory,
-        -@as(c_int, @intFromEnum(E.PERM)) => return error.PermissionDenied,
-        -@as(c_int, @intFromEnum(E.AGAIN)) => return error.WouldBlock,
-        -@as(c_int, @intFromEnum(E.RANGE)) => return error.OutOfRange,
+        -@as(c_int, @backingInt(E.INVAL)) => return error.FFmpegInvalid,
+        -@as(c_int, @backingInt(E.NOENT)) => return error.FileNotFound,
+        -@as(c_int, @backingInt(E.NOMEM)) => return error.OutOfMemory,
+        -@as(c_int, @backingInt(E.PERM)) => return error.PermissionDenied,
+        -@as(c_int, @backingInt(E.AGAIN)) => return error.WouldBlock,
+        -@as(c_int, @backingInt(E.RANGE)) => return error.OutOfRange,
 
-        @intFromEnum(ERROR.BSF_NOT_FOUND) => return error.BsfNotFound,
-        @intFromEnum(ERROR.BUG) => return error.FFmpegBug,
-        @intFromEnum(ERROR.BUG2) => return error.FFmpegBug,
-        @intFromEnum(ERROR.BUFFER_TOO_SMALL) => return error.BufferTooSmall,
-        @intFromEnum(ERROR.DECODER_NOT_FOUND) => return error.DecoderNotFound,
-        @intFromEnum(ERROR.DEMUXER_NOT_FOUND) => return error.DemuxerNotFound,
-        @intFromEnum(ERROR.ENCODER_NOT_FOUND) => return error.EncoderNotFound,
-        @intFromEnum(ERROR.EOF) => return error.EndOfFile,
-        @intFromEnum(ERROR.EXIT) => return error.FFmpegExit,
-        @intFromEnum(ERROR.EXTERNAL) => return error.FFmpegDependencyFailure,
-        @intFromEnum(ERROR.UNKNOWN) => return error.FFmpegDependencyFailure,
-        @intFromEnum(ERROR.FILTER_NOT_FOUND) => return error.FilterNotFound,
-        @intFromEnum(ERROR.INVALIDDATA) => return error.InvalidData,
-        @intFromEnum(ERROR.MUXER_NOT_FOUND) => return error.MuxerNotFound,
-        @intFromEnum(ERROR.OPTION_NOT_FOUND) => return error.OptionNotFound,
-        @intFromEnum(ERROR.PATCHWELCOME) => return error.FFmpegUnimplemented,
-        @intFromEnum(ERROR.PROTOCOL_NOT_FOUND) => return error.ProtocolNotFound,
-        @intFromEnum(ERROR.STREAM_NOT_FOUND) => return error.StreamNotFound,
-        @intFromEnum(ERROR.EXPERIMENTAL) => return error.FFmpegExperimentalFeature,
-        @intFromEnum(ERROR.INPUT_CHANGED) => unreachable, // not legal to use with wrap()
-        @intFromEnum(ERROR.OUTPUT_CHANGED) => unreachable, // not legal to use with wrap()
-        @intFromEnum(ERROR.HTTP_BAD_REQUEST) => return error.HttpBadRequest,
-        @intFromEnum(ERROR.HTTP_UNAUTHORIZED) => return error.HttpUnauthorized,
-        @intFromEnum(ERROR.HTTP_FORBIDDEN) => return error.HttpForbidden,
-        @intFromEnum(ERROR.HTTP_NOT_FOUND) => return error.HttpNotFound,
-        @intFromEnum(ERROR.HTTP_OTHER_4XX) => return error.HttpOther4xx,
-        @intFromEnum(ERROR.HTTP_SERVER_ERROR) => return error.Http5xx,
+        @backingInt(ERROR.BSF_NOT_FOUND) => return error.BsfNotFound,
+        @backingInt(ERROR.BUG) => return error.FFmpegBug,
+        @backingInt(ERROR.BUG2) => return error.FFmpegBug,
+        @backingInt(ERROR.BUFFER_TOO_SMALL) => return error.BufferTooSmall,
+        @backingInt(ERROR.DECODER_NOT_FOUND) => return error.DecoderNotFound,
+        @backingInt(ERROR.DEMUXER_NOT_FOUND) => return error.DemuxerNotFound,
+        @backingInt(ERROR.ENCODER_NOT_FOUND) => return error.EncoderNotFound,
+        @backingInt(ERROR.EOF) => return error.EndOfFile,
+        @backingInt(ERROR.EXIT) => return error.FFmpegExit,
+        @backingInt(ERROR.EXTERNAL) => return error.FFmpegDependencyFailure,
+        @backingInt(ERROR.UNKNOWN) => return error.FFmpegDependencyFailure,
+        @backingInt(ERROR.FILTER_NOT_FOUND) => return error.FilterNotFound,
+        @backingInt(ERROR.INVALIDDATA) => return error.InvalidData,
+        @backingInt(ERROR.MUXER_NOT_FOUND) => return error.MuxerNotFound,
+        @backingInt(ERROR.OPTION_NOT_FOUND) => return error.OptionNotFound,
+        @backingInt(ERROR.PATCHWELCOME) => return error.FFmpegUnimplemented,
+        @backingInt(ERROR.PROTOCOL_NOT_FOUND) => return error.ProtocolNotFound,
+        @backingInt(ERROR.STREAM_NOT_FOUND) => return error.StreamNotFound,
+        @backingInt(ERROR.EXPERIMENTAL) => return error.FFmpegExperimentalFeature,
+        @backingInt(ERROR.INPUT_CHANGED) => unreachable, // not legal to use with wrap()
+        @backingInt(ERROR.OUTPUT_CHANGED) => unreachable, // not legal to use with wrap()
+        @backingInt(ERROR.HTTP_BAD_REQUEST) => return error.HttpBadRequest,
+        @backingInt(ERROR.HTTP_UNAUTHORIZED) => return error.HttpUnauthorized,
+        @backingInt(ERROR.HTTP_FORBIDDEN) => return error.HttpForbidden,
+        @backingInt(ERROR.HTTP_NOT_FOUND) => return error.HttpNotFound,
+        @backingInt(ERROR.HTTP_OTHER_4XX) => return error.HttpOther4xx,
+        @backingInt(ERROR.HTTP_SERVER_ERROR) => return error.Http5xx,
 
         else => {
             std.log.debug("unexpected ffmpeg error code: {d}", .{averror});
@@ -2013,6 +2013,15 @@ pub const ChannelCustom = extern struct {
     @"opaque": ?*anyopaque,
 };
 
+pub const AlphaMode = enum(c_uint) {
+    // Unknown alpha handling, or no alpha channel
+    UNSPECIFIED = 0,
+    // Alpha channel is multiplied into color values
+    PREMULTIPLIED = 1,
+    // Alpha channel is independent of color values
+    STRAIGHT = 2,
+};
+
 pub const Buffer = opaque {};
 
 pub const Channel = enum(c_int) {
@@ -3010,7 +3019,6 @@ pub const Frame = extern struct {
         pixel: PixelFormat,
         sample: SampleFormat,
     },
-    key_frame: c_int,
     pict_type: PictureType,
     sample_aspect_ratio: Rational,
     pts: i64,
@@ -3024,9 +3032,6 @@ pub const Frame = extern struct {
     quality: c_int,
     @"opaque": ?*anyopaque,
     repeat_pict: c_int,
-    interlaced_frame: c_int,
-    top_field_first: c_int,
-    palette_has_changed: c_int,
     /// Sample rate of the audio data.
     sample_rate: c_int,
     buf: [NUM_DATA_POINTERS]?*BufferRef,
@@ -3041,10 +3046,8 @@ pub const Frame = extern struct {
     colorspace: ColorSpace,
     chroma_location: ChromaLocation,
     best_effort_timestamp: i64,
-    pkt_pos: i64,
     metadata: Dictionary.Mutable,
     decode_error_flags: c_int,
-    pkt_size: c_int,
     hw_frames_ctx: *BufferRef,
     opaque_ref: *BufferRef,
     crop_top: usize,
@@ -3055,6 +3058,7 @@ pub const Frame = extern struct {
     /// Channel layout of the audio data.
     ch_layout: ChannelLayout,
     duration: i64,
+    alpha_mode: AlphaMode,
 
     /// Allocate a `Frame` and set its fields to default values.  The resulting
     /// struct must be freed using `free`.
