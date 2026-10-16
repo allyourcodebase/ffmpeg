@@ -2,7 +2,7 @@
     .name = .ffmpeg,
     .version = "8.1.1-6",
     .fingerprint = 0x2ffce39e03d03ecd,
-    .minimum_zig_version = "0.17.0-dev.1555+32ed280a9",
+    .minimum_zig_version = "0.17.0-dev.2294+71403f299",
 
     .dependencies = .{
         .libz = .{
@@ -36,6 +36,12 @@
         .libogg = .{
             .url = "git+https://codeberg.org/allyourcodebase/libogg#4accc2e0c6710e07a5070ac3bf0a9a319f9da6a6",
             .hash = "libogg-0.0.0+1.3.7-0KP-foYNAAAaj0YJOwRQs7kTN-ivzRMYTjtKzr6Apelj",
+        },
+
+        .xcode_frameworks = .{
+            .url = "git+https://code.hexops.org/hexops/xcode-frameworks.git#8a1cfb373587ea4c9bb1468b7c986462d8d4e10e",
+            .hash = "N-V-__8AALShqgXkvqYU6f__FrA22SMWmi2TXCJjNTO1m8XJ",
+            .lazy = true,
         },
 
         // This is used to compile some assembly files into object files for x86.

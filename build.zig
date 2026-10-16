@@ -496,28 +496,28 @@ pub fn build(b: *std.Build) void {
         .HAVE_IDXGIOUTPUT5 = is_windows,
         .HAVE___X_ABI_CWINDOWS_CGRAPHICS_CCAPTURE_CIGRAPHICSCAPTURESESSION5 = false,
         .HAVE_IDIRECT3DDXGIINTERFACEACCESS = false,
-        .HAVE_KCMVIDEOCODECTYPE_HEVC = false,
-        .HAVE_KCMVIDEOCODECTYPE_HEVCWITHALPHA = false,
-        .HAVE_KCMVIDEOCODECTYPE_VP9 = false,
-        .HAVE_KCMVIDEOCODECTYPE_AV1 = false,
-        .HAVE_KCVPIXELFORMATTYPE_420YPCBCR10BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR8BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR10BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR16BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR8BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR10BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR16BIPLANARVIDEORANGE = false,
-        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR8_YUVS = false,
+        .HAVE_KCMVIDEOCODECTYPE_HEVC = true,
+        .HAVE_KCMVIDEOCODECTYPE_HEVCWITHALPHA = true,
+        .HAVE_KCMVIDEOCODECTYPE_VP9 = true,
+        .HAVE_KCMVIDEOCODECTYPE_AV1 = true,
+        .HAVE_KCVPIXELFORMATTYPE_420YPCBCR10BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR8BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR10BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR16BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR8BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR10BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_444YPCBCR16BIPLANARVIDEORANGE = true,
+        .HAVE_KCVPIXELFORMATTYPE_422YPCBCR8_YUVS = true,
 
-        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_SMPTE_ST_2084_PQ = false,
-        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_ITU_R_2100_HLG = false,
-        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_LINEAR = false,
-        .HAVE_KCVIMAGEBUFFERYCBCRMATRIX_ITU_R_2020 = false,
-        .HAVE_KCVIMAGEBUFFERCOLORPRIMARIES_ITU_R_2020 = false,
-        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_ITU_R_2020 = false,
-        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_SMPTE_ST_428_1 = false,
-        .HAVE_KVTQPMODULATIONLEVEL_DEFAULT = false,
-        .HAVE_SECPKGCONTEXT_KEYINGMATERIALINFO = is_windows,
+        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_SMPTE_ST_2084_PQ = true,
+        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_ITU_R_2100_HLG = true,
+        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_LINEAR = true,
+        .HAVE_KCVIMAGEBUFFERYCBCRMATRIX_ITU_R_2020 = true,
+        .HAVE_KCVIMAGEBUFFERCOLORPRIMARIES_ITU_R_2020 = true,
+        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_ITU_R_2020 = true,
+        .HAVE_KCVIMAGEBUFFERTRANSFERFUNCTION_SMPTE_ST_428_1 = true,
+        .HAVE_KVTQPMODULATIONLEVEL_DEFAULT = true,
+        .HAVE_SECPKGCONTEXT_KEYINGMATERIALINFO = true,
 
         .HAVE_SOCKLEN_T = true,
         .HAVE_STRUCT_ADDRINFO = true,
@@ -545,7 +545,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_OPENCL_DXVA2 = false,
         .HAVE_OPENCL_VAAPI_BEIGNET = false,
         .HAVE_OPENCL_VAAPI_INTEL_MEDIA = false,
-        .HAVE_OPENCL_VIDEOTOOLBOX = false,
+        .HAVE_OPENCL_VIDEOTOOLBOX = t.os.tag == .macos,
         .HAVE_PERL = false,
         .HAVE_POD2MAN = false,
         .HAVE_TEXI2HTML = false,
@@ -703,7 +703,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_WHISPER = false,
         .CONFIG_ALSA = false,
         .CONFIG_APPKIT = false,
-        .CONFIG_AVFOUNDATION = false,
+        .CONFIG_AVFOUNDATION = true,
         .CONFIG_BZLIB = false,
         .CONFIG_COREIMAGE = false,
         .CONFIG_ICONV = false,
@@ -712,7 +712,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_LIBXCB_SHAPE = false,
         .CONFIG_LIBXCB_XFIXES = false,
         .CONFIG_LZMA = false,
-        .CONFIG_MEDIAFOUNDATION = false,
+        .CONFIG_MEDIAFOUNDATION = true,
         .CONFIG_METAL = false,
         .CONFIG_SCHANNEL = tls == .schannel,
         .CONFIG_SDL2 = false,
@@ -736,13 +736,13 @@ pub fn build(b: *std.Build) void {
         .CONFIG_D3D11VA = false,
         .CONFIG_D3D12VA = false,
         .CONFIG_DXVA2 = false,
-        .CONFIG_FFNVCODEC = false,
+        .CONFIG_FFNVCODEC = true,
         .CONFIG_LIBDRM = false,
         .CONFIG_NVDEC = false,
         .CONFIG_NVENC = false,
         .CONFIG_VAAPI = false,
         .CONFIG_VDPAU = false,
-        .CONFIG_VIDEOTOOLBOX = false,
+        .CONFIG_VIDEOTOOLBOX = t.os.tag == .macos,
         .CONFIG_VULKAN = false,
         .CONFIG_V4L2_M2M = t.os.tag == .linux,
         .CONFIG_FTRAPV = false,
@@ -1860,7 +1860,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_H264_QSV_ENCODER = false,
         .CONFIG_H264_V4L2M2M_ENCODER = t.os.tag == .linux,
         .CONFIG_H264_VAAPI_ENCODER = false,
-        .CONFIG_H264_VIDEOTOOLBOX_ENCODER = false,
+        .CONFIG_H264_VIDEOTOOLBOX_ENCODER = t.os.tag == .macos,
         .CONFIG_H264_VULKAN_ENCODER = false,
         .CONFIG_HEVC_AMF_ENCODER = false,
         .CONFIG_HEVC_D3D12VA_ENCODER = false,
@@ -1871,7 +1871,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_HEVC_QSV_ENCODER = false,
         .CONFIG_HEVC_V4L2M2M_ENCODER = t.os.tag == .linux,
         .CONFIG_HEVC_VAAPI_ENCODER = false,
-        .CONFIG_HEVC_VIDEOTOOLBOX_ENCODER = false,
+        .CONFIG_HEVC_VIDEOTOOLBOX_ENCODER = t.os.tag == .macos,
         .CONFIG_HEVC_VULKAN_ENCODER = false,
         .CONFIG_LIBKVAZAAR_ENCODER = false,
         .CONFIG_MJPEG_QSV_ENCODER = false,
@@ -1882,7 +1882,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_MPEG4_MEDIACODEC_ENCODER = false,
         .CONFIG_MPEG4_OMX_ENCODER = false,
         .CONFIG_MPEG4_V4L2M2M_ENCODER = t.os.tag == .linux,
-        .CONFIG_PRORES_VIDEOTOOLBOX_ENCODER = false,
+        .CONFIG_PRORES_VIDEOTOOLBOX_ENCODER = t.os.tag == .macos,
         .CONFIG_VP8_MEDIACODEC_ENCODER = false,
         .CONFIG_VP8_V4L2M2M_ENCODER = t.os.tag == .linux,
         .CONFIG_VP8_VAAPI_ENCODER = false,
@@ -1898,12 +1898,12 @@ pub fn build(b: *std.Build) void {
         .CONFIG_AV1_NVDEC_HWACCEL = false,
         .CONFIG_AV1_VAAPI_HWACCEL = false,
         .CONFIG_AV1_VDPAU_HWACCEL = false,
-        .CONFIG_AV1_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_AV1_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_AV1_VULKAN_HWACCEL = false,
         .CONFIG_DPX_VULKAN_HWACCEL = false,
         .CONFIG_FFV1_VULKAN_HWACCEL = false,
         .CONFIG_H263_VAAPI_HWACCEL = false,
-        .CONFIG_H263_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_H263_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_H264_D3D11VA_HWACCEL = false,
         .CONFIG_H264_D3D11VA2_HWACCEL = false,
         .CONFIG_H264_D3D12VA_HWACCEL = false,
@@ -1911,7 +1911,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_H264_NVDEC_HWACCEL = false,
         .CONFIG_H264_VAAPI_HWACCEL = false,
         .CONFIG_H264_VDPAU_HWACCEL = false,
-        .CONFIG_H264_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_H264_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_H264_VULKAN_HWACCEL = false,
         .CONFIG_HEVC_D3D11VA_HWACCEL = false,
         .CONFIG_HEVC_D3D11VA2_HWACCEL = false,
@@ -1920,13 +1920,13 @@ pub fn build(b: *std.Build) void {
         .CONFIG_HEVC_NVDEC_HWACCEL = false,
         .CONFIG_HEVC_VAAPI_HWACCEL = false,
         .CONFIG_HEVC_VDPAU_HWACCEL = false,
-        .CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_HEVC_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_HEVC_VULKAN_HWACCEL = false,
         .CONFIG_MJPEG_NVDEC_HWACCEL = false,
         .CONFIG_MJPEG_VAAPI_HWACCEL = false,
         .CONFIG_MPEG1_NVDEC_HWACCEL = false,
         .CONFIG_MPEG1_VDPAU_HWACCEL = false,
-        .CONFIG_MPEG1_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_MPEG1_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_MPEG2_D3D11VA_HWACCEL = false,
         .CONFIG_MPEG2_D3D11VA2_HWACCEL = false,
         .CONFIG_MPEG2_D3D12VA_HWACCEL = false,
@@ -1934,12 +1934,12 @@ pub fn build(b: *std.Build) void {
         .CONFIG_MPEG2_NVDEC_HWACCEL = false,
         .CONFIG_MPEG2_VAAPI_HWACCEL = false,
         .CONFIG_MPEG2_VDPAU_HWACCEL = false,
-        .CONFIG_MPEG2_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_MPEG2_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_MPEG4_NVDEC_HWACCEL = false,
         .CONFIG_MPEG4_VAAPI_HWACCEL = false,
         .CONFIG_MPEG4_VDPAU_HWACCEL = false,
-        .CONFIG_MPEG4_VIDEOTOOLBOX_HWACCEL = false,
-        .CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_MPEG4_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
+        .CONFIG_PRORES_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_PRORES_VULKAN_HWACCEL = false,
         .CONFIG_PRORES_RAW_VULKAN_HWACCEL = false,
         .CONFIG_VC1_D3D11VA_HWACCEL = false,
@@ -1958,7 +1958,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_VP9_NVDEC_HWACCEL = false,
         .CONFIG_VP9_VAAPI_HWACCEL = false,
         .CONFIG_VP9_VDPAU_HWACCEL = false,
-        .CONFIG_VP9_VIDEOTOOLBOX_HWACCEL = false,
+        .CONFIG_VP9_VIDEOTOOLBOX_HWACCEL = t.os.tag == .macos,
         .CONFIG_VP9_VULKAN_HWACCEL = false,
         .CONFIG_VVC_VAAPI_HWACCEL = false,
         .CONFIG_WMV3_D3D11VA_HWACCEL = false,
@@ -3271,6 +3271,10 @@ pub fn build(b: *std.Build) void {
     }, config_components_values);
     lib.root_module.addConfigHeader(config_components_h);
 
+    const component_lists_wf = b.addWriteFiles();
+    writeComponentLists(b, component_lists_wf, config_components_values);
+    lib.root_module.addIncludePath(component_lists_wf.getDirectory());
+
     const config_components_asm = b.addConfigHeader(.{
         .style = .nasm,
         .include_path = "config_components.asm",
@@ -3338,6 +3342,20 @@ pub fn build(b: *std.Build) void {
 
                 nasm_run.addFileArg(b.path(input_file));
             }
+        },
+        else => {},
+    }
+
+    switch (t.os.tag) {
+        .macos => {
+            const frameworks = b.lazyDependency("xcode_frameworks", .{}) orelse return;
+            lib.root_module.addIncludePath(frameworks.path("include"));
+            lib.root_module.addFrameworkPath(frameworks.path("Frameworks"));
+            lib.root_module.addLibraryPath(frameworks.path("lib"));
+            lib.root_module.linkFramework("CoreFoundation", .{});
+            lib.root_module.linkFramework("CoreVideo", .{});
+            lib.root_module.linkFramework("CoreMedia", .{});
+            lib.root_module.linkFramework("VideoToolbox", .{});
         },
         else => {},
     }
@@ -3522,6 +3540,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
         const sub_path = path[lib.prefix.len..];
 
         // Skip files from wrong targets.
+        if (target.os.tag != .macos and std.mem.indexOf(u8, sub_path, "videotoolbox") != null) continue;
         if (std.mem.startsWith(u8, sub_path, "aarch64/")) {
             if (!target.cpu.arch.isAARCH64()) continue;
         } else if (std.mem.startsWith(u8, sub_path, "alpha/")) {
@@ -3613,6 +3632,141 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
         @field(result, field_name) = libs[i].list.items;
     }
     return result;
+}
+
+/// A component registry list that upstream `configure` generates, such as `libavcodec/codec_list.c`.
+const ComponentList = struct {
+    path: []const u8,
+    struct_name: []const u8,
+    array_name: []const u8,
+    registry: []const u8,
+    kinds: []const Kind,
+    trailer: []const []const u8 = &.{},
+
+    const Kind = struct {
+        symbol: ?[]const u8,
+        config: []const u8,
+    };
+};
+
+const component_lists = [_]ComponentList{
+    .{
+        .path = "libavcodec/codec_list.c",
+        .struct_name = "FFCodec",
+        .array_name = "codec_list",
+        .registry = @embedFile("libavcodec/allcodecs.c"),
+        .kinds = &.{
+            .{ .symbol = "encoder", .config = "ENCODER" },
+            .{ .symbol = "decoder", .config = "DECODER" },
+        },
+    },
+    .{
+        .path = "libavcodec/parser_list.c",
+        .struct_name = "FFCodecParser",
+        .array_name = "parser_list",
+        .registry = @embedFile("libavcodec/parsers.c"),
+        .kinds = &.{.{ .symbol = "parser", .config = "PARSER" }},
+    },
+    .{
+        .path = "libavcodec/bsf_list.c",
+        .struct_name = "FFBitStreamFilter",
+        .array_name = "bitstream_filters",
+        .registry = @embedFile("libavcodec/bitstream_filters.c"),
+        .kinds = &.{.{ .symbol = "bsf", .config = "BSF" }},
+    },
+    .{
+        .path = "libavformat/demuxer_list.c",
+        .struct_name = "FFInputFormat",
+        .array_name = "demuxer_list",
+        .registry = @embedFile("libavformat/allformats.c"),
+        .kinds = &.{.{ .symbol = "demuxer", .config = "DEMUXER" }},
+    },
+    .{
+        .path = "libavformat/muxer_list.c",
+        .struct_name = "FFOutputFormat",
+        .array_name = "muxer_list",
+        .registry = @embedFile("libavformat/allformats.c"),
+        .kinds = &.{.{ .symbol = "muxer", .config = "MUXER" }},
+    },
+    .{
+        .path = "libavformat/protocol_list.c",
+        .struct_name = "URLProtocol",
+        .array_name = "url_protocols",
+        .registry = @embedFile("libavformat/protocols.c"),
+        .kinds = &.{.{ .symbol = "protocol", .config = "PROTOCOL" }},
+    },
+    .{
+        .path = "libavfilter/filter_list.c",
+        .struct_name = "FFFilter",
+        .array_name = "filter_list",
+        .registry = @embedFile("libavfilter/allfilters.c"),
+        .kinds = &.{.{ .symbol = null, .config = "FILTER" }},
+        .trailer = &.{ "asrc_abuffer", "vsrc_buffer", "asink_abuffer", "vsink_buffer" },
+    },
+    .{
+        .path = "libavdevice/indev_list.c",
+        .struct_name = "FFInputFormat",
+        .array_name = "indev_list",
+        .registry = @embedFile("libavdevice/alldevices.c"),
+        .kinds = &.{.{ .symbol = "demuxer", .config = "INDEV" }},
+    },
+    .{
+        .path = "libavdevice/outdev_list.c",
+        .struct_name = "FFOutputFormat",
+        .array_name = "outdev_list",
+        .registry = @embedFile("libavdevice/alldevices.c"),
+        .kinds = &.{.{ .symbol = "muxer", .config = "OUTDEV" }},
+    },
+};
+
+/// Writes files into the `wf` dir depending on the provided `config_values`.
+/// This recreates `find_things_extern` and `print_enabled_components` from the upstream configure script.
+fn writeComponentLists(b: *std.Build, wf: *std.Build.Step.WriteFile, config_values: anytype) void {
+    var enabled: std.StringHashMapUnmanaged(bool) = .empty;
+    defer enabled.deinit(b.allocator);
+    inline for (@typeInfo(@TypeOf(config_values)).@"struct".field_names) |field_name| {
+        const value = @field(config_values, field_name);
+        if (@TypeOf(value) == bool) enabled.put(b.allocator, field_name, value) catch @panic("OOM");
+    }
+
+    for (component_lists) |list| {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        defer out.deinit(b.allocator);
+        out.print(b.allocator, "static const {s} * const {s}[] = {{\n", .{ list.struct_name, list.array_name }) catch @panic("OOM");
+        for (list.kinds) |kind| {
+            var lines = std.mem.splitScalar(u8, list.registry, '\n');
+            while (lines.next()) |line| {
+                var tokens = std.mem.tokenizeAny(u8, line, " \t\r");
+                if (!std.mem.eql(u8, tokens.next() orelse continue, "extern")) continue;
+                if (!std.mem.eql(u8, tokens.next() orelse continue, "const")) continue;
+                if (!std.mem.eql(u8, tokens.next() orelse continue, list.struct_name)) continue;
+                const decl = tokens.next() orelse continue;
+                if (!std.mem.startsWith(u8, decl, "ff_") or !std.mem.endsWith(u8, decl, ";")) continue;
+                const symbol = decl["ff_".len .. decl.len - 1];
+
+                const name = if (kind.symbol) |suffix| name: {
+                    if (!std.mem.endsWith(u8, symbol, suffix)) continue;
+                    const base = symbol[0 .. symbol.len - suffix.len];
+                    if (!std.mem.endsWith(u8, base, "_")) continue;
+                    break :name base[0 .. base.len - 1];
+                } else name: {
+                    // Strip the filter type prefix, e.g. "vf_" in "vf_scale".
+                    const underscore = std.mem.indexOfScalar(u8, symbol, '_') orelse continue;
+                    break :name symbol[underscore + 1 ..];
+                };
+
+                const config_name = std.ascii.allocUpperString(
+                    b.allocator,
+                    b.fmt("CONFIG_{s}_{s}", .{ name, kind.config }),
+                ) catch @panic("OOM");
+                if (!(enabled.get(config_name) orelse false)) continue;
+                out.print(b.allocator, "    &ff_{s},\n", .{symbol}) catch @panic("OOM");
+            }
+        }
+        for (list.trailer) |symbol| out.print(b.allocator, "    &ff_{s},\n", .{symbol}) catch @panic("OOM");
+        out.appendSlice(b.allocator, "    NULL };\n") catch @panic("OOM");
+        _ = wf.add(list.path, out.items);
+    }
 }
 
 const component_subdirs = [_][]const u8{
@@ -3708,20 +3862,20 @@ const headers = [_][]const u8{
     "libavutil/hdr_dynamic_vivid_metadata.h",
     "libavutil/hmac.h",
     "libavutil/hwcontext.h",
-    //"libavutil/hwcontext_amf.h",
-    //"libavutil/hwcontext_cuda.h",
-    //"libavutil/hwcontext_d3d11va.h",
-    //"libavutil/hwcontext_d3d12va.h",
-    //"libavutil/hwcontext_drm.h",
-    //"libavutil/hwcontext_dxva2.h",
-    //"libavutil/hwcontext_mediacodec.h",
-    //"libavutil/hwcontext_oh.h",
-    //"libavutil/hwcontext_opencl.h",
-    //"libavutil/hwcontext_qsv.h",
-    //"libavutil/hwcontext_vaapi.h",
-    //"libavutil/hwcontext_vdpau.h",
-    //"libavutil/hwcontext_videotoolbox.h",
-    //"libavutil/hwcontext_vulkan.h",
+    // "libavutil/hwcontext_amf.h",
+    // "libavutil/hwcontext_cuda.h",
+    // "libavutil/hwcontext_d3d11va.h",
+    // "libavutil/hwcontext_d3d12va.h",
+    // "libavutil/hwcontext_drm.h",
+    // "libavutil/hwcontext_dxva2.h",
+    // "libavutil/hwcontext_mediacodec.h",
+    // "libavutil/hwcontext_oh.h",
+    // "libavutil/hwcontext_opencl.h",
+    // "libavutil/hwcontext_qsv.h",
+    // "libavutil/hwcontext_vaapi.h",
+    // "libavutil/hwcontext_vdpau.h",
+    "libavutil/hwcontext_videotoolbox.h",
+    // "libavutil/hwcontext_vulkan.h",
     "libavutil/iamf.h",
     "libavutil/imgutils.h",
     "libavutil/intfloat.h",
@@ -5367,10 +5521,10 @@ const no_networking_sources = [_][]const u8{
     //"libavcodec/vdpau_vp9.c",
     "libavcodec/version.c",
     "libavcodec/videodsp.c",
-    //"libavcodec/videotoolbox.c",
-    //"libavcodec/videotoolbox_av1.c",
-    //"libavcodec/videotoolbox_vp9.c",
-    //"libavcodec/videotoolboxenc.c",
+    "libavcodec/videotoolbox.c",
+    "libavcodec/videotoolbox_av1.c",
+    "libavcodec/videotoolbox_vp9.c",
+    "libavcodec/videotoolboxenc.c",
     "libavcodec/vima.c",
     "libavcodec/vlc.c",
     "libavcodec/vmdaudio.c",
@@ -6990,21 +7144,21 @@ const no_networking_sources = [_][]const u8{
     "libavutil/hdr_dynamic_vivid_metadata.c",
     "libavutil/hmac.c",
     "libavutil/hwcontext.c",
-    //"libavutil/hwcontext_amf.c",
-    //"libavutil/hwcontext_cuda.c",
-    //"libavutil/hwcontext_d3d11va.c",
-    //"libavutil/hwcontext_d3d12va.c",
-    //"libavutil/hwcontext_drm.c",
-    //"libavutil/hwcontext_dxva2.c",
-    //"libavutil/hwcontext_mediacodec.c",
-    //"libavutil/hwcontext_oh.c",
-    //"libavutil/hwcontext_opencl.c",
-    //"libavutil/hwcontext_qsv.c",
-    //"libavutil/hwcontext_stub.c",
-    //"libavutil/hwcontext_vaapi.c",
-    //"libavutil/hwcontext_vdpau.c",
-    //"libavutil/hwcontext_videotoolbox.c",
-    //"libavutil/hwcontext_vulkan.c",
+    // "libavutil/hwcontext_amf.c",
+    // "libavutil/hwcontext_cuda.c",
+    // "libavutil/hwcontext_d3d11va.c",
+    // "libavutil/hwcontext_d3d12va.c",
+    // "libavutil/hwcontext_drm.c",
+    // "libavutil/hwcontext_dxva2.c",
+    // "libavutil/hwcontext_mediacodec.c",
+    // "libavutil/hwcontext_oh.c",
+    // "libavutil/hwcontext_opencl.c",
+    // "libavutil/hwcontext_qsv.c",
+    // "libavutil/hwcontext_stub.c",
+    // "libavutil/hwcontext_vaapi.c",
+    // "libavutil/hwcontext_vdpau.c",
+    "libavutil/hwcontext_videotoolbox.c",
+    // "libavutil/hwcontext_vulkan.c",
     "libavutil/iamf.c",
     "libavutil/imgutils.c",
     "libavutil/integer.c",
