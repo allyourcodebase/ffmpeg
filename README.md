@@ -63,7 +63,7 @@ released upstream.
 2. `find libavcodec/ libavdevice/ libavfilter/ libavformat libavutil/ libswscale/ libswresample/ -type f -name "*.asm" -o -name "*.c" -o -name "*.S"`
    * Edit to omit files ending in `_template.c` or `_tablegen.c`
    * Sort the list
-   * Update the `all_sources` list in `build.zig`.
+   * Update the `no_networking_sources` and `yes_networking_srcs` lists in `build.zig`.
 3. Inspect the git diff to keep some of the source files commented out like
    they were before. Some handy filtering rules apply:
    * `/L` prefix means Linux-only
@@ -81,6 +81,11 @@ released upstream.
    and diff the two generated `config.h` files against each other: every entry
    that differs is one `build.zig` has to decide from the target rather than
    hardcode.
+
+   Run `configure` a third time for disabled networking, adding
+   `--disable-network` and diff the two generated `config.h` files against each
+   other: every entry that differs should be disabled when compiling with
+   `-Dnetworking=false`.
 5. Update the `headers` list in `build.zig` based on what files are present in
    `$HOME/local/ffmpeg/include`.
 
