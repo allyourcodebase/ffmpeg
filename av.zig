@@ -2669,7 +2669,6 @@ pub const Codec = extern struct {
         time_base: Rational,
         pkt_timebase: Rational,
         framerate: Rational,
-        ticks_per_frame: c_int,
         delay: c_int,
         width: c_int,
         height: c_int,
@@ -2804,6 +2803,7 @@ pub const Codec = extern struct {
         nb_side_data_prefer_packet: c_uint,
         decoded_side_data: ?[*]*FrameSideData,
         nb_decoded_side_data: c_int,
+        alpha_mode: AlphaMode,
 
         pub fn alloc(codec: *const Codec) error{OutOfMemory}!*Context {
             return avcodec_alloc_context3(codec) orelse return error.OutOfMemory;
