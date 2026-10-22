@@ -3500,7 +3500,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls) Cate
 
     var libs: [field_names.len]struct {
         prefix: []const u8,
-        list: std.ArrayListUnmanaged([]const u8) = .empty,
+        list: std.ArrayList([]const u8) = .empty,
     } = undefined;
 
     inline for (field_names, 0..) |field_name, i| {
