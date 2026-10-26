@@ -123,7 +123,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_DCBZL = false,
         .HAVE_LDBRX = have_ppc_feat(t, .ldbrx),
         .HAVE_POWER8 = have_ppc_feat(t, .power8_vector),
-        .HAVE_PPC4XX = have_ppc_feat(t, .ppc4xx),
+        .HAVE_PPC4XX = false,
         .HAVE_VEC_XL = false,
         .HAVE_VSX = have_ppc_feat(t, .vsx),
         .HAVE_RV = false,
@@ -154,7 +154,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU = missing_mips_feat(t, .soft_float),
+        .HAVE_MIPSFPU = true,
         .HAVE_MIPS32R2 = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5 = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2 = have_mips_feat(t, .mips64r2),
@@ -189,7 +189,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_DCBZL_EXTERNAL = false,
         .HAVE_LDBRX_EXTERNAL = have_ppc_feat(t, .ldbrx),
         .HAVE_POWER8_EXTERNAL = have_ppc_feat(t, .power8_vector),
-        .HAVE_PPC4XX_EXTERNAL = have_ppc_feat(t, .ppc4xx),
+        .HAVE_PPC4XX_EXTERNAL = false,
         .HAVE_VEC_XL_EXTERNAL = false,
         .HAVE_VSX_EXTERNAL = have_ppc_feat(t, .vsx),
         .HAVE_RV_EXTERNAL = false,
@@ -220,7 +220,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU_EXTERNAL = missing_mips_feat(t, .soft_float),
+        .HAVE_MIPSFPU_EXTERNAL = true,
         .HAVE_MIPS32R2_EXTERNAL = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5_EXTERNAL = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2_EXTERNAL = have_mips_feat(t, .mips64r2),
@@ -255,7 +255,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_DCBZL_INLINE = false,
         .HAVE_LDBRX_INLINE = have_ppc_feat(t, .ldbrx),
         .HAVE_POWER8_INLINE = have_ppc_feat(t, .power8_vector),
-        .HAVE_PPC4XX_INLINE = have_ppc_feat(t, .ppc4xx),
+        .HAVE_PPC4XX_INLINE = false,
         .HAVE_VEC_XL_INLINE = false,
         .HAVE_VSX_INLINE = have_ppc_feat(t, .vsx),
         .HAVE_RV_INLINE = false,
@@ -286,7 +286,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU_INLINE = missing_mips_feat(t, .soft_float),
+        .HAVE_MIPSFPU_INLINE = true,
         .HAVE_MIPS32R2_INLINE = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5_INLINE = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2_INLINE = have_mips_feat(t, .mips64r2),
