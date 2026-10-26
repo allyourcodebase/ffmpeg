@@ -21,10 +21,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     }) else null;
-    // const lazy_libressl_dep = if (tls == .libressl) b.lazyDependency("libressl", .{
-    //     .target = target,
-    //     .optimize = optimize,
-    // }) else null;
     const libmp3lame_dep = b.dependency("libmp3lame", .{
         .target = target,
         .optimize = optimize,
@@ -50,7 +46,6 @@ pub fn build(b: *std.Build) void {
     lib.root_module.linkLibrary(libz_dep.artifact("z"));
     if (lazy_mbedtls_dep) |mbedtls_dep| lib.root_module.linkLibrary(mbedtls_dep.artifact("mbedtls"));
     if (lazy_openssl_dep) |openssl_dep| lib.root_module.linkLibrary(openssl_dep.artifact("openssl"));
-    // if (lazy_libressl_dep) |libressl_dep| lib.root_module.linkLibrary(libressl_dep.artifact("ssl"));
     lib.root_module.linkLibrary(libmp3lame_dep.artifact("mp3lame"));
     lib.root_module.linkLibrary(libvorbis_dep.artifact("vorbis"));
     lib.root_module.linkLibrary(libogg_dep.artifact("ogg"));
@@ -695,7 +690,7 @@ pub fn build(b: *std.Build) void {
         .CONFIG_OHCODEC = false,
         .CONFIG_OPENAL = false,
         .CONFIG_OPENGL = false,
-        .CONFIG_OPENSSL = tls == .openssl, // or tls == .libressl,
+        .CONFIG_OPENSSL = tls == .openssl,
         .CONFIG_POCKETSPHINX = false,
         .CONFIG_VAPOURSYNTH = false,
         .CONFIG_VULKAN_STATIC = false,
@@ -3275,10 +3270,7 @@ pub fn build(b: *std.Build) void {
         .include_path = "config_components.asm",
     }, config_components_values);
 
-    const sources = categorizeSources(b.allocator, t, switch (tls) {
-        else => tls,
-        // .libressl => .openssl,
-    });
+    const sources = categorizeSources(b.allocator, t, tls);
 
     lib.root_module.addCSourceFiles(.{
         .files = sources.avcodec,
@@ -3479,7 +3471,6 @@ const Tls = enum {
     libtls,
     mbedtls,
     openssl,
-    // libressl,
     schannel,
     securetransport,
 };
