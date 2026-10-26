@@ -38,6 +38,11 @@
         .nasm = .{
             .url = "git+https://github.com/allyourcodebase/nasm.git#d7356eadb2d7771542fe74e8fc0668bd78732b59",
             .hash = "nasm-3.0.1-B_NnpQpTAAA25UxvqONakXtmj-a78PGe3xfgyDFgetb0",
+            .instances = .{
+                // We want an optimized nasm and so we want an optimized zlib too, even when we're building
+                // a debug ffmpeg.
+                "zlib",
+            },
         },
     },
     .paths = .{
