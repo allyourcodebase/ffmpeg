@@ -6,8 +6,8 @@
 
     .dependencies = .{
         .libz = .{
-            .url = "https://github.com/allyourcodebase/zlib/archive/c5115f4b69ef660f72a835c6638f80508ef284c7.tar.gz",
-            .hash = "zlib-1.3.1-1-ZZQ7ldENAAA7qJjUXP6E6xnRuV-jDL9dyoJFc_eb3zQ6",
+            .url = "https://github.com/allyourcodebase/zlib/archive/4c7c61e452b5086bdf571d06b9efdc77d8124e2a.tar.gz",
+            .hash = "zlib-2.0.0+1.3.2-ZZQ7lTERAAAVMpRUpMKNUAri9uNfXQfv1jq9x1XvxQ-N",
         },
         .mbedtls = .{
             .url = "git+https://github.com/allyourcodebase/mbedtls#3aa71a19acc173ae57b6a1114d62f2fdfd22960c",
