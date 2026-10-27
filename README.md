@@ -63,12 +63,10 @@ released upstream.
 2. `find libavcodec/ libavdevice/ libavfilter/ libavformat libavutil/ libswscale/ libswresample/ -type f -name "*.asm" -o -name "*.c" -o -name "*.S"`
    * Edit to omit files ending in `_template.c` or `_tablegen.c`
    * Sort the list
-   * Update the `no_networking_sources` and `yes_networking_srcs` lists in `build.zig`.
+   * Update the `all_sources` list in `build.zig`.
 3. Inspect the git diff to keep some of the source files commented out like
-   they were before. Some handy filtering rules apply:
-   * `/L` prefix means Linux-only
-   * `/W` prefix means Windows-only
-   * `/U` prefix means every target except Windows
+   they were before. Some handy filtering rules apply, see the definition of
+   `SourceFile`.
 4. Run `./configure --prefix=$HOME/local/ffmpeg --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-programs --enable-libmp3lame --enable-libvorbis --disable-shared --enable-static`
    against upstream and diff the generated `config.h` file to the one generated
    by this build script. Apply appropriate changes to `build.zig`.
