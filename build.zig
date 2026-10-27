@@ -3325,7 +3325,7 @@ pub fn build(b: *std.Build) void {
             const nasm_args = nasmArgs(t);
 
             for (all_sources) |source_file| {
-                const input_file = pathForTarget(t, networking, source_file) orelse continue;
+                const input_file = filterSourceFile(t, networking, source_file) orelse continue;
                 if (!std.mem.endsWith(u8, input_file, ".asm")) continue;
 
                 const output_basename = basenameNewExtension(b, input_file, ".o");
@@ -3443,7 +3443,7 @@ fn nasmArgs(t: std.Target) []const []const u8 {
     };
 }
 
-fn pathForTarget(t: std.Target, networking: bool, file: SourceFile) ?[]const u8 {
+fn filterSourceFile(t: std.Target, networking: bool, file: SourceFile) ?[]const u8 {
     const included_by_target = switch (file.target) {
         .any => true,
         .linux => t.os.tag == .linux,
@@ -3528,7 +3528,7 @@ fn categorizeSources(ally: std.mem.Allocator, target: std.Target, tls: Tls, netw
         libs[i] = .{ .prefix = "lib" ++ field_name ++ "/" };
     }
     for (all_sources) |source_file| {
-        const path = pathForTarget(target, networking, source_file) orelse continue;
+        const path = filterSourceFile(target, networking, source_file) orelse continue;
 
         const lib = for (&libs) |*lib| {
             if (std.mem.startsWith(u8, path, lib.prefix))
