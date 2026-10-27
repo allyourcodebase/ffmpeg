@@ -65,10 +65,8 @@ released upstream.
    * Sort the list
    * Update the `all_sources` list in `build.zig`.
 3. Inspect the git diff to keep some of the source files commented out like
-   they were before. Some handy filtering rules apply:
-   * `/L` prefix means Linux-only
-   * `/W` prefix means Windows-only
-   * `/U` prefix means every target except Windows
+   they were before. Some handy filtering rules apply, see the definition of
+   `SourceFile`.
 4. Run `./configure --prefix=$HOME/local/ffmpeg --disable-doc --disable-htmlpages --disable-manpages --disable-podpages --disable-txtpages --disable-programs --enable-libmp3lame --enable-libvorbis --disable-shared --enable-static`
    against upstream and diff the generated `config.h` file to the one generated
    by this build script. Apply appropriate changes to `build.zig`.
@@ -81,6 +79,11 @@ released upstream.
    and diff the two generated `config.h` files against each other: every entry
    that differs is one `build.zig` has to decide from the target rather than
    hardcode.
+
+   Run `configure` a third time for disabled networking, adding
+   `--disable-network` and diff the two generated `config.h` files against each
+   other: every entry that differs should be disabled when compiling with
+   `-Dnetworking=false`.
 5. Update the `headers` list in `build.zig` based on what files are present in
    `$HOME/local/ffmpeg/include`.
 
