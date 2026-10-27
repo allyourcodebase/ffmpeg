@@ -1,6 +1,6 @@
 .{
     .name = .ffmpeg,
-    .version = "9.0.0+8.1.1",
+    .version = "9.0.1-unreleased+8.1.1",
     .fingerprint = 0x2ffce39e03d03ecd,
     .minimum_zig_version = "0.18.0-dev.748+cb6f0c25f",
 
