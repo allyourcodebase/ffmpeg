@@ -149,7 +149,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU = true,
+        .HAVE_MIPSFPU = haveMipsHardFloat(t),
         .HAVE_MIPS32R2 = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5 = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2 = have_mips_feat(t, .mips64r2),
@@ -215,7 +215,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU_EXTERNAL = true,
+        .HAVE_MIPSFPU_EXTERNAL = haveMipsHardFloat(t),
         .HAVE_MIPS32R2_EXTERNAL = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5_EXTERNAL = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2_EXTERNAL = have_mips_feat(t, .mips64r2),
@@ -281,7 +281,7 @@ pub fn build(b: *std.Build) void {
             have_x86_feat(t, .cx8) and
             have_x86_feat(t, .vzeroupper) and
             have_x86_feat(t, .x87),
-        .HAVE_MIPSFPU_INLINE = true,
+        .HAVE_MIPSFPU_INLINE = haveMipsHardFloat(t),
         .HAVE_MIPS32R2_INLINE = have_mips_feat(t, .mips32r2),
         .HAVE_MIPS32R5_INLINE = have_mips_feat(t, .mips32r5),
         .HAVE_MIPS64R2_INLINE = have_mips_feat(t, .mips64r2),
@@ -3830,16 +3830,8 @@ fn have_mips_feat(t: std.Target, feat: std.Target.mips.Feature) bool {
     };
 }
 
-fn missing_mips_feat(t: std.Target, feat: std.Target.mips.Feature) bool {
-    return switch (t.cpu.arch) {
-        .mips,
-        .mipsel,
-        .mips64,
-        .mips64el,
-        => !std.Target.mips.featureSetHas(t.cpu.features, feat),
-
-        else => false,
-    };
+fn haveMipsHardFloat(t: std.Target) bool {
+    return t.cpu.arch.isMIPS() and t.abi.float() == .hard;
 }
 
 fn basenameNewExtension(b: *std.Build, path: []const u8, new_extension: []const u8) []const u8 {
