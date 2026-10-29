@@ -1,5 +1,7 @@
 .{
     .name = .ffmpeg,
+    // The version remains "unreleased" in the main branch. See the 9.0.x
+    // branch for latest release.
     .version = "9.0.1-unreleased+8.1.1",
     .fingerprint = 0x2ffce39e03d03ecd,
     .minimum_zig_version = "0.18.0-dev.748+cb6f0c25f",
