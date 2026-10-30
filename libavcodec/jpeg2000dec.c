@@ -1957,7 +1957,7 @@ static void decode_clnpass(const Jpeg2000DecoderContext *s, Jpeg2000T1Context *t
                            int width, int height, int bpno, int bandno,
                            int seg_symbols, int vert_causal_ctx_csty_symbol)
 {
-    int mask = 3 << (bpno - 1), y0, x, y, runlen, dec;
+    int mask = (3u << bpno)>>1, y0, x, y, runlen, dec;
 
     for (y0 = 0; y0 < height; y0 += 4) {
         for (x = 0; x < width; x++) {
@@ -2108,7 +2108,7 @@ static int decode_cblk(const Jpeg2000DecoderContext *s, Jpeg2000CodingStyle *cod
             val &= INT32_MAX;
             /* ROI shift, if necessary */
             if (roi_shift && (((uint32_t)val & ~mask) == 0))
-                val <<= roi_shift;
+                val = (uint32_t)val << roi_shift;
             t1->data[n] = val | sign; /* NOTE: Binary point for reconstruction value is located in 31 - M_b */
         }
     }
@@ -2448,8 +2448,14 @@ static void jpeg2000_dec_cleanup(Jpeg2000DecoderContext *s)
     memset(s->qntsty, 0, sizeof(s->qntsty));
     memset(s->properties, 0, sizeof(s->properties));
     memset(&s->poc  , 0, sizeof(s->poc));
+    memset(s->roi_shift, 0, sizeof(s->roi_shift));
     s->numXtiles = s->numYtiles = 0;
     s->ncomponents = 0;
+    s->has_ppm = 0;
+    s->isHT = 0;
+    s->precision = 0;
+    s->colour_space = 0;
+    s->pal8 = 0;
 }
 
 static int jpeg2000_read_main_headers(Jpeg2000DecoderContext *s)

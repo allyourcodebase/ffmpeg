@@ -90,12 +90,6 @@ static int populate_audio_roll_distance(IAMFCodecConfig *codec_config)
         codec_config->audio_roll_distance = -1;
         break;
     case AV_CODEC_ID_FLAC:
-    case AV_CODEC_ID_PCM_S16BE:
-    case AV_CODEC_ID_PCM_S24BE:
-    case AV_CODEC_ID_PCM_S32BE:
-    case AV_CODEC_ID_PCM_S16LE:
-    case AV_CODEC_ID_PCM_S24LE:
-    case AV_CODEC_ID_PCM_S32LE:
         codec_config->audio_roll_distance = 0;
         break;
     default:
@@ -106,11 +100,17 @@ static int populate_audio_roll_distance(IAMFCodecConfig *codec_config)
 }
 
 static int fill_codec_config(IAMFContext *iamf, const AVStreamGroup *stg,
-                             IAMFCodecConfig *codec_config)
+                             IAMFCodecConfig *codec_config, void *log_ctx)
 {
     const AVStream *st = stg->streams[0];
     IAMFCodecConfig **tmp;
     int j, ret = 0;
+
+    if (!st->codecpar->frame_size) {
+        av_log(log_ctx, AV_LOG_ERROR, "frame_size is unset for stream id %d\n",
+               st->id);
+        return AVERROR(EINVAL);
+    }
 
     codec_config->codec_id = st->codecpar->codec_id;
     codec_config->codec_tag = st->codecpar->codec_tag;
@@ -314,7 +314,7 @@ int ff_iamf_add_audio_element(IAMFContext *iamf, const AVStreamGroup *stg, void 
     if (!codec_config)
         return AVERROR(ENOMEM);
 
-    ret = fill_codec_config(iamf, stg, codec_config);
+    ret = fill_codec_config(iamf, stg, codec_config, log_ctx);
     if (ret < 0) {
         av_free(codec_config);
         return ret;
@@ -535,35 +535,12 @@ static int iamf_write_codec_config(const IAMFContext *iamf,
         avio_write(dyn_bc, codec_config->extradata, codec_config->extradata_size);
         break;
     case AV_CODEC_ID_PCM_S16LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 16);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S24LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 24);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S32LE:
-        avio_w8(dyn_bc, 1);
-        avio_w8(dyn_bc, 32);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S16BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 16);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S24BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 24);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
     case AV_CODEC_ID_PCM_S32BE:
-        avio_w8(dyn_bc, 0);
-        avio_w8(dyn_bc, 32);
-        avio_wb32(dyn_bc, codec_config->sample_rate);
-        break;
+        return AVERROR(ENOSYS);
     default:
         break;
     }
@@ -1268,9 +1245,10 @@ int ff_iamf_write_audio_frame(const IAMFContext *iamf, AVIOContext *pb,
 
     if (codec_config->codec_id == AV_CODEC_ID_OPUS) {
         // IAMF's num_samples_to_trim_at_start is the same as Opus's pre-skip.
-        skip_samples = pkt->dts < 0
-            ? av_rescale(-pkt->dts, 48000, pkt->time_base.den)
-            : 0;
+        if (!skip_samples)
+            skip_samples = pkt->dts < 0
+                ? av_rescale(-pkt->dts, 48000, pkt->time_base.den)
+                : 0;
         discard_padding = av_rescale(discard_padding, 48000, pkt->time_base.den);
     }
 

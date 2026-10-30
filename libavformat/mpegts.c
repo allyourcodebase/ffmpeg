@@ -51,6 +51,9 @@
  * synchronization is lost */
 #define MAX_RESYNC_SIZE 65536
 
+/* payload of a TS packet which carries no adaptation field */
+#define TS_PAYLOAD_SIZE (TS_PACKET_SIZE - 4)
+
 #define MAX_MP4_DESCR_COUNT 16
 
 #define MOD_UNLIKELY(modulus, dividend, divisor, prev_dividend)                \
@@ -173,6 +176,7 @@ struct MpegTSContext {
     /* scan context */
     /** structure to keep track of Program->pids mapping */
     unsigned int nb_prg;
+    unsigned int prg_size; ///< allocated size of prg in bytes
     struct Program *prg;
 
     int8_t crc_validity[NB_PID_MAX];
@@ -210,7 +214,7 @@ static const AVOption options[] = {
     {"skip_clear", "skip clearing programs", offsetof(MpegTSContext, skip_clear), AV_OPT_TYPE_BOOL,
      {.i64 = 0}, 0, 1, 0 },
     {"max_packet_size", "maximum size of emitted packet", offsetof(MpegTSContext, max_packet_size), AV_OPT_TYPE_INT,
-     {.i64 = 204800}, 1, INT_MAX/2, AV_OPT_FLAG_DECODING_PARAM },
+     {.i64 = 204800}, TS_PAYLOAD_SIZE, INT_MAX/2, AV_OPT_FLAG_DECODING_PARAM },
     { NULL },
 };
 
@@ -280,6 +284,8 @@ EXTERN const FFInputFormat ff_mpegts_demuxer;
 static struct Program * get_program(MpegTSContext *ts, unsigned int programid)
 {
     int i;
+    if (!ts)
+        return NULL;
     for (i = 0; i < ts->nb_prg; i++) {
         if (ts->prg[i].id == programid) {
             return &ts->prg[i];
@@ -316,17 +322,26 @@ static void clear_programs(MpegTSContext *ts)
 {
     av_freep(&ts->prg);
     ts->nb_prg = 0;
+    ts->prg_size = 0;
 }
 
 static struct Program * add_program(MpegTSContext *ts, unsigned int programid)
 {
     struct Program *p = get_program(ts, programid);
+    struct Program *tmp = NULL;
+    size_t new_prg_size;
     if (p)
         return p;
-    if (av_reallocp_array(&ts->prg, ts->nb_prg + 1, sizeof(*ts->prg)) < 0) {
-        ts->nb_prg = 0;
+
+    if (!av_size_mult(ts->nb_prg + 1,  sizeof(*ts->prg), &new_prg_size))
+        tmp = av_fast_realloc(ts->prg, &ts->prg_size,new_prg_size);
+    if (!tmp) {
+        av_freep(&ts->prg);
+        ts->nb_prg   = 0;
+        ts->prg_size = 0;
         return NULL;
     }
+    ts->prg = tmp;
     p = &ts->prg[ts->nb_prg];
     p->id = programid;
     clear_program(p);
@@ -571,7 +586,7 @@ static void mpegts_close_filter(MpegTSContext *ts, MpegTSFilter *filter)
         av_buffer_unref(&pes->buffer);
         /* referenced private data will be freed later in
          * avformat_close_input (pes->st->priv_data == pes) */
-        if (!pes->st || pes->merged_st) {
+        if (!pes->st || pes->merged_st || !pes->st->priv_data) {
             av_freep(&filter->u.pes_filter.opaque);
         }
     }
@@ -1404,8 +1419,14 @@ skip:
         case MPEGTS_PAYLOAD:
             do {
                 int max_packet_size = ts->max_packet_size;
-                if (pes->PES_packet_length && pes->PES_packet_length + PES_START_SIZE > pes->pes_header_size)
-                    max_packet_size = pes->PES_packet_length + PES_START_SIZE - pes->pes_header_size;
+                if (pes->PES_packet_length && pes->PES_packet_length + PES_START_SIZE > pes->pes_header_size) {
+                    const int pes_payload_size = pes->PES_packet_length + PES_START_SIZE - pes->pes_header_size;
+
+                    if (pes_payload_size > ts->max_packet_size)
+                        pes->PES_packet_length = 0;
+                    else
+                        max_packet_size = pes_payload_size;
+                }
 
                 if (pes->data_index > 0 &&
                     pes->data_index + buf_size > max_packet_size) {
@@ -1836,9 +1857,9 @@ static const uint8_t opus_channel_map[8][8] = {
 };
 
 static int parse_mpeg2_extension_descriptor(AVFormatContext *fc, AVStream *st, int prg_id,
-                                            const uint8_t **pp, const uint8_t *desc_end)
+                                            const uint8_t **pp, const uint8_t *desc_end,
+                                            MpegTSContext *ts)
 {
-    MpegTSContext *ts = fc->priv_data;
     int ext_tag = get8(pp, desc_end);
 
     switch (ext_tag) {
@@ -2438,7 +2459,7 @@ int ff_parse_mpeg2_descriptor(AVFormatContext *fc, AVStream *st, int stream_type
         break;
     case EXTENSION_DESCRIPTOR: /* descriptor extension */
         {
-            int ret = parse_mpeg2_extension_descriptor(fc, st, prg_id, pp, desc_end);
+            int ret = parse_mpeg2_extension_descriptor(fc, st, prg_id, pp, desc_end, ts);
 
             if (ret < 0)
                 return ret;
