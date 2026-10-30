@@ -316,8 +316,10 @@ static void color_frame(AVFrame *frame, const int c[4])
         int bytes  = is_chroma ? AV_CEIL_RSHIFT(frame->width,  desc->log2_chroma_w) : frame->width;
         int height = is_chroma ? AV_CEIL_RSHIFT(frame->height, desc->log2_chroma_h) : frame->height;
         if (desc->comp[0].depth >= 9) {
-            ((uint16_t*)dst)[0] = c[p];
-            av_memcpy_backptr(dst + 2, 2, bytes - 2);
+            if (bytes >= 1)
+                ((uint16_t*)dst)[0] = c[p];
+            if (bytes >= 2)
+                av_memcpy_backptr(dst + 2, 2, 2 * (bytes - 1));
             dst += frame->linesize[p];
             for (int y = 1; y < height; y++) {
                 memcpy(dst, frame->data[p], 2*bytes);
@@ -1619,6 +1621,10 @@ static int h264_field_start(H264Context *h, const H264SliceContext *sl,
         int field = h->picture_structure == PICT_BOTTOM_FIELD;
         release_unused_pictures(h, 0);
         h->cur_pic_ptr->tf.owner[field] = h->avctx;
+        /* h264_frame_start(), which clears this for every other picture, is
+         * not called for a second field. */
+        if (CONFIG_ERROR_RESILIENCE)
+            ff_h264_set_erpic(&h->er.cur_pic, NULL);
     }
     /* Some macroblocks can be accessed before they're available in case
     * of lost slices, MBAFF or threading. */

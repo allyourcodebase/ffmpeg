@@ -473,6 +473,7 @@ pub fn build(b: *std.Build) void {
         .HAVE_BLOCKS_EXTENSION = is_darwin,
         .HAVE_EBP_AVAILABLE = omit_frame_pointer and t.cpu.arch == .x86_64,
         .HAVE_EBX_AVAILABLE = omit_frame_pointer and t.cpu.arch == .x86_64,
+        .HAVE_X86_32_7REGS = false,
         .HAVE_GNU_AS = false,
         .HAVE_GNU_WINDRES = false,
         .HAVE_IBM_ASM = false,
@@ -5899,6 +5900,7 @@ const all_sources = [_][]const u8{
     "libavfilter/riscv/vf_blackdetect_init.c",
     "libavfilter/riscv/vf_blackdetect_rvv.S",
     "libavfilter/scale_eval.c",
+    //"libavfilter/scale_filters.c", redundant with libswscale/filters.c
     "libavfilter/scene_sad.c",
     "libavfilter/setpts.c",
     "libavfilter/settb.c",
@@ -7130,6 +7132,7 @@ const all_sources = [_][]const u8{
     "libswscale/arm/yuv2rgb_neon.S",
     "libswscale/cms.c",
     "libswscale/csputils.c",
+    "libswscale/filters.c",
     "libswscale/format.c",
     "libswscale/gamma.c",
     "libswscale/graph.c",

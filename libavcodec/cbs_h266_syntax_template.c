@@ -1133,7 +1133,7 @@ static int FUNC(sps)(CodedBitstreamContext *ctx, RWContext *rw,
     max_width_minus1  = tmp_width_val - 1;
     max_height_minus1 = tmp_height_val - 1;
 
-    flag(sps_subpic_info_present_flag);
+    u(1, sps_subpic_info_present_flag, 0, !current->sps_res_change_in_clvs_allowed_flag);
     if (current->sps_subpic_info_present_flag) {
         ue(sps_num_subpics_minus1, 0, VVC_MAX_SLICES - 1);
         if (current->sps_num_subpics_minus1 > 0) {
@@ -2022,7 +2022,7 @@ static int FUNC(pps) (CodedBitstreamContext *ctx, RWContext *rw,
                         for (j = 0; j < current->pps_num_exp_slices_in_tile[i];
                              j++) {
                             ues(pps_exp_slice_height_in_ctus_minus1[i][j], 0,
-                                remaining_height_in_ctbs_y - 1, 2,
+                                remaining_height_in_ctbs_y - (current->pps_num_exp_slices_in_tile[i] - j), 2,
                                 i, j);
                             slice_height_in_ctus =
                                 current->
@@ -2689,7 +2689,7 @@ static int FUNC(picture_header) (CodedBitstreamContext *ctx, RWContext *rw,
     ub(sps->sps_log2_max_pic_order_cnt_lsb_minus4 + 4, ph_pic_order_cnt_lsb);
     if (current->ph_gdr_pic_flag)
         ue(ph_recovery_poc_cnt, 0,
-           1 << (sps->sps_log2_max_pic_order_cnt_lsb_minus4 + 4));
+           (1 << (sps->sps_log2_max_pic_order_cnt_lsb_minus4 + 4)) - 1);
 
     for (i = 0; i < sps->sps_num_extra_ph_bytes * 8; i++) {
         if (sps->sps_extra_ph_bit_present_flag[i])
@@ -3145,7 +3145,7 @@ static int FUNC(slice_header) (CodedBitstreamContext *ctx, RWContext *rw,
 
     if (!pps->pps_rect_slice_flag &&
         pps->num_tiles_in_pic - current->sh_slice_address > 1)
-        ue(sh_num_tiles_in_slice_minus1, 0, pps->num_tiles_in_pic - 1);
+        ue(sh_num_tiles_in_slice_minus1, 0, pps->num_tiles_in_pic - 1 - current->sh_slice_address);
     else
         infer(sh_num_tiles_in_slice_minus1, 0);
 

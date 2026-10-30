@@ -34,11 +34,10 @@
 #include "libavcodec/avcodec.h"
 #include "libavcodec/internal.h"
 #include "libavcodec/mathops.h"
-#include "libavcodec/vorbis_data.h"
-
 #include "opus.h"
 #include "parse.h"
 #include "tab.h"
+#include "libavcodec/vorbis_data.h"
 
 /**
  * Read a 1- or 2-byte frame length

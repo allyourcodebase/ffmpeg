@@ -215,6 +215,9 @@ static int decode_usac_element_pair(AACDecContext *ac,
 
     if (e->stereo_config_index) {
         e->mps.freq_res = get_bits(gb, 3); /* bsFreqRes */
+        if (!e->mps.freq_res)
+            return AVERROR_INVALIDDATA; /* value 0 is reserved */
+
         int numBands = ((int[]){0,28,20,14,10,7,5,4})[e->mps.freq_res]; // ISO/IEC 23003-1:2007, 5.2, Table 39
 
         e->mps.fixed_gain = get_bits(gb, 3); /* bsFixedGainDMX */
@@ -374,6 +377,8 @@ int ff_aac_usac_config_decode(AACDecContext *ac, AVCodecContext *avctx,
     freq_idx = get_bits(gb, 5); /* usacSamplingFrequencyIndex */
     if (freq_idx == 0x1f) {
         samplerate = get_bits(gb, 24); /* usacSamplingFrequency */
+        if (samplerate == 0)
+            return AVERROR(EINVAL);
     } else {
         samplerate = ff_aac_usac_samplerate[freq_idx];
         if (samplerate < 0)
@@ -1385,11 +1390,10 @@ static void decode_tsd(GetBitContext *gb, int *data,
             break;
         }
         int64_t c = k - p + 1;
-        for (int h = 2; h <= p; h++) {
-            c *= k - p + h;
-            c /= h;
+        for (int h = 2; h <= p && c <= s; h++) {
+            c += c*(k-p)/h;
         }
-        if (s >= (int)c) { /* c is long long for up to 32 slots */
+        if (s >= c) {
             s -= c;
             data[k] = 1;
             p--;
